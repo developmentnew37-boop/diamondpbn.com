@@ -105,7 +105,8 @@
                                 {{ $url }}
                             </td>
                             <td class="border !px-2 !py-3 text-xs">
-                                {{ $task->published_at?->format('d-M-Y') ?? ($task->schedule_at?->format('d-M-Y') ?? '-') }}
+                                @php $reportDate = $task->scheduleDate?->schedule_date ?? $task->schedule_at; @endphp
+                                {{ $reportDate ? $reportDate->format('d-M-Y') : '-' }}
                             </td>
 
                             <td class="border !px-2 !py-3 text-center">
@@ -115,7 +116,7 @@
                             </td>
 
                             <td class="border !px-2 !py-3">
-                                {{ $task->created_at?->format('d M Y') }}
+                                {{ $reportDate ? $reportDate->format('d M Y') : '-' }}
                             </td>
 
                         </tr>

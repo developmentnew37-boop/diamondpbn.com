@@ -19,6 +19,7 @@ class CampaignPost extends Model
         'remote_title',
         'remote_url',
         'published_at',
+        'content_updated_at',
         'attempt_count',
         'last_error',
         'next_retry_at',
@@ -28,10 +29,11 @@ class CampaignPost extends Model
     ];
 
     protected $casts = [
-        'published_at'  => 'datetime',
-        'next_retry_at' => 'datetime',
-        'locked_at'     => 'datetime',
-        'locked_until'  => 'datetime', // ✅ ADD
+        'published_at'      => 'datetime',
+        'content_updated_at' => 'datetime',
+        'next_retry_at'     => 'datetime',
+        'locked_at'         => 'datetime',
+        'locked_until'      => 'datetime',
     ];
 
     public function campaign()

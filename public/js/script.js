@@ -146,3 +146,34 @@ submenuItems.forEach((item) => {
         this.style.fontWeight = "600";
     });
 });
+
+// Auto-hide cus__success / cus__error alerts after 5 seconds
+(function () {
+    const AUTO_HIDE_MS = 5000;
+    function hideCusAlerts() {
+        const main = document.querySelector(".main-content");
+        if (!main) return;
+        const alerts = main.querySelectorAll(
+            [
+                '.js-cus-alert',
+                '[role="alert"]',
+                'div.text-sm.rounded.bg-green-100.text-green-700',
+                'div.text-sm.rounded.bg-red-100.text-red-700',
+            ].join(", ")
+        );
+        alerts.forEach(function (el) {
+            setTimeout(function () {
+                el.style.transition = "opacity 0.3s ease";
+                el.style.opacity = "0";
+                setTimeout(function () {
+                    el.remove();
+                }, 300);
+            }, AUTO_HIDE_MS);
+        });
+    }
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", hideCusAlerts);
+    } else {
+        hideCusAlerts();
+    }
+})();

@@ -145,8 +145,26 @@ class PublishSidebarBlogrollJob implements ShouldQueue
                 $fresh->lock_token     = null;
                 $fresh->save();
 
-                SidebarCampaign::whereKey($fresh->sidebar_campaign_id)
-                    ->increment('completed_targets');
+                // 🔒 LOCK campaign row FIRST
+                $campaign = SidebarCampaign::lockForUpdate()->find($fresh->sidebar_campaign_id);
+
+                if (!$campaign) {
+                    return;
+                }
+
+                // ✅ Check completion
+                if ($campaign->completed_targets >= $campaign->total_targets) {
+                    $campaign->status = 'completed';
+                }
+
+                // ➕ Increment locally
+                $campaign->completed_targets++;
+
+                if ($campaign->completed_targets + $campaign->failed_targets > $campaign->total_targets) {
+                    $campaign->failed_targets--;
+                }
+                $campaign->save();
+
             });
         } catch (Throwable $e) {
 
@@ -184,8 +202,29 @@ class PublishSidebarBlogrollJob implements ShouldQueue
                     $fresh->finished_at = now();
                     $fresh->save();
 
-                    SidebarCampaign::whereKey($fresh->sidebar_campaign_id)
-                        ->increment('failed_targets');
+                    // SidebarCampaign::whereKey($fresh->sidebar_campaign_id)
+                    //     ->increment('failed_targets');
+
+                    $campaign = SidebarCampaign::lockForUpdate()->find($fresh->sidebar_campaign_id);
+
+                    if (!$campaign) return;
+
+                    $currentTotal = $campaign->completed_targets + $campaign->failed_targets; //
+
+                    // Only increment if it will not exceed total_targets
+                    if ($currentTotal < $campaign->total_targets) {
+
+                        $campaign->failed_targets++;
+
+                        // Optional status update
+                        if ($campaign->completed_targets > 0) {
+                            $campaign->status = 'semi_failed';
+                        } else {
+                            $campaign->status = 'failed';
+                        }
+
+                        $campaign->save();
+                    }
                 }
             });
         } finally {

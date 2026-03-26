@@ -34,4 +34,8 @@ class CampaignArticle extends Model
     {
         return $this->hasMany(CampaignPost::class, 'campaign_article_id');
     }
+    // public function campaignPosts()
+    // {
+    //     return $this->hasOne(CampaignPost::class, 'campaign_article_id');
+    // }
 }

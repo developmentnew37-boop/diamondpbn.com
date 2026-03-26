@@ -22,7 +22,19 @@
             </div>
         </div>
 
-        <div class="w-1/2 flex justify-end">
+        <div class="w-1/2 flex justify-end items-center gap-2">
+            <a href="{{ route('admin.schedule.campaign.edit', $campaign->id) }}"
+               class="inline-flex items-center gap-2 !px-3 !py-2 rounded bg-[var(--primary-color)] text-white hover:opacity-90 text-sm">
+                Edit campaign
+            </a>
+            <form action="{{ route('admin.schedule.campaign.destroy', $campaign->id) }}" method="post" class="inline"
+                  onsubmit="return confirm('Delete this campaign? All posts will be removed from the database and from the remote site.');">
+                @csrf
+                @method('DELETE')
+                <button type="submit" class="inline-flex items-center gap-2 !px-3 !py-2 rounded bg-red-600 text-white hover:bg-red-700 text-sm">
+                    Delete campaign
+                </button>
+            </form>
             <a href="javascript:void(0)" onclick="history.back()"
                class="inline-flex items-center gap-2 !px-3 !py-2 rounded bg-gray-200 hover:bg-gray-300 text-sm">
                 <span class="material-symbols-outlined">arrow_back</span>
@@ -34,14 +46,14 @@
 
 {{-- ===================== ALERTS ===================== --}}
 @if (session('cus__success') || session('cus__error'))
-    <div class="mt-3">
+    <div class="!mt-3">
         @if (session('cus__success'))
-            <div class="p-3 rounded bg-green-100 text-green-700">
+            <div class="!p-3 rounded bg-green-100 text-green-700">
                 {{ session('cus__success') }}
             </div>
         @endif
         @if (session('cus__error'))
-            <div class="p-3 rounded bg-red-100 text-red-700">
+            <div class="!p-3 rounded bg-red-100 text-red-700">
                 {{ session('cus__error') }}
             </div>
         @endif
@@ -86,7 +98,7 @@
 </div>
 
 {{-- ===================== POSTS TABLE ===================== --}}
-<div class="content-card mt-4">
+<div class="content-card !mt-4">
 
     <h2 class="text-lg !mb-4 bg-[var(--primary-color)] text-white w-fit !px-4 !py-2 rounded">
         Scheduled Posts
@@ -182,13 +194,40 @@
                         {{ $post->created_at?->format('d M Y H:i') }}
                     </td>
 
-                    <td class="!px-2 !py-2 border border-gray-300 text-center">
-                        @if ($post->remote_url)
-                            <a href="{{ $post->remote_url }}" target="_blank"
-                               class="bg-green-500 w-7 h-7 inline-flex items-center justify-center rounded">
-                                <span class="material-symbols-outlined text-white !text-sm">visibility</span>
-                            </a>
-                        @endif
+                    <td class="!px-2 !py-2 border border-gray-300">
+                        <div class="flex  gap-1 justify-center items-center">
+                            @if ($post->remote_url)
+                                <a href="{{ $post->remote_url }}" target="_blank"
+                                   class="bg-green-500 w-7 h-7 inline-flex items-center justify-center rounded hover:bg-green-600"
+                                   title="View on site">
+                                    <span class="material-symbols-outlined text-white !text-sm">visibility</span>
+                                </a>
+                            @endif
+                            @if ($post->status === 'success' && $post->remote_id)
+                                <a href="{{ route('admin.schedule.campaign.edit.post', $post->id) }}"
+                                   class="bg-yellow-500 w-7 h-7 inline-flex items-center justify-center rounded hover:bg-amber-600"
+                                   title="Edit post on remote">
+                                    <span class="material-symbols-outlined text-white !text-sm">edit</span>
+                                </a>
+                            @endif
+                            @if (in_array($post->status, ['queued', 'failed', 'publishing']))
+                                <form action="{{ route('admin.schedule.campaign.retry.post', $post->id) }}" method="post" class="inline">
+                                    @csrf
+                                    <button type="submit" class="bg-blue-500 w-7 h-7 inline-flex items-center justify-center rounded hover:bg-blue-600 border-0 cursor-pointer"
+                                        title="Retry post">
+                                        <span class="material-symbols-outlined text-white !text-sm">replay</span>
+                                    </button>
+                                </form>
+                            @endif
+                            <form action="{{ route('admin.schedule.campaign.delete.post', $post->id) }}" method="post" class="inline"
+                                onsubmit="return confirm('Delete this post from the campaign and from the remote site?');">
+                                @csrf
+                                <button type="submit" class="bg-red-500 w-7 h-7 inline-flex items-center justify-center rounded hover:bg-red-600 border-0 cursor-pointer"
+                                    title="Delete post">
+                                    <span class="material-symbols-outlined text-white !text-sm">delete</span>
+                                </button>
+                            </form>
+                        </div>
                     </td>
                 </tr>
             @empty

@@ -90,26 +90,32 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
                 // 🌐 STEP 3: Publish to WordPress
                 $remote = $this->postToWordPress($post, $title, $content);
 
-                // ✅ STEP 4: Mark success
+                // ✅ STEP 4: Mark success or fail with clear reason
                 DB::transaction(function () use ($post, $remote) {
 
                     $fresh = ScheduleCampaignPost::lockForUpdate()->find($post->id);
                     if (!$fresh || $fresh->lock_token !== $post->lock_token) return;
 
                     $json = $remote['json'];
+                    $remoteStatus = $json['status'] ?? null;
+                    // Post created on remote is success whether published now or scheduled (future)
+                    $isSuccess = in_array($remoteStatus, ['publish', 'future'], true);
 
-                    $fresh->status  = ($json['status'] ?? null) === 'publish'
-                        ? 'success'
-                        : 'failed';
-                    $fresh->remote_id      = $json['post_id'] ?? null;
-                    $fresh->remote_status  = $json['status'] ?? null;
-                    $fresh->http_status    = $remote['http_status'];
+                    $fresh->status       = $isSuccess ? 'success' : 'failed';
+                    $fresh->remote_id    = $json['post_id'] ?? null;
+                    $fresh->remote_status = $remoteStatus;
+                    $fresh->http_status  = $remote['http_status'];
                     $fresh->remote_title = $post->campaignArticle->article->name ?? null;
-                    $fresh->remote_url    = $json['remote_url'] ?? null;
-                    $fresh->remote_response = json_encode($json, JSON_UNESCAPED_UNICODE);
-                    $fresh->published_at    = $fresh->status === 'success' ? now() : null;
+                    // No schedule in payload → API returns slug permalink
+                    $fresh->remote_url = $json['remote_url'] ?? $json['link'] ?? $json['permalink'] ?? $json['url'] ?? null;
 
-                    $fresh->last_error    = null;
+                    $fresh->remote_response = json_encode($json, JSON_UNESCAPED_UNICODE);
+                    $fresh->published_at    = ($fresh->remote_status === 'publish') ? now() : null;
+
+                    // When we mark failed (e.g. remote returned draft/other), store reason so UI shows it
+                    $fresh->last_error    = $isSuccess ? null : (
+                        'Remote post status was: "' . ($remoteStatus ?? 'unknown') . '" (expected publish or future).'
+                    );
                     $fresh->next_retry_at = null;
                     $fresh->locked_at     = null;
                     $fresh->lock_token    = null;
@@ -392,6 +398,7 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
 
             $endpoint = rtrim($domain, '/') . '/wp-json/external/v1/posts/create';
 
+            // Our scheduler runs the job by schedule_at; when job runs we publish immediately (no WP scheduling).
             $payload = [
                 'title'     => $title,
                 'content'   => $content,
@@ -426,7 +433,6 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
                 'http_status' => $res->status(),
             ];
         }
-
 
         /**
          * 🏁 Finalize campaign if all posts processed

@@ -25,15 +25,17 @@ class HiddenLinksCampaign extends Model
         'failed_targets',
         'started_at',
         'finished_at',
+        'last_bulk_updated_at',
     ];
 
     protected $casts = [
-        'sidebar_count'      => 'integer',
-        'total_targets'      => 'integer',
-        'completed_targets'  => 'integer',
-        'failed_targets'     => 'integer',
-        'started_at'         => 'datetime',
-        'finished_at'        => 'datetime',
+        'sidebar_count'       => 'integer',
+        'total_targets'       => 'integer',
+        'completed_targets'   => 'integer',
+        'failed_targets'      => 'integer',
+        'started_at'          => 'datetime',
+        'finished_at'         => 'datetime',
+        'last_bulk_updated_at' => 'datetime',
     ];
 
     // =========================

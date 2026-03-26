@@ -10,17 +10,28 @@ use App\Models\Admin\Domain;
 use Illuminate\Support\Facades\Auth;
 use App\Models\Admin\{
     ScheduleSidebarCampaign,
+    ScheduleSidebarCampaignDate,
     ScheduleSidebarCampaignDomain,
     ScheduleSidebarCampaignLink,
     ScheduleSidebarCampaignTask,
 };
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Spatie\SimpleExcel\SimpleExcelWriter;
 use Illuminate\Support\Str;
+use App\Jobs\BulkUpdateScheduleSidebarBlogrollJob;
+use App\Jobs\DeleteScheduleSidebarCampaignJob;
+use App\Jobs\PublishScheduledSidebarBlogrollJob;
+use App\Services\BlogrollApiService;
 
 class ScheduleSidebarCampaignController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('can.create.campaigns')->except(['report', 'exportReport']);
+    }
+
     /**
      * Display a listing of the resource.
      */
@@ -148,49 +159,79 @@ class ScheduleSidebarCampaignController extends Controller
      * Store a newly created resource in storage.
      */
 
-    private function generateUniqueCampaignNo(string $input): string
+    private function generateUniqueCampaignNo(string $input, ?int $excludeId = null): string
     {
-        // 1️⃣ Slugify (removes /, special chars, spaces)
         $base = Str::slug($input);
-
-        // 2️⃣ Fallback if user enters garbage like /// or ###
         if ($base === '') {
             $base = 'campaign-' . now()->timestamp;
         }
-
         $slug = $base;
         $counter = 1;
-
-        // 3️⃣ Ensure uniqueness
-        while (ScheduleSidebarCampaign::where('campaign_no', $slug)->exists()) {
+        do {
+            $query = ScheduleSidebarCampaign::where('campaign_no', $slug);
+            if ($excludeId !== null) {
+                $query->where('id', '!=', $excludeId);
+            }
+            if (!$query->exists()) {
+                break;
+            }
             $slug = "{$base}-{$counter}";
             $counter++;
-        }
-
+        } while (true);
         return $slug;
     }
 
     public function store(Request $request)
     {
-        // =====================================================
-        // 1️⃣ VALIDATION
-        // =====================================================
-        $validated = $request->validate([
-            'campaign_no'         => 'required|string',
-            'domain_category_id'  => 'nullable|integer|exists:domain_categories,id',
-            'sidebar_quantity'    => 'required|integer|min:1',
+        $dateQuantitiesRaw = $request->input('date_quantities');
+        $useDateTable = !empty($dateQuantitiesRaw);
 
-            'schedule_from_date'  => 'required|date',
-            'schedule_to_date'    => 'required|date|after_or_equal:schedule_from_date',
+        if ($useDateTable) {
+            $dateRows = is_string($dateQuantitiesRaw) ? json_decode($dateQuantitiesRaw, true) : $dateQuantitiesRaw;
+            if (!is_array($dateRows) || count($dateRows) === 0) {
+                return back()->with('cus__error', 'Invalid or empty date distribution. Generate the date table and set quantities.')->withInput();
+            }
+            $qty = 0;
+            $dateMin = null;
+            $dateMax = null;
+            foreach ($dateRows as $row) {
+                $qu = (int) ($row['quantity'] ?? 0);
+                if ($qu > 0) {
+                    $d = $row['date'] ?? null;
+                    if ($d) {
+                        $qty += $qu;
+                        $parsed = Carbon::parse($d);
+                        if ($dateMin === null || $parsed->lt($dateMin)) {
+                            $dateMin = $parsed;
+                        }
+                        if ($dateMax === null || $parsed->gt($dateMax)) {
+                            $dateMax = $parsed;
+                        }
+                    }
+                }
+            }
+            if ($qty < 1 || $dateMin === null || $dateMax === null) {
+                return back()->with('cus__error', 'Date distribution must have at least one date with quantity > 0.')->withInput();
+            }
+            $scheduleFrom = $dateMin->format('Y-m-d');
+            $scheduleTo   = $dateMax->format('Y-m-d');
+        } else {
+            $request->validate([
+                'sidebar_quantity'   => 'required|integer|min:1',
+                'schedule_from_date' => 'required|date',
+                'schedule_to_date'   => 'required|date|after_or_equal:schedule_from_date',
+            ]);
+            $qty = (int) $request->sidebar_quantity;
+            $scheduleFrom = $request->schedule_from_date;
+            $scheduleTo   = $request->schedule_to_date;
+        }
 
-            'keywordsDataHolder'  => 'required|string', // JSON
-            'campaigns_domains'   => 'required|string', // JSON
+        $request->validate([
+            'campaign_no'        => 'required|string',
+            'domain_category_id' => 'nullable|integer|exists:domain_categories,id',
+            'keywordsDataHolder' => 'required|string',
+            'campaigns_domains'   => 'required|string',
         ]);
-
-        // =====================================================
-        // 2️⃣ NORMALIZE INPUT
-        // =====================================================
-        $qty = (int) $request->sidebar_quantity;
 
         $links = json_decode($request->keywordsDataHolder, true);
         if (!is_array($links)) {
@@ -204,47 +245,148 @@ class ScheduleSidebarCampaignController extends Controller
         }
         $domainIds = array_values(array_map('intval', $domainIds));
 
-        // =====================================================
-        // 3️⃣ HARD COUNT CHECK
-        // =====================================================
         if (count($links) !== $qty || count($domainIds) !== $qty) {
             return back()
-                ->with('cus__error', 'Links and domains must match sidebar quantity')
+                ->with('cus__error', 'Links and domains must match sidebar quantity (' . $qty . ').')
                 ->withInput();
         }
 
-        // =====================================================
-        // 4️⃣ DATE MATH (DAY-BASED)
-        // =====================================================
-        $from = Carbon::parse($request->schedule_from_date)->startOfDay();
-        $to   = Carbon::parse($request->schedule_to_date)->startOfDay();
-
-        $totalDays = $from->diffInDays($to) + 1;
-        $perDay    = intdiv($qty, $totalDays);
-        $remainder = $qty % $totalDays;
-
-        // updated campaign no
-
         $campaignNo = $this->generateUniqueCampaignNo($request->campaign_no);
 
-        // =====================================================
-        // 5️⃣ TRANSACTION
-        // =====================================================
-        DB::transaction(function () use (
-            $request,
-            $campaignNo,
-            $qty,
-            $links,
-            $domainIds,
-            $from,
-            $totalDays,
-            $perDay,
-            $remainder
-        ) {
+        if ($useDateTable) {
+            $this->storeWithDateTable($request, $campaignNo, $qty, $scheduleFrom, $scheduleTo, $links, $domainIds, $dateRows);
+        } else {
+            $from = Carbon::parse($scheduleFrom)->startOfDay();
+            $to   = Carbon::parse($scheduleTo)->startOfDay();
+            $totalDays = $from->diffInDays($to) + 1;
+            $perDay    = intdiv($qty, $totalDays);
+            $remainder = $qty % $totalDays;
+            $this->storeWithDateRange($request, $campaignNo, $qty, $links, $domainIds, $from, $totalDays, $perDay, $remainder);
+        }
 
-            // ---------------------------------------------
-            // A) schedule_sidebar_campaigns
-            // ---------------------------------------------
+        return redirect()
+            ->route('admin.schedule.sidebar.campaign.create')
+            ->with('cus__success', 'Scheduled sidebar campaign created successfully.');
+    }
+
+    /**
+     * Store campaign with per-date quantity table (date distribution).
+     */
+    private function storeWithDateTable(
+        Request $request,
+        string $campaignNo,
+        int $qty,
+        string $scheduleFrom,
+        string $scheduleTo,
+        array $links,
+        array $domainIds,
+        array $dateRows
+    ): void {
+        DB::transaction(function () use ($request, $campaignNo, $qty, $scheduleFrom, $scheduleTo, $links, $domainIds, $dateRows) {
+            $schedule = ScheduleSidebarCampaign::create([
+                'campaign_no'        => $campaignNo,
+                'admin_id'           => auth('admin')->id(),
+                'domain_category_id' => $request->domain_category_id,
+                'schedule_from_date' => $scheduleFrom,
+                'schedule_to_date'   => $scheduleTo,
+                'status'             => 'queued',
+                'total_targets'      => $qty,
+                'completed_targets'  => 0,
+                'failed_targets'     => 0,
+            ]);
+
+            foreach ($domainIds as $i => $domainId) {
+                ScheduleSidebarCampaignDomain::create([
+                    'schedule_sidebar_campaign_id' => $schedule->id,
+                    'domain_id'                    => $domainId,
+                ]);
+            }
+            $domainMap = ScheduleSidebarCampaignDomain::where('schedule_sidebar_campaign_id', $schedule->id)
+                ->orderBy('id')
+                ->pluck('id')
+                ->all();
+
+            foreach ($links as $i => $row) {
+                ScheduleSidebarCampaignLink::create([
+                    'schedule_sidebar_campaign_id' => $schedule->id,
+                    'target_url'                   => trim($row['url']),
+                    'anchor_keyword'               => trim($row['keyword']),
+                    'nofollow'                     => !empty($row['nofollow']),
+                    'sort_order'                   => $i + 1,
+                ]);
+            }
+            $linkMap = ScheduleSidebarCampaignLink::where('schedule_sidebar_campaign_id', $schedule->id)
+                ->orderBy('id')
+                ->pluck('id')
+                ->all();
+
+            $dateRowsFiltered = [];
+            foreach ($dateRows as $row) {
+                $qu = (int) ($row['quantity'] ?? 0);
+                $d  = $row['date'] ?? null;
+                if ($qu > 0 && $d) {
+                    $dateRowsFiltered[] = [
+                        'schedule_sidebar_campaign_id' => $schedule->id,
+                        'schedule_date'               => $d,
+                        'quantity'                    => $qu,
+                        'created_at'                  => now(),
+                        'updated_at'                  => now(),
+                    ];
+                }
+            }
+            if (!empty($dateRowsFiltered)) {
+                ScheduleSidebarCampaignDate::insert($dateRowsFiltered);
+            }
+
+            $globalIndex = 0;
+            $postRows = [];
+            $now = now();
+            $dateRowsOrdered = ScheduleSidebarCampaignDate::where('schedule_sidebar_campaign_id', $schedule->id)
+                ->orderBy('schedule_date')
+                ->get();
+
+            foreach ($dateRowsOrdered as $dateRow) {
+                $scheduleAt = Carbon::parse($dateRow->schedule_date)->startOfDay();
+                for ($k = 0; $k < $dateRow->quantity; $k++) {
+                    if ($globalIndex >= $qty) {
+                        break;
+                    }
+                    $postRows[] = [
+                        'schedule_sidebar_campaign_id'        => $schedule->id,
+                        'schedule_sidebar_campaign_domain_id' => $domainMap[$globalIndex],
+                        'schedule_sidebar_campaign_link_id'   => $linkMap[$globalIndex],
+                        'schedule_sidebar_campaign_date_id'   => $dateRow->id,
+                        'schedule_at'                         => $scheduleAt,
+                        'status'                              => 'queued',
+                        'attempt_count'                       => 0,
+                        'created_at'                          => $now,
+                        'updated_at'                          => $now,
+                    ];
+                    $globalIndex++;
+                }
+            }
+
+            foreach (array_chunk($postRows, 200) as $chunk) {
+                ScheduleSidebarCampaignTask::insert($chunk);
+            }
+        });
+    }
+
+    /**
+     * Store campaign with date range and even distribution (legacy).
+     */
+    private function storeWithDateRange(
+        Request $request,
+        string $campaignNo,
+        int $qty,
+        array $links,
+        array $domainIds,
+        $from,
+        int $totalDays,
+        int $perDay,
+        int $remainder
+    ): void {
+        DB::transaction(function () use ($request, $campaignNo, $qty, $links, $domainIds, $from, $totalDays, $perDay, $remainder) {
             $schedule = ScheduleSidebarCampaign::create([
                 'campaign_no'        => $campaignNo,
                 'admin_id'           => auth('admin')->id(),
@@ -257,9 +399,6 @@ class ScheduleSidebarCampaignController extends Controller
                 'failed_targets'     => 0,
             ]);
 
-            // ---------------------------------------------
-            // B) schedule_sidebar_campaign_domains
-            // ---------------------------------------------
             $domainMap = [];
             foreach ($domainIds as $i => $domainId) {
                 $row = ScheduleSidebarCampaignDomain::create([
@@ -269,12 +408,8 @@ class ScheduleSidebarCampaignController extends Controller
                 $domainMap[$i] = $row->id;
             }
 
-            // ---------------------------------------------
-            // C) schedule_sidebar_campaign_links (OWN DATA)
-            // ---------------------------------------------
             $linkMap = [];
             foreach ($links as $i => $row) {
-
                 $link = ScheduleSidebarCampaignLink::create([
                     'schedule_sidebar_campaign_id' => $schedule->id,
                     'target_url'                   => trim($row['url']),
@@ -282,32 +417,18 @@ class ScheduleSidebarCampaignController extends Controller
                     'nofollow'                     => !empty($row['nofollow']),
                     'sort_order'                   => $i + 1,
                 ]);
-
                 $linkMap[$i] = $link->id;
             }
 
-            // ---------------------------------------------
-            // D) schedule_sidebar_campaign_tasks
-            // ---------------------------------------------
             $rows = [];
-            $now  = now();
-
+            $now = now();
             for ($i = 0; $i < $qty; $i++) {
-
                 if ($i < ($perDay + 1) * $remainder) {
                     $dayIndex = intdiv($i, $perDay + 1);
                 } else {
-                    $dayIndex = $remainder + intdiv(
-                        $i - ($perDay + 1) * $remainder,
-                        $perDay
-                    );
+                    $dayIndex = $remainder + intdiv($i - ($perDay + 1) * $remainder, $perDay);
                 }
-
-                $scheduleAt = $from
-                    ->copy()
-                    ->addDays($dayIndex)
-                    ->setTime(0, 0);
-
+                $scheduleAt = $from->copy()->addDays($dayIndex)->setTime(0, 0);
                 $rows[] = [
                     'schedule_sidebar_campaign_id'        => $schedule->id,
                     'schedule_sidebar_campaign_domain_id' => $domainMap[$i],
@@ -318,21 +439,15 @@ class ScheduleSidebarCampaignController extends Controller
                     'created_at'                          => $now,
                     'updated_at'                          => $now,
                 ];
-
                 if (count($rows) === 200) {
                     ScheduleSidebarCampaignTask::insert($rows);
                     $rows = [];
                 }
             }
-
             if (!empty($rows)) {
                 ScheduleSidebarCampaignTask::insert($rows);
             }
         });
-
-        return redirect()
-            ->route('admin.schedule.sidebar.campaign.create')
-            ->with('cus__success', 'Scheduled sidebar campaign created successfully.');
     }
 
 
@@ -374,6 +489,7 @@ class ScheduleSidebarCampaignController extends Controller
         $tasks = ScheduleSidebarCampaignTask::with([
             'domain.domain',
             'link',
+            'scheduleDate',
         ])
             ->where('schedule_sidebar_campaign_id', $campaign->id)
             ->get();
@@ -413,8 +529,9 @@ class ScheduleSidebarCampaignController extends Controller
            | Fetch scheduled sidebar tasks
            ============================ */
         $tasks = ScheduleSidebarCampaignTask::with([
-            'domain.domain', // ScheduleSidebarCampaignDomain → Domain
-            'link',          // ScheduleSidebarCampaignLink
+            'domain.domain',
+            'link',
+            'scheduleDate',
         ])
             ->where('schedule_sidebar_campaign_id', $campaign->id)
             ->get();
@@ -463,7 +580,7 @@ class ScheduleSidebarCampaignController extends Controller
                 'Domain'       => optional($task->domain?->domain)->name ?? '-',
                 'Keyword'      => $task->link?->anchor_keyword ?? '-',
                 'URL'          => $task->link?->target_url ?? '-',
-                'Scheduled At' => optional($task->schedule_at)?->format('d M Y H:i') ?? '-',
+                'Scheduled At' => ($task->scheduleDate?->schedule_date ?? $task->schedule_at)?->format('d M Y H:i') ?? '-',
             ];
 
             if ($hasNofollow) {
@@ -532,26 +649,308 @@ class ScheduleSidebarCampaignController extends Controller
     }
 
     /**
-     * Show the form for editing the specified resource.
+     * Edit campaign: campaign no + bulk edit blogroll link batches.
      */
     public function edit(string $id)
     {
-        //
+        $campaign = ScheduleSidebarCampaign::findOrFail($id);
+
+        $links = ScheduleSidebarCampaignLink::where('schedule_sidebar_campaign_id', $campaign->id)->get();
+
+        $batches = [];
+        foreach ($links as $link) {
+            $k = trim((string) ($link->anchor_keyword ?? ''));
+            $u = trim((string) ($link->target_url ?? ''));
+            $key = $k . "\n" . $u;
+
+            if (!isset($batches[$key])) {
+                $batches[$key] = [
+                    'representative_link_id' => $link->id,
+                    'keyword'               => $k,
+                    'url'                   => $u,
+                    'link_ids'              => [],
+                ];
+            }
+            $batches[$key]['link_ids'][] = $link->id;
+        }
+
+        foreach ($batches as &$batch) {
+            $batch['count'] = ScheduleSidebarCampaignTask::where('schedule_sidebar_campaign_id', $campaign->id)
+                ->whereIn('schedule_sidebar_campaign_link_id', $batch['link_ids'])
+                ->whereNotNull('remote_id')
+                ->where('status', 'success')
+                ->count();
+            unset($batch['link_ids']);
+        }
+        unset($batch);
+
+        $distinctBatches = array_values(array_filter($batches, fn($b) => $b['count'] > 0));
+
+        return view('admin.campaigns.pbn-sidebar.edit-schedule-sidebar-campaign', compact('campaign', 'distinctBatches'));
     }
 
     /**
-     * Update the specified resource in storage.
+     * Update campaign no only.
      */
     public function update(Request $request, string $id)
     {
-        //
+        $campaign = ScheduleSidebarCampaign::find($id);
+        if (!$campaign) {
+            return back()->with('cus__error', 'Campaign not found');
+        }
+
+        $validated = $request->validate(['campaign_no' => 'required|string|max:191']);
+
+        $campaignNo = $this->generateUniqueCampaignNo($validated['campaign_no'], (int) $campaign->id);
+        $campaign->update(['campaign_no' => $campaignNo]);
+
+        return back()->with('cus__success', 'Campaign updated.');
     }
 
     /**
-     * Remove the specified resource from storage.
+     * Bulk update blogroll link batches: update DB links, queue remote updates.
+     */
+    public function bulkUpdate(Request $request, string $id)
+    {
+        $campaign = ScheduleSidebarCampaign::find($id);
+        if (!$campaign) {
+            return back()->with('cus__error', 'Campaign not found');
+        }
+
+        $representativeLinkIds = $request->input('batch_representative_link_id', []);
+        $batchKeywords         = $request->input('batch_keyword', []);
+        $batchUrls             = $request->input('batch_url', []);
+
+        if (!is_array($representativeLinkIds)) {
+            $representativeLinkIds = [];
+        }
+        $batchKeywords = is_array($batchKeywords) ? array_values($batchKeywords) : [];
+        $batchUrls     = is_array($batchUrls) ? array_values($batchUrls) : [];
+
+        $updates = [];
+        $updatedBatches = 0;
+
+        foreach ($representativeLinkIds as $index => $repLinkId) {
+            $repLinkId = (int) $repLinkId;
+            $representative = ScheduleSidebarCampaignLink::where('schedule_sidebar_campaign_id', $campaign->id)->find($repLinkId);
+            if (!$representative) {
+                continue;
+            }
+
+            $newKeyword = trim((string) ($batchKeywords[$index] ?? ''));
+            $newUrl     = trim((string) ($batchUrls[$index] ?? ''));
+
+            if ($newKeyword === '' || $newUrl === '') {
+                continue;
+            }
+
+            $oldKeyword = trim((string) ($representative->anchor_keyword ?? ''));
+            $oldUrl     = trim((string) ($representative->target_url ?? ''));
+
+            if ($oldKeyword === $newKeyword && $oldUrl === $newUrl) {
+                continue;
+            }
+
+            $linkIds = ScheduleSidebarCampaignLink::where('schedule_sidebar_campaign_id', $campaign->id)
+                ->where('anchor_keyword', $representative->anchor_keyword)
+                ->where('target_url', $representative->target_url)
+                ->pluck('id')
+                ->all();
+
+            ScheduleSidebarCampaignLink::whereIn('id', $linkIds)->update([
+                'anchor_keyword' => $newKeyword,
+                'target_url'     => $newUrl,
+            ]);
+            $updatedBatches++;
+
+            $taskIds = ScheduleSidebarCampaignTask::where('schedule_sidebar_campaign_id', $campaign->id)
+                ->whereIn('schedule_sidebar_campaign_link_id', $linkIds)
+                ->where('status', 'success')
+                ->whereNotNull('remote_id')
+                ->pluck('id')
+                ->all();
+
+            foreach ($taskIds as $taskId) {
+                $updates[] = [
+                    'task_id' => $taskId,
+                    'keyword' => $newKeyword,
+                    'link'    => $newUrl,
+                ];
+            }
+        }
+
+        if (count($updates) > 0) {
+            BulkUpdateScheduleSidebarBlogrollJob::dispatch($updates)->onQueue('schedule_sidebar_bulk_updates');
+        }
+
+        if ($updatedBatches === 0) {
+            $msg = 'No link changes were made.';
+        } elseif (count($updates) > 0) {
+            $msg = 'Batches updated. ' . count($updates) . ' link(s) queued to update on remote.';
+        } else {
+            $msg = 'Batches updated. No published links to update on remote.';
+        }
+
+        return redirect()
+            ->route('admin.schedule.sidebar.campaign.edit', $campaign->id)
+            ->with($updatedBatches > 0 ? 'cus__success' : 'cus__error', $msg);
+    }
+
+    /**
+     * Delete campaign: queue job to remove remote blogroll entries and delete all local data.
      */
     public function destroy(string $id)
     {
-        //
+        $campaign = ScheduleSidebarCampaign::find($id);
+        if (!$campaign) {
+            return back()->with('cus__error', 'Campaign not found');
+        }
+
+        DeleteScheduleSidebarCampaignJob::dispatch($campaign->id)->onQueue('schedule_sidebar_deletions');
+
+        return redirect()
+            ->route('admin.schedule.sidebar.campaign.index')
+            ->with('cus__success', 'Campaign deletion queued.');
+    }
+
+    /**
+     * Retry a single schedule sidebar task (queued/failed/publishing).
+     */
+    public function retryTask(int $id)
+    {
+        $task = ScheduleSidebarCampaignTask::with('campaign')->findOrFail($id);
+
+        $cacheKey = 'schedule_sidebar_retry_task_' . $task->id;
+        if (Cache::has($cacheKey)) {
+            return back()->with('cus__error', 'Retry was used recently. Please wait 3 minutes.');
+        }
+
+        if (!in_array($task->status, ['queued', 'failed', 'publishing'], true)) {
+            return back()->with('cus__error', 'Only failed, queued or stuck tasks can be retried.');
+        }
+
+        Cache::put($cacheKey, true, now()->addMinutes(3));
+
+        $task->update([
+            'status'       => 'queued',
+            'last_error'   => null,
+            'next_retry_at' => null,
+            'locked_at'    => null,
+            'lock_token'   => null,
+        ]);
+
+        PublishScheduledSidebarBlogrollJob::dispatch($task->id)->onQueue('scheduled_sidebar_campaigns');
+
+        return back()->with('cus__success', 'Task queued for retry.');
+    }
+
+    /**
+     * Show form to edit single schedule sidebar task (keyword/link) – only for published (remote_id).
+     */
+    public function editTask(int $id)
+    {
+        $task = ScheduleSidebarCampaignTask::with(['campaign', 'domain.domain', 'link'])->findOrFail($id);
+
+        if (empty($task->remote_id)) {
+            return back()->with('cus__error', 'Task has no remote_id; only published links can be edited.');
+        }
+
+        return view('admin.campaigns.pbn-sidebar.edit-schedule-sidebar-task', compact('task'));
+    }
+
+    /**
+     * Update single schedule sidebar task on remote and in DB.
+     */
+    public function updateTask(Request $request, int $id)
+    {
+        $task = ScheduleSidebarCampaignTask::with(['domain.domain', 'link'])->find($id);
+        if (!$task || !$task->link) {
+            return back()->with('cus__error', 'Task or link not found');
+        }
+
+        if (!$task->remote_id) {
+            return back()->with('cus__error', 'Task has no remote_id; cannot update on remote.');
+        }
+
+        $domain = $task->domain?->domain;
+        if (!$domain || !$domain->api_key) {
+            return back()->with('cus__error', 'Domain or API key missing');
+        }
+
+        $request->validate([
+            'keyword' => 'required|string|max:500',
+            'link'    => 'required|url|max:500',
+        ]);
+
+        $keyword = trim($request->keyword);
+        $link    = trim($request->link);
+
+        $res = BlogrollApiService::updateEntryByRemoteId($domain->name, $domain->api_key, (string) $task->remote_id, $keyword, $link);
+        if (!$res->successful()) {
+            return back()->with('cus__error', 'Remote update failed: ' . $res->body());
+        }
+
+        $task->link->update([
+            'anchor_keyword' => $keyword,
+            'target_url'     => $link,
+        ]);
+
+        return redirect()
+            ->route('admin.schedule.sidebar.campaign.show', $task->schedule_sidebar_campaign_id)
+            ->with('cus__success', 'Sidebar link updated on remote and in database.');
+    }
+
+    /**
+     * Delete single schedule sidebar task (remote + DB); decrement campaign counters.
+     */
+    public function deleteTask(int $id)
+    {
+        $task = ScheduleSidebarCampaignTask::with(['campaign', 'domain.domain', 'link'])->find($id);
+        if (!$task) {
+            return back()->with('cus__error', 'Task not found.');
+        }
+
+        $campaign = $task->campaign;
+        if (!$campaign) {
+            return back()->with('cus__error', 'Campaign not found.');
+        }
+
+        $taskStatus = $task->status;
+
+        if ($task->remote_id) {
+            $domain = $task->domain?->domain;
+            if ($domain && $domain->api_key) {
+                $res = BlogrollApiService::deleteEntryByRemoteId($domain->name, $domain->api_key, (string) $task->remote_id);
+                if (!$res->successful()) {
+                    return back()->with('cus__error', 'Remote delete failed: ' . $res->body());
+                }
+            }
+        }
+
+        if ($campaign->total_targets > 0) {
+            $campaign->decrement('total_targets');
+        }
+        if ($taskStatus === 'success' && $campaign->completed_targets > 0) {
+            $campaign->decrement('completed_targets');
+        } elseif ($taskStatus === 'failed' && $campaign->failed_targets > 0) {
+            $campaign->decrement('failed_targets');
+        }
+
+        $campaign->refresh();
+        $campaign->syncStatusFromCounts();
+
+        $campaignDomainId = $task->schedule_sidebar_campaign_domain_id;
+        $linkId = $task->schedule_sidebar_campaign_link_id;
+        $task->delete();
+        if ($linkId) {
+            ScheduleSidebarCampaignLink::where('id', $linkId)->delete();
+        }
+
+        // If this campaign domain has no remaining tasks, remove it so domains count updates
+        if ($campaignDomainId && ScheduleSidebarCampaignTask::where('schedule_sidebar_campaign_domain_id', $campaignDomainId)->count() === 0) {
+            ScheduleSidebarCampaignDomain::where('id', $campaignDomainId)->delete();
+        }
+
+        return back()->with('cus__success', 'Sidebar link removed from campaign and remote site.');
     }
 }

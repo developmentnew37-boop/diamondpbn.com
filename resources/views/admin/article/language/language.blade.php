@@ -1,6 +1,6 @@
 @extends('admin.layout.layout')
 
-@section('title', 'Add Category')
+@section('title', 'Article Languages')
 
 @push('style')
     <style>

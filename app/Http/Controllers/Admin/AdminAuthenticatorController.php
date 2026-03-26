@@ -39,7 +39,7 @@ class AdminAuthenticatorController extends Controller
         }
 
         // 2️⃣ Email exists → now check password
-        if (! Hash::check($request->password, $admin->password)) {
+        if (!Hash::check($request->password, $admin->password)) {
             return back()
                 ->with('cus__error', 'Password is incorrect.')
                 ->withInput();

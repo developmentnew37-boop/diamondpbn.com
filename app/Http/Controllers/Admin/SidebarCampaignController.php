@@ -13,12 +13,20 @@ use App\Models\Admin\SidebarCampaignDomain;
 use App\Models\Admin\SidebarCampaignLink;
 use App\Models\Admin\SidebarCampaignTask;
 use Illuminate\Support\Facades\DB;
+use App\Jobs\BulkUpdateSidebarBlogrollJob;
+use App\Jobs\DeleteSidebarCampaignJob;
 use App\Jobs\PublishSidebarBlogrollJob;
+use App\Services\BlogrollApiService;
 use Spatie\SimpleExcel\SimpleExcelWriter;
 use Illuminate\Support\Str;
 
 class SidebarCampaignController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('can.create.campaigns')->except(['report', 'exportReport']);
+    }
+
     /**
      * Display a listing of the resource.
      */
@@ -536,26 +544,379 @@ class SidebarCampaignController extends Controller
     }
 
     /**
-     * Show the form for editing the specified resource.
+     * Manual retry sidebar task: allow queued/failed/publishing; reset attempts and run from first.
      */
-    public function edit(string $id)
+    public function retryTask(string $id)
     {
-        //
+        $task = SidebarCampaignTask::with('campaign')->find($id);
+
+        if (!$task) {
+            return back()->with('cus__error', 'Task not found');
+        }
+
+        if ($task->status === 'success') {
+            return back()->with('cus__error', 'Successful tasks do not need retry');
+        }
+
+        $campaign = $task->campaign;
+        if ($campaign && in_array($campaign->status, ['paused', 'cancelled'], true)) {
+            return back()->with('cus__error', 'Cannot retry: campaign is paused or cancelled');
+        }
+
+        $task->update([
+            'status'        => 'queued',
+            'attempt_count' => 0,
+            'next_retry_at' => null,
+            'locked_at'     => null,
+            'lock_token'    => null,
+            'last_error'    => null,
+        ]);
+
+        PublishSidebarBlogrollJob::dispatch($task->id)->onQueue('sidebar_campaigns');
+
+        return back()->with('cus__success', 'Sidebar task retry queued and will run from first.');
     }
 
     /**
-     * Update the specified resource in storage.
+     * Update sidebar entry on remote and in DB: fetch blogroll by api_key (GET), find index by remote_id, PATCH update/{index} with api_key in body.
      */
-    public function update(Request $request, string $id)
+    public function updateSidebarTask(Request $request, string $id)
     {
-        //
+        $task = SidebarCampaignTask::with(['domainRow.domain', 'linkRow'])->find($id);
+
+        if (!$task || !$task->linkRow) {
+            return back()->with('cus__error', 'Task or link not found');
+        }
+
+        if (!$task->remote_id) {
+            return back()->with('cus__error', 'Task has no remote_id; cannot update on remote.');
+        }
+
+        $domain = $task->domainRow?->domain;
+        if (!$domain || !$domain->api_key) {
+            return back()->with('cus__error', 'Domain or API key missing');
+        }
+
+        $request->validate([
+            'keyword' => 'required|string|max:500',
+            'link'    => 'required|url|max:500',
+        ]);
+
+        $keyword = trim($request->keyword);
+        $link    = trim($request->link);
+
+        $res = BlogrollApiService::updateEntryByRemoteId($domain->name, $domain->api_key, $task->remote_id, $keyword, $link);
+        if (!$res->successful()) {
+            return back()->with('cus__error', 'Remote update failed: ' . $res->body());
+        }
+
+        $task->linkRow->update([
+            'anchor_keyword' => $keyword,
+            'target_url'     => $link,
+        ]);
+        $task->update(['content_updated_at' => now()]);
+
+        return back()->with('cus__success', 'Sidebar link updated on remote and in database.');
     }
 
     /**
-     * Remove the specified resource from storage.
+     * Single delete: remove one sidebar task from remote (if published) and DB; decrement campaign total_targets, completed_targets or failed_targets.
+     */
+    public function deleteSidebarTask(string $id)
+    {
+        $task = SidebarCampaignTask::with(['domainRow.domain', 'linkRow', 'campaign'])->find($id);
+
+        if (!$task) {
+            return back()->with('cus__error', 'Task not found.');
+        }
+
+        $campaign = $task->campaign;
+        if (!$campaign) {
+            return back()->with('cus__error', 'Campaign not found.');
+        }
+
+        $postStatus = $task->status;
+
+        if ($task->remote_id) {
+            $domain = $task->domainRow?->domain;
+            if ($domain && $domain->api_key) {
+                $res = BlogrollApiService::deleteEntryByRemoteId($domain->name, $domain->api_key, $task->remote_id);
+                if (!$res->successful()) {
+                    return back()->with('cus__error', 'Remote delete failed: ' . $res->body());
+                }
+            }
+        }
+
+        if ($campaign->total_targets > 0) {
+            $campaign->decrement('total_targets');
+        }
+        if ($postStatus === 'success' && $campaign->completed_targets > 0) {
+            $campaign->decrement('completed_targets');
+        } elseif ($postStatus === 'failed' && $campaign->failed_targets > 0) {
+            $campaign->decrement('failed_targets');
+        }
+
+        $linkId      = $task->sidebar_campaign_link_id;
+        $domainRowId = $task->sidebar_campaign_domain_id;
+        $task->delete();
+        if ($linkId) {
+            SidebarCampaignLink::where('id', $linkId)->delete();
+        }
+        if ($domainRowId) {
+            SidebarCampaignDomain::where('id', $domainRowId)->delete();
+        }
+
+        return back()->with('cus__success', 'Sidebar link removed from remote and database.');
+    }
+
+    /**
+     * Show form to edit sidebar task keyword/link (for tasks with remote_id).
+     */
+    public function editSidebarTask(string $id)
+    {
+        $task = SidebarCampaignTask::with(['domainRow.domain', 'linkRow', 'campaign'])->find($id);
+
+        if (!$task) {
+            return back()->with('cus__error', 'Task not found');
+        }
+
+        if (!$task->remote_id) {
+            return back()->with('cus__error', 'Task has no remote_id; only published entries can be updated.');
+        }
+
+        return view('admin.campaigns.pbn-sidebar.edit-sidebar-task', compact('task'));
+    }
+
+    /**
+     * Queue sidebar campaign deletion: remote blogroll deletes + DB cleanup run in background (DeleteSidebarCampaignJob).
      */
     public function destroy(string $id)
     {
-        //
+        $campaign = SidebarCampaign::find($id);
+
+        if (!$campaign) {
+            return back()->with('cus__error', 'Campaign not found');
+        }
+
+        DeleteSidebarCampaignJob::dispatch($campaign->id)->onQueue('sidebar_deletions');
+
+        return redirect()
+            ->route('admin.sidebar.campaign.index')
+            ->with('cus__success', 'Sidebar campaign deletion queued. Links will be removed from remote sites and the database in the background. Run the queue worker to process it.');
+    }
+
+    /**
+     * Show the form for editing the specified resource (bulk edit links by batch).
+     * Batches = distinct (keyword, url): updating a batch updates all remote sites that have that same keyword+url.
+     */
+    public function edit(string $id)
+    {
+        $campaign = SidebarCampaign::with(['links', 'domains'])->findOrFail($id);
+
+        $links = SidebarCampaignLink::where('sidebar_campaign_id', $campaign->id)->get();
+
+        $batches = [];
+        foreach ($links as $link) {
+            $k = trim((string) ($link->anchor_keyword ?? ''));
+            $u = trim((string) ($link->target_url ?? ''));
+            $key = $k . "\n" . $u;
+
+            if (!isset($batches[$key])) {
+                $batches[$key] = [
+                    'representative_link_id' => $link->id,
+                    'keyword'               => $k,
+                    'url'                   => $u,
+                    'link_ids'              => [],
+                ];
+            }
+            $batches[$key]['link_ids'][] = $link->id;
+        }
+
+        // Count tasks (published on remote) per batch; only show batches that have at least one
+        foreach ($batches as &$batch) {
+            $batch['count'] = SidebarCampaignTask::where('sidebar_campaign_id', $campaign->id)
+                ->whereIn('sidebar_campaign_link_id', $batch['link_ids'])
+                ->whereNotNull('remote_id')
+                ->where('status', 'success')
+                ->count();
+            unset($batch['link_ids']);
+        }
+        unset($batch);
+
+        $distinctBatches = array_values(array_filter($batches, fn($b) => $b['count'] > 0));
+
+        return view('admin.campaigns.pbn-sidebar.edit-sidebar-campaign', compact('campaign', 'distinctBatches'));
+    }
+
+    /**
+     * Bulk update sidebar links by batch (same keyword+url = one batch). Update one batch = update all remote sites
+     * that have that keyword+url. Queued per batch for background processing.
+     */
+    public function update(Request $request, string $id)
+    {
+        $campaign = SidebarCampaign::findOrFail($id);
+
+        $representativeLinkIds = $request->input('batch_representative_link_id', []);
+        $batchKeywords         = $request->input('batch_keyword', []);
+        $batchUrls             = $request->input('batch_url', []);
+
+        if (!is_array($representativeLinkIds)) {
+            $representativeLinkIds = [];
+        }
+        $batchKeywords = is_array($batchKeywords) ? array_values($batchKeywords) : [];
+        $batchUrls     = is_array($batchUrls) ? array_values($batchUrls) : [];
+
+        $updates = [];
+        $queuedBatches = 0;
+
+        foreach ($representativeLinkIds as $index => $repLinkId) {
+            $repLinkId = (int) $repLinkId;
+            $representative = SidebarCampaignLink::where('sidebar_campaign_id', $campaign->id)->find($repLinkId);
+            if (!$representative) {
+                continue;
+            }
+
+            $newKeyword = trim((string) ($batchKeywords[$index] ?? ''));
+            $newUrl     = trim((string) ($batchUrls[$index] ?? ''));
+
+            if ($newKeyword === '' || $newUrl === '') {
+                continue;
+            }
+
+            $oldKeyword = trim((string) ($representative->anchor_keyword ?? ''));
+            $oldUrl     = trim((string) ($representative->target_url ?? ''));
+
+            if ($oldKeyword === $newKeyword && $oldUrl === $newUrl) {
+                continue;
+            }
+
+            // All link IDs that have this same (keyword, url)
+            $linkIds = SidebarCampaignLink::where('sidebar_campaign_id', $campaign->id)
+                ->where('anchor_keyword', $representative->anchor_keyword)
+                ->where('target_url', $representative->target_url)
+                ->pluck('id')
+                ->all();
+
+            // All tasks (published on remote) that use any of these links
+            $tasks = SidebarCampaignTask::with(['domainRow.domain', 'linkRow'])
+                ->where('sidebar_campaign_id', $campaign->id)
+                ->whereIn('sidebar_campaign_link_id', $linkIds)
+                ->whereNotNull('remote_id')
+                ->where('status', 'success')
+                ->get();
+
+            foreach ($tasks as $task) {
+                $domain = $task->domainRow?->domain;
+                if (!$domain || !$domain->api_key) {
+                    continue;
+                }
+                $updates[] = [
+                    'task_id' => $task->id,
+                    'keyword' => $newKeyword,
+                    'link'    => $newUrl,
+                ];
+            }
+
+            if (count($tasks) > 0) {
+                SidebarCampaignLink::whereIn('id', $linkIds)->update([
+                    'anchor_keyword' => $newKeyword,
+                    'target_url'     => $newUrl,
+                ]);
+                $queuedBatches++;
+            }
+        }
+
+        if (count($updates) === 0) {
+            return redirect()
+                ->route('admin.sidebar.campaign.edit', $campaign->id)
+                ->with('cus__error', 'No changes to apply or no valid batches (keyword and URL required).');
+        }
+
+        $campaign->update(['last_bulk_updated_at' => now()]);
+
+        $taskIdsToMark = array_unique(array_column($updates, 'task_id'));
+        SidebarCampaignTask::whereIn('id', $taskIdsToMark)->update(['content_updated_at' => now()]);
+
+        $batchSize = (int) config('sidebar.bulk_update_batch_size', 20);
+        $batchSize = $batchSize > 0 ? $batchSize : 20;
+        $chunks   = array_chunk($updates, $batchSize);
+        $queued   = 0;
+
+        foreach ($chunks as $chunk) {
+            BulkUpdateSidebarBlogrollJob::dispatch($chunk)->onQueue('bulk_blogroll_updates');
+            $queued++;
+        }
+
+        $msg = count($updates) . ' link(s) across ' . $queuedBatches . ' batch(es) queued for remote update. ';
+
+        return redirect()
+            ->route('admin.sidebar.campaign.show', $campaign->id)
+            ->with('cus__success', $msg);
+    }
+
+    /**
+     * Bulk delete selected sidebar tasks: delete on remote (blogroll API) then in DB; decrement campaign counts.
+     */
+    public function bulkDeleteTasks(Request $request, string $id)
+    {
+        $campaign = SidebarCampaign::findOrFail($id);
+
+        $taskIds = $request->input('task_ids', []);
+        if (!is_array($taskIds)) {
+            $taskIds = [];
+        }
+        $taskIds = array_values(array_filter(array_map('intval', $taskIds)));
+
+        if (count($taskIds) === 0) {
+            return back()->with('cus__error', 'No tasks selected.');
+        }
+
+        $tasks = SidebarCampaignTask::with(['domainRow.domain', 'linkRow'])
+            ->where('sidebar_campaign_id', $campaign->id)
+            ->whereIn('id', $taskIds)
+            ->get();
+
+        $deletedRemote = 0;
+        $errors = [];
+
+        foreach ($tasks as $task) {
+            if ($task->remote_id) {
+                $domain = $task->domainRow?->domain;
+                if ($domain && $domain->api_key) {
+                    $res = BlogrollApiService::deleteEntryByRemoteId($domain->name, $domain->api_key, $task->remote_id);
+                    if ($res->successful()) {
+                        $deletedRemote++;
+                    } else {
+                        $errors[] = optional($domain)->name . ': ' . $res->body();
+                    }
+                }
+            }
+
+            if ($campaign->total_targets > 0) {
+                $campaign->decrement('total_targets');
+            }
+            if ($task->status === 'success' && $campaign->completed_targets > 0) {
+                $campaign->decrement('completed_targets');
+            } elseif ($task->status === 'failed' && $campaign->failed_targets > 0) {
+                $campaign->decrement('failed_targets');
+            }
+
+            $linkId = $task->sidebar_campaign_link_id;
+            $domainRowId = $task->sidebar_campaign_domain_id;
+            $task->delete();
+            if ($linkId) {
+                SidebarCampaignLink::where('id', $linkId)->delete();
+            }
+            if ($domainRowId) {
+                SidebarCampaignDomain::where('id', $domainRowId)->delete();
+            }
+        }
+
+        if (count($errors) > 0) {
+            return back()->with('cus__error', 'Some remote deletes failed: ' . implode(' ', $errors))
+                ->with('cus__success', $deletedRemote > 0 ? "{$deletedRemote} link(s) removed from remote; all selected tasks removed from database." : null);
+        }
+
+        return back()->with('cus__success', 'Selected links deleted from remote and database.');
     }
 }

@@ -10,11 +10,15 @@ use App\Models\Admin\ArticleCategory;
 use App\Models\Admin\ArticleSet;
 use App\Models\Admin\DomainSet;
 use App\Models\Admin\Campaign;
+use App\Models\Admin\ArticleLanguage;
 use Illuminate\Support\Facades\Auth;
 
 class StickyPostCampaignController extends Controller
 {
-
+    public function __construct()
+    {
+        $this->middleware('can.create.campaigns');
+    }
 
     public function index(Request $request)
     {
@@ -70,7 +74,13 @@ class StickyPostCampaignController extends Controller
         $articleSet = ArticleSet::withCount('articles')->where('admin_id', auth('admin')->id())->get();
         // ** now providing user domain sets
         $domainSets = DomainSet::where('admin_id', Auth::guard('admin')->id())->get();
+        $articleLanguages = ArticleLanguage::withCount(['Article' => function ($query) {
+            $query->where('status', 0)
+                ->whereNull('deleted_at')
+                ->whereNull('lock_at')
+                ->where('status', '!=', '1');
+        }])->having('article_count', '>', 0)->get();
         $is_sticky = 1;
-        return view('admin.campaigns.pbn-post.create-campaign', compact('campaignId', 'domainCategory', 'articleCategory', 'articleSet', 'domainSets', 'is_sticky'));
+        return view('admin.campaigns.pbn-post.create-campaign', compact('campaignId', 'domainCategory', 'articleCategory', 'articleSet', 'domainSets', 'articleLanguages', 'is_sticky'));
     }
 }

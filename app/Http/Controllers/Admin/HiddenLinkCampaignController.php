@@ -14,11 +14,20 @@ use App\Models\Admin\HiddenLinksCampaignLinks;
 use App\Models\Admin\HiddenLinksCampaignTasks;
 use App\Models\Admin\HiddenLinksCampaign;
 use App\Jobs\PublishHiddenLinksJob;
+use App\Jobs\BulkUpdateHiddenLinksJob;
+use App\Jobs\BulkDeleteHiddenLinksJob;
+use App\Jobs\BulkDeleteHiddenLinkCampaignsJob;
+use App\Services\HiddenLinksApiService;
 use Spatie\SimpleExcel\SimpleExcelWriter;
 use Illuminate\Support\Str;
 
 class HiddenLinkCampaignController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('can.create.campaigns')->except(['report', 'exportReport']);
+    }
+
     /**
      * Display a listing of the resource.
      */
@@ -463,23 +472,360 @@ class HiddenLinkCampaignController extends Controller
 
 
     /**
-     * Show the form for editing the specified resource.
+     * Edit campaign: show batches (distinct keyword+url) for bulk update.
      */
     public function edit(string $id)
     {
-        //
+        $campaign = HiddenLinksCampaign::with(['links', 'domains'])->findOrFail($id);
+
+        $links = HiddenLinksCampaignLinks::where('hidden_links_campaigns_id', $campaign->id)->get();
+        $batches = [];
+        foreach ($links as $link) {
+            $k = trim((string) ($link->anchor_keyword ?? ''));
+            $u = trim((string) ($link->target_url ?? ''));
+            $key = $k . "\n" . $u;
+            if (!isset($batches[$key])) {
+                $batches[$key] = [
+                    'representative_link_id' => $link->id,
+                    'keyword'               => $k,
+                    'url'                   => $u,
+                    'link_ids'              => [],
+                ];
+            }
+            $batches[$key]['link_ids'][] = $link->id;
+        }
+        foreach ($batches as &$batch) {
+            $batch['count'] = count($batch['link_ids']);
+            $batch['on_remote'] = HiddenLinksCampaignTasks::where('hidden_links_campaigns_id', $campaign->id)
+                ->whereIn('hidden_links_campaigns_link_id', $batch['link_ids'])
+                ->whereNotNull('remote_id')
+                ->where('status', 'success')
+                ->count();
+            unset($batch['link_ids']);
+        }
+        unset($batch);
+        $distinctBatches = array_values($batches);
+
+        return view('admin.campaigns.pbn-hidden-links.edit-campaign', compact('campaign', 'distinctBatches'));
     }
 
     /**
-     * Update the specified resource in storage.
+     * Bulk update: queue job(s), set last_bulk_updated_at and content_updated_at optimistically.
      */
     public function update(Request $request, string $id)
     {
-        //
+        $campaign = HiddenLinksCampaign::findOrFail($id);
+
+        $representativeLinkIds = $request->input('batch_representative_link_id', []);
+        $batchKeywords         = $request->input('batch_keyword', []);
+        $batchUrls             = $request->input('batch_url', []);
+
+        if (!is_array($representativeLinkIds)) {
+            $representativeLinkIds = [];
+        }
+        $batchKeywords = is_array($batchKeywords) ? array_values($batchKeywords) : [];
+        $batchUrls     = is_array($batchUrls) ? array_values($batchUrls) : [];
+
+        $updates = [];
+        $queuedBatches = 0;
+
+        foreach ($representativeLinkIds as $index => $repLinkId) {
+            $repLinkId = (int) $repLinkId;
+            $representative = HiddenLinksCampaignLinks::where('hidden_links_campaigns_id', $campaign->id)->find($repLinkId);
+            if (!$representative) {
+                continue;
+            }
+
+            $newKeyword = trim((string) ($batchKeywords[$index] ?? ''));
+            $newUrl     = trim((string) ($batchUrls[$index] ?? ''));
+
+            if ($newKeyword === '' || $newUrl === '') {
+                continue;
+            }
+
+            $oldKeyword = trim((string) ($representative->anchor_keyword ?? ''));
+            $oldUrl     = trim((string) ($representative->target_url ?? ''));
+
+            if ($oldKeyword === $newKeyword && $oldUrl === $newUrl) {
+                continue;
+            }
+
+            $linkIds = HiddenLinksCampaignLinks::where('hidden_links_campaigns_id', $campaign->id)
+                ->where('anchor_keyword', $representative->anchor_keyword)
+                ->where('target_url', $representative->target_url)
+                ->pluck('id')
+                ->all();
+
+            $tasks = HiddenLinksCampaignTasks::with(['domainRow.domain', 'linkRow'])
+                ->where('hidden_links_campaigns_id', $campaign->id)
+                ->whereIn('hidden_links_campaigns_link_id', $linkIds)
+                ->whereNotNull('remote_id')
+                ->where('status', 'success')
+                ->get();
+
+            foreach ($tasks as $task) {
+                $domain = $task->domainRow?->domain;
+                if (!$domain || !$domain->api_key) {
+                    continue;
+                }
+                $updates[] = ['task_id' => $task->id, 'keyword' => $newKeyword, 'link' => $newUrl];
+            }
+
+            HiddenLinksCampaignLinks::whereIn('id', $linkIds)->update([
+                'anchor_keyword' => $newKeyword,
+                'target_url'     => $newUrl,
+            ]);
+            $queuedBatches++;
+        }
+
+        if ($queuedBatches === 0) {
+            return redirect()
+                ->route('admin.hidden.link.campaign.edit', $campaign->id)
+                ->with('cus__error', 'No changes to apply (keyword and URL required per batch).');
+        }
+
+        $campaign->update(['last_bulk_updated_at' => now()]);
+
+        if (count($updates) > 0) {
+            $taskIdsToMark = array_unique(array_column($updates, 'task_id'));
+            HiddenLinksCampaignTasks::whereIn('id', $taskIdsToMark)->update(['content_updated_at' => now()]);
+            $batchSize = 20;
+            $chunks = array_chunk($updates, $batchSize);
+            foreach ($chunks as $chunk) {
+                BulkUpdateHiddenLinksJob::dispatch($chunk)->onQueue('update_hidden_links');
+            }
+            $msg = $queuedBatches . ' batch(es) updated in DB. ' . count($updates) . ' link(s) queued for remote update. Run: php artisan queue:work --queue=update_hidden_links';
+        } else {
+            $msg = $queuedBatches . ' batch(es) updated in database (no published links on remote yet).';
+        }
+
+        return redirect()
+            ->route('admin.hidden.link.campaign.show', $campaign->id)
+            ->with('cus__success', $msg);
     }
 
     /**
-     * Remove the specified resource from storage.
+     * Retry a failed task: reset to queued and dispatch PublishHiddenLinksJob.
+     */
+    public function retryTask(string $id)
+    {
+        $task = HiddenLinksCampaignTasks::with('campaign')->find($id);
+
+        if (!$task || !$task->campaign) {
+            return back()->with('cus__error', 'Task or campaign not found.');
+        }
+
+        if ($task->status !== 'failed') {
+            return back()->with('cus__error', 'Only failed tasks can be retried.');
+        }
+
+        $campaign = $task->campaign;
+        if (in_array($campaign->status, ['paused', 'cancelled'], true)) {
+            return back()->with('cus__error', 'Cannot retry: campaign is paused or cancelled.');
+        }
+
+        DB::transaction(function () use ($task) {
+            $fresh = HiddenLinksCampaignTasks::lockForUpdate()->find($task->id);
+            if (!$fresh || $fresh->status !== 'failed') {
+                return;
+            }
+            $fresh->status        = 'queued';
+            $fresh->attempt_count = 0;
+            $fresh->last_error    = null;
+            $fresh->next_retry_at = null;
+            $fresh->locked_at     = null;
+            $fresh->lock_token    = null;
+            $fresh->finished_at   = null;
+            $fresh->save();
+        });
+
+        PublishHiddenLinksJob::dispatch($task->id)->onQueue('hidden_links_campaigns');
+
+        return back()->with('cus__success', 'Task queued for retry.');
+    }
+
+    /**
+     * Single delete: remote delete then decrement campaign and delete task/link/domain.
+     * If this was the last task, the campaign is deleted. Uses transaction + lock for correct counts.
+     */
+    public function deleteTask(string $id)
+    {
+        $task = HiddenLinksCampaignTasks::with(['domainRow.domain', 'linkRow', 'campaign'])->find($id);
+
+        if (!$task || !$task->campaign) {
+            return back()->with('cus__error', 'Task or campaign not found.');
+        }
+
+        $postStatus = $task->status;
+        $campaignId = $task->campaign->id;
+        $campaignDeleted = false;
+
+        if ($task->remote_id) {
+            $domain = $task->domainRow?->domain;
+            if ($domain && $domain->api_key) {
+                $res = HiddenLinksApiService::deleteEntry($domain->name, $domain->api_key, $task->remote_id);
+                if (!$res->successful()) {
+                    return back()->with('cus__error', 'Remote delete failed: ' . $res->body());
+                }
+            }
+        }
+
+        DB::transaction(function () use ($task, $postStatus, $campaignId, &$campaignDeleted) {
+            $campaign = HiddenLinksCampaign::lockForUpdate()->find($campaignId);
+            if (!$campaign) {
+                throw new \RuntimeException('Campaign not found');
+            }
+
+            $isLastTask = $campaign->total_targets === 1;
+
+            if ($campaign->total_targets > 0) {
+                $campaign->decrement('total_targets');
+            }
+            if ($postStatus === 'success' && $campaign->completed_targets > 0) {
+                $campaign->decrement('completed_targets');
+            } elseif ($postStatus === 'failed' && $campaign->failed_targets > 0) {
+                $campaign->decrement('failed_targets');
+            }
+
+            $linkId     = $task->hidden_links_campaigns_link_id;
+            $domainRowId = $task->hidden_links_campaigns_domain_id;
+            $task->delete();
+            if ($linkId) {
+                HiddenLinksCampaignLinks::where('id', $linkId)->delete();
+            }
+            if ($domainRowId) {
+                HiddenLinksCampaignDomains::where('id', $domainRowId)->delete();
+            }
+
+            if ($isLastTask) {
+                $campaign->delete();
+                $campaignDeleted = true;
+            }
+        });
+
+        if ($campaignDeleted) {
+            return redirect()->route('admin.hidden.link.campaign.index')->with(
+                'cus__success',
+                'Hidden link removed. The campaign had no tasks left and was also removed.'
+            );
+        }
+
+        return back()->with('cus__success', 'Hidden link removed from remote and database.');
+    }
+
+    /**
+     * Bulk delete: dispatch job to process in background.
+     */
+    public function bulkDeleteTasks(Request $request, string $id)
+    {
+        $campaign = HiddenLinksCampaign::findOrFail($id);
+
+        $taskIds = $request->input('task_ids', []);
+        if (!is_array($taskIds)) {
+            $taskIds = [];
+        }
+        $taskIds = array_values(array_filter(array_map('intval', $taskIds)));
+
+        if (count($taskIds) === 0) {
+            return back()->with('cus__error', 'No tasks selected.');
+        }
+
+        BulkDeleteHiddenLinksJob::dispatch($campaign->id, $taskIds)->onQueue('delete_hidden_links');
+
+        return back()->with('cus__success', 'Bulk delete queued. Run: php artisan queue:work --queue=delete_hidden_links');
+    }
+
+    /**
+     * Bulk delete campaigns from list page: remove from remote (where remote_id) then delete campaigns and related data.
+     */
+    public function bulkDeleteCampaigns(Request $request)
+    {
+        $request->validate([
+            'campaign_ids'   => 'required|array',
+            'campaign_ids.*' => 'integer|min:1',
+        ]);
+
+        $ids = array_values(array_unique(array_filter($request->input('campaign_ids', []))));
+        if (empty($ids)) {
+            return redirect()->route('admin.hidden.link.campaign.index')->with('cus__error', 'No campaigns selected.');
+        }
+
+        $admin = Auth::guard('admin')->user();
+        $query = HiddenLinksCampaign::whereIn('id', $ids);
+        if (!$admin->isSuperAdmin()) {
+            $query->where('admin_id', $admin->id);
+        }
+        $found = $query->pluck('id')->all();
+        if (empty($found)) {
+            return redirect()->route('admin.hidden.link.campaign.index')->with('cus__error', 'No campaigns found or you do not have permission to delete them.');
+        }
+
+        BulkDeleteHiddenLinkCampaignsJob::dispatch($found)->onQueue('delete_hidden_links_campaign');
+
+        $msg = count($found) . ' campaign(s) queued for deletion (remote links will be removed, then data deleted). Run: php artisan queue:work --queue=delete_hidden_links_campaign';
+        return redirect()->route('admin.hidden.link.campaign.index')->with('cus__success', $msg);
+    }
+
+    /**
+     * Show form to edit single task (keyword/link). Increased timeout in service (120s).
+     */
+    public function editTask(string $id)
+    {
+        $task = HiddenLinksCampaignTasks::with(['domainRow.domain', 'linkRow', 'campaign'])->find($id);
+
+        if (!$task) {
+            return back()->with('cus__error', 'Task not found');
+        }
+        if (!$task->remote_id) {
+            return back()->with('cus__error', 'Task has no remote_id; only published entries can be updated.');
+        }
+
+        return view('admin.campaigns.pbn-hidden-links.edit-task', compact('task'));
+    }
+
+    /**
+     * Single update: fetch index by remote_id, POST update, update DB and content_updated_at. Timeout 120s in service.
+     */
+    public function updateTask(Request $request, string $id)
+    {
+        $task = HiddenLinksCampaignTasks::with(['domainRow.domain', 'linkRow'])->find($id);
+
+        if (!$task || !$task->linkRow) {
+            return back()->with('cus__error', 'Task or link not found');
+        }
+        if (!$task->remote_id) {
+            return back()->with('cus__error', 'Task has no remote_id; cannot update on remote.');
+        }
+
+        $domain = $task->domainRow?->domain;
+        if (!$domain || !$domain->api_key) {
+            return back()->with('cus__error', 'Domain or API key missing');
+        }
+
+        $request->validate([
+            'keyword' => 'required|string|max:500',
+            'link'    => 'required|url|max:500',
+        ]);
+
+        $keyword = trim($request->keyword);
+        $link    = trim($request->link);
+
+        $res = HiddenLinksApiService::updateEntry($domain->name, $domain->api_key, $task->remote_id, $keyword, $link);
+        if (!$res->successful()) {
+            return back()->with('cus__error', 'Remote update failed: ' . $res->body());
+        }
+
+        $task->linkRow->update([
+            'anchor_keyword' => $keyword,
+            'target_url'     => $link,
+        ]);
+        $task->update(['content_updated_at' => now()]);
+
+        return back()->with('cus__success', 'Hidden link updated on remote and in database.');
+    }
+
+    /**
+     * Remove the specified resource from storage (full campaign - not implemented; use bulk delete or single delete).
      */
     public function destroy(string $id)
     {

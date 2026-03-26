@@ -273,25 +273,44 @@
                 {{-- ---------------------- --}}
 
                 <div class="w-full flex flex-col gap-3">
-                    <label for="campaign-no"
+                    <label for="schedule-from-date"
                         class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] ">
                         From Date
                     </label>
-                    <input type="date" name="schedule_from_date" min="{{ date('Y-m-d') }}"
+                    <input type="date" name="schedule_from_date"
                         value="{{ date('Y-m-d') }}"
                         class="schedule-inp bg-gray-100 border border-gray-200 !p-3 text-sm w-full rounded outline-none focus:border-orange-600"
                         id="schedule-from-date">
                 </div>
                 <div class="w-full flex flex-col gap-3">
-                    <label for="campaign-no"
+                    <label for="schedule-to-date"
                         class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">
                         To Date
                     </label>
-                    <input type="date" name="schedule_to_date" min="{{ date('Y-m-d') }}"
+                    <input type="date" name="schedule_to_date"
                         class="schedule-inp bg-gray-100 border border-gray-200 !p-3 text-sm w-full rounded outline-none focus:border-orange-600"
                         id="schedule-to-date">
                 </div>
 
+                {{-- Date distribution: quantity per date (optional; past dates allowed) --}}
+                <div class="w-full flex flex-col gap-3 !mt-4">
+                    <label class="text-sm font-medium text-gray-700">Date distribution (optional)</label>
+                    <p class="text-sm text-gray-600">Set how many sidebar links per date. Click "Generate date table" then fill quantities. Total will update Sidebar Quantity. Past dates are allowed.</p>
+                    <button type="button" id="ssc-generate-dates" class="!px-3 !py-2 rounded bg-blue-600 text-white text-sm w-fit hover:bg-blue-700">Generate date table</button>
+                    <div id="ssc-date-distribution" class="!mt-2 max-w-2xl" style="display: none;">
+                        <table class="w-full border border-gray-200 text-sm" id="ssc-date-table">
+                            <thead>
+                                <tr class="bg-gray-700 text-white">
+                                    <th class="border !px-2 !py-2 text-left">Date</th>
+                                    <th class="border !px-2 !py-2 text-left">Number of links</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ssc-date-tbody"></tbody>
+                        </table>
+                        <p class="text-sm !mt-2">Sum: <strong id="ssc-date-sum">0</strong></p>
+                    </div>
+                    <input type="hidden" name="date_quantities" id="date_quantities" value="">
+                </div>
 
                 {{-- ---------------------- --}}
 
@@ -895,6 +914,89 @@
         <script src="{{ asset('js/updated_dynamic_dropdown.js') }}"></script>
         <script type="module" src="{{ asset('js/create-schedule-sidebar-campaign.js') }}"></script>
 
+        {{-- Schedule Sidebar: date distribution table (quantity per date; past dates allowed) --}}
+        <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var btn = document.getElementById('ssc-generate-dates');
+            if (!btn || btn._sscDateBound) return;
+            var fromInp = document.getElementById('schedule-from-date');
+            var toInp = document.getElementById('schedule-to-date');
+            var qtyInp = document.getElementById('sidebar-quantity');
+            var distDiv = document.getElementById('ssc-date-distribution');
+            var tbody = document.getElementById('ssc-date-tbody');
+            var sumEl = document.getElementById('ssc-date-sum');
+            var dateQuantitiesInp = document.getElementById('date_quantities');
+            if (!fromInp || !toInp || !distDiv || !tbody || !sumEl || !dateQuantitiesInp) return;
+
+            function parseD(s) {
+                if (!s || typeof s !== 'string') return null;
+                var p = s.trim().split('-');
+                return p.length === 3 ? new Date(parseInt(p[0],10), parseInt(p[1],10)-1, parseInt(p[2],10)) : null;
+            }
+            function fmtD(d) {
+                var y = d.getFullYear(), m = ('0'+(d.getMonth()+1)).slice(-2), day = ('0'+d.getDate()).slice(-2);
+                return y+'-'+m+'-'+day;
+            }
+            function updateSum() {
+                var inputs = tbody.querySelectorAll('.ssc-date-qty');
+                var sum = 0, arr = [];
+                inputs.forEach(function(inp) {
+                    var v = parseInt(inp.value,10)||0;
+                    sum += v;
+                    arr.push({ date: inp.getAttribute('data-date'), quantity: v });
+                });
+                sumEl.textContent = sum;
+                dateQuantitiesInp.value = JSON.stringify(arr);
+                if (qtyInp) qtyInp.value = sum;
+            }
+            function build() {
+                var fromStr = (fromInp.value || '').trim(), toStr = (toInp.value || '').trim();
+                if (!fromStr || !toStr) { alert('Please select both From date and To date.'); return; }
+                var from = parseD(fromStr), to = parseD(toStr);
+                if (!from || !to) { alert('Invalid date format.'); return; }
+                if (to < from) { alert('To date must be on or after From date.'); return; }
+                distDiv.style.display = 'block';
+                tbody.innerHTML = '';
+                var cur = new Date(from.getTime());
+                while (cur <= to) {
+                    var dateStr = fmtD(cur);
+                    var tr = document.createElement('tr');
+                    tr.className = 'hover:bg-gray-50';
+                    tr.innerHTML = '<td class="border !px-2 !py-2">'+dateStr+'</td><td class="border !px-2 !py-2"><input type="number" min="0" class="ssc-date-qty border border-gray-300 rounded !px-2 !py-1 w-24" data-date="'+dateStr+'" value="0"></td>';
+                    tbody.appendChild(tr);
+                    cur.setDate(cur.getDate()+1);
+                }
+                tbody.querySelectorAll('.ssc-date-qty').forEach(function(inp) {
+                    inp.addEventListener('input', updateSum);
+                    inp.addEventListener('change', updateSum);
+                });
+                updateSum();
+            }
+            btn.addEventListener('click', build);
+            btn._sscDateBound = true;
+
+            function syncToMin() {
+                var v = (fromInp.value || '').trim();
+                if (v) toInp.setAttribute('min', v);
+            }
+            fromInp.addEventListener('change', syncToMin);
+            fromInp.addEventListener('input', syncToMin);
+            syncToMin();
+
+            var f = document.getElementById('sidebar-campaign');
+            if (f) f.addEventListener('submit', function() {
+                var rows = tbody.querySelectorAll('.ssc-date-qty');
+                if (rows.length) {
+                    var arr = [];
+                    rows.forEach(function(inp) {
+                        arr.push({ date: inp.getAttribute('data-date'), quantity: parseInt(inp.value,10)||0 });
+                    });
+                    dateQuantitiesInp.value = JSON.stringify(arr);
+                    if (qtyInp) qtyInp.value = arr.reduce(function(s, r) { return s + r.quantity; }, 0);
+                }
+            });
+        });
+        </script>
 
         <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"
             integrity="sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g=="

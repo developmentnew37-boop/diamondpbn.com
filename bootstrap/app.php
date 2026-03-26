@@ -27,6 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin.guest' => \App\Http\Middleware\Admin\AdminGuest::class,
             'admin.api.auth' => \App\Http\Middleware\Admin\ApiAdminAuth::class,
             'role' => \App\Http\Middleware\Admin\CheckRole::class,
+            'can.create.campaigns' => \App\Http\Middleware\Admin\CanCreateCampaigns::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

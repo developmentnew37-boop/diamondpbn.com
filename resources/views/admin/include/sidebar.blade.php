@@ -27,7 +27,7 @@
           'admin.articles.language',
           'admin.articles.upload',
       ];
-      $dripfeedRoutes = ['admin.schedule.campaign', 'admin.schedule.sidebar.campaign'];
+      $dripfeedRoutes = ['admin.schedule.campaign', 'admin.schedule.sidebar.campaign', 'admin.wp.schedule.campaign'];
       $userRoutes = ['admin.user'];
   @endphp
   <!-- Sidebar -->
@@ -51,6 +51,8 @@
                   <span class="menu-text">Dashboard</span>
               </a>
 
+              {{-- Run Campaigns: only Super Admin and Admin can create; Members can only add articles --}}
+              @if ($sidebarAdmin->canCreateCampaigns())
               <div class="menu-item side-menu-btn {{ $isActive($runCampaignRoutes) ? 'active' : '' }}"
                   data-submenu-open="{{ $isActive($runCampaignRoutes) ? 'true' : 'false' }}">
                   <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -74,7 +76,10 @@
                       class="submenu-item {{ $currentRoute === 'admin.hidden.link.campaign.create' ? 'active' : '' }}">PBN
                       Hidden Links</a>
               </div>
+              @endif
 
+              {{-- Reporting: only for users who can create campaigns (Members cannot see campaigns) --}}
+              @if ($sidebarAdmin->canCreateCampaigns())
               <div class="menu-item side-menu-btn {{ $isActive($reportingRoutes) ? 'active' : '' }}"
                   data-submenu-open="{{ $isActive($reportingRoutes) ? 'true' : 'false' }}">
                   <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -100,6 +105,7 @@
                       class="submenu-item {{ str_starts_with($currentRoute, 'admin.sticky.campaign.') && $currentRoute !== 'admin.sticky.campaign.create' ? 'active' : '' }}">Sticky
                       Post</a>
               </div>
+              @endif
 
               <div class="menu-item side-menu-btn {{ $isActive($domainRoutes) ? 'active' : '' }}"
                   data-submenu-open="{{ $isActive($domainRoutes) ? 'true' : 'false' }}">
@@ -184,6 +190,7 @@
 
           <div class="menu-section ">
               <div class="menu-title">Addons</div>
+              @if ($sidebarAdmin->canCreateCampaigns())
               <a href="{{ route('admin.sticky.campaign.create') }}"
                   class="menu-item {{ $currentRoute === 'admin.sticky.campaign.create' ? 'active' : '' }}">
                   <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -207,14 +214,20 @@
               </div>
               <div class="submenu {{ $isActive($dripfeedRoutes) ? 'open' : '' }}">
                   <a href="{{ route('admin.schedule.campaign.index') }}"
-                      class="submenu-item {{ str_starts_with($currentRoute, 'admin.schedule.campaign') ? 'active' : '' }}">Schedule
+                      class="submenu-item {{ str_starts_with($currentRoute, 'admin.schedule.campaign') && !str_starts_with($currentRoute, 'admin.wp.schedule') ? 'active' : '' }}">Schedule
                       Post</a>
+                  <a href="{{ route('admin.wp.schedule.campaign.index') }}"
+                      class="submenu-item {{ str_starts_with($currentRoute, 'admin.wp.schedule.campaign') ? 'active' : '' }}">WP Scheduled</a>
                   <a href="{{ route('admin.schedule.sidebar.campaign.index') }}"
                       class="submenu-item {{ str_starts_with($currentRoute, 'admin.schedule.sidebar.campaign') ? 'active' : '' }}">
-                      <div class="w-full !flex items-center gap-1 relative">Schedule Blogroll <span
-                              class="menu-badge !text-[8px] absolute -top-2 -right-1">SOON</span></div>
+                      <div class="w-full !flex items-center gap-1 relative">Schedule Blogroll
+                         {{-- <span --}}
+                              {{-- class="menu-badge !text-[8px] absolute -top-2 -right-1">SOON</span> --}}
+
+                      </div>
                   </a>
               </div>
+              @endif
           </div>
 
           <div class="menu-section ">

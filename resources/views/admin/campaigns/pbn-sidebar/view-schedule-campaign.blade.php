@@ -22,7 +22,19 @@
                 </div>
             </div>
 
-            <div class="w-1/2 flex justify-end">
+            <div class="w-1/2 flex justify-end items-center gap-2">
+                <a href="{{ route('admin.schedule.sidebar.campaign.edit', $campaign->id) }}"
+                    class="inline-flex items-center gap-2 !px-3 !py-2 rounded bg-[var(--primary-color)] text-white hover:opacity-90 text-sm">
+                    Edit campaign
+                </a>
+                <form action="{{ route('admin.schedule.sidebar.campaign.destroy', $campaign->id) }}" method="post" class="inline"
+                    onsubmit="return confirm('Delete this campaign? All blogroll links will be removed from remote sites and from the database.');">
+                    @csrf
+                    @method('DELETE')
+                    <button type="submit" class="inline-flex items-center gap-2 !px-3 !py-2 rounded bg-red-600 text-white hover:bg-red-700 text-sm">
+                        Delete campaign
+                    </button>
+                </form>
                 <a href="javascript:void(0)" onclick="history.back()"
                     class="inline-flex items-center gap-2 !px-3 !py-2 rounded bg-gray-200 hover:bg-gray-300 text-sm">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"
@@ -78,6 +90,7 @@
                                 'Next Retry',
                                 'Status',
                                 'Created At',
+                                'Actions',
                             ];
                         @endphp
 
@@ -179,10 +192,43 @@
                                 {{ $task->created_at?->format('d M Y H:i') }}
                             </td>
 
+                            {{-- Actions --}}
+                            <td class="border !px-2 !py-2">
+                                <div class="flex  gap-1 justify-center items-center">
+                                    @if ($task->remote_url)
+                                        <a href="{{ $task->remote_url }}" target="_blank"
+                                            class="bg-green-500 w-7 h-7 inline-flex items-center justify-center rounded hover:bg-green-600" title="View on site">
+                                            <span class="material-symbols-outlined text-white !text-sm">visibility</span>
+                                        </a>
+                                    @endif
+                                    @if ($task->status === 'success' && $task->remote_id)
+                                        <a href="{{ route('admin.schedule.sidebar.campaign.edit.task', $task->id) }}"
+                                            class="bg-yellow-500 w-7 h-7 inline-flex items-center justify-center rounded hover:bg-amber-600" title="Edit link">
+                                            <span class="material-symbols-outlined text-white !text-sm">edit</span>
+                                        </a>
+                                    @endif
+                                    @if (in_array($task->status, ['queued', 'failed', 'publishing']))
+                                        <form action="{{ route('admin.schedule.sidebar.campaign.retry.task', $task->id) }}" method="post" class="inline">
+                                            @csrf
+                                            <button type="submit" class="bg-blue-500 w-7 h-7 inline-flex items-center justify-center rounded hover:bg-blue-600 border-0 cursor-pointer" title="Retry">
+                                                <span class="material-symbols-outlined text-white !text-sm">replay</span>
+                                            </button>
+                                        </form>
+                                    @endif
+                                    <form action="{{ route('admin.schedule.sidebar.campaign.delete.task', $task->id) }}" method="post" class="inline"
+                                        onsubmit="return confirm('Delete this link from the campaign and from the remote site?');">
+                                        @csrf
+                                        <button type="submit" class="bg-red-500 w-7 h-7 inline-flex items-center justify-center rounded hover:bg-red-600 border-0 cursor-pointer" title="Delete">
+                                            <span class="material-symbols-outlined text-white !text-sm">delete</span>
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="13" class="text-center !py-4 text-gray-500 bg-gray-100">
+                            <td colspan="14" class="text-center !py-4 text-gray-500 bg-gray-100">
                                 No scheduled sidebar tasks found…
                             </td>
                         </tr>

@@ -125,7 +125,7 @@
                                 <td class="border !px-2 !py-3 break-all">{{ $urls[0] ?? '-' }}</td>
                             @endif
                             <td class="border !px-2 !py-3 text-center">
-                                {{ $post->published_at ? $post->published_at->format('d-M-Y') : $post->schedule_at->format('d-M-Y') }}
+                                {{ optional($post->schedule_at)->format('d-M-Y') ?? '-' }}
                             </td>
                             <td class="border !px-2 !py-3 text-center">
                                 <span class="!px-2 !py-1 rounded text-xs font-semibold {{ $statusClass }}">
@@ -134,7 +134,7 @@
                             </td>
 
                             <td class="border !px-2 !py-3">
-                                {{ $post->created_at->format('d M Y') }}
+                                {{ optional($post->schedule_at)->format('d M Y') ?? '-' }}
                             </td>
                         </tr>
 

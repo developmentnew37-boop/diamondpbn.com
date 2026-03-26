@@ -84,7 +84,9 @@
                         </td>
 
                         <td class="border !px-2 !py-3 font-medium">
-                           {{ $domain }}
+                           <a href="https://{{ $domain }}" target="_blank" class="text-blue-600 hover:underline break-all">
+                                {{ $domain ?? '-' }}
+                            </a>
                         </td>
 
                         <td class="border !px-2 !py-3">

@@ -21,10 +21,12 @@
                 </div>
             </div>
             <div class="w-1/2 flex flex-wrap justify-end items-center">
+                @if (Auth::guard('admin')->user()->canCreateCampaigns())
                 <a href="{{ route('admin.campaign.create') }}"
                     class="flex !p-2 !py-3 text-[16px] font-normal w-fit justify-center duration:300 bg-[var(--primary-color)] 
                     whitespace-nowrap hover:bg-[var(--primary-color)]/70 text-white rounded transition-all duration">
                     Create Campaign</a>
+                @endif
             </div>
         </div>
     </div>
@@ -34,7 +36,7 @@
 
     <div class="w-full flex flex-col gap-2 items-center !mt-2">
         @if (session('cus__success') || session('cus__error'))
-            <div class="w-full flex flex-col gap-2">
+            <div class="w-full flex flex-col gap-2 !mb-2">
 
                 @if (session('cus__success'))
                     <div class="!p-4 text-sm rounded bg-green-100 text-green-700 w-full !mb-2" role="alert">
@@ -173,16 +175,20 @@
 
                             $progress = $total > 0 ? round(($completed / $total) * 100, 1) : 0;
 
-                            // ✅ CORRECT STATUS LOGIC
+                            // ✅ Status: show "Updated" when campaign was bulk-updated after completion
+                            $isBulkUpdated = $campaign->last_bulk_updated_at !== null;
                             if ($pending > 0) {
                                 $status = 'running';
                                 $statusClass = 'bg-yellow-100 text-yellow-700';
                             } elseif ($failed === $total && $total > 0) {
                                 $status = 'failed';
                                 $statusClass = 'bg-red-100 text-red-700';
-                            } elseif ($completed + $failed === $total && $total > 0) {
-                                $status = 'completed';
+                            } elseif ($completed === $total && $total > 0) {
+                                $status = $isBulkUpdated ? 'updated' : 'complete';
                                 $statusClass = 'bg-green-100 text-green-700';
+                            } elseif ($completed + $failed === $total && $total > 0) {
+                                $status = 'semi-complete';
+                                $statusClass = 'bg-orange-100 text-orange-700';
                             } else {
                                 $status = 'queued';
                                 $statusClass = 'bg-gray-100 text-gray-600';
@@ -282,6 +288,22 @@
                                         class="bg-blue-700 flex items-center justify-center rounded w-7 h-7 hover:bg-blue-800">
                                         <span class="material-symbols-outlined !text-sm text-white">assignment</span>
                                     </a>
+
+                                    <a href="{{ route('admin.campaign.edit', $campaign->id) }}"
+                                        class="bg-gray-700 flex items-center justify-center rounded w-7 h-7 duration-500 hover:bg-gray-700"
+                                        title="Edit campaign">
+                                        <span class="material-symbols-outlined !text-[16px] text-white">edit_square</span>
+                                    </a>
+                                    <form action="{{ route('admin.campaign.destroy', $campaign->id) }}" method="POST"
+                                        class="inline"
+                                        onsubmit="return confirm('Delete this campaign? All campaign posts will be removed from the database and from remote sites.');">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="bg-red-500 flex items-center justify-center rounded w-7 h-7 hover:bg-red-600"
+                                            title="Delete campaign and all posts (DB + remote)">
+                                            <span class="material-symbols-outlined !text-[16px] text-white">delete</span>
+                                        </button>
+                                    </form>
                                 </div>
                             </td>
                         </tr>

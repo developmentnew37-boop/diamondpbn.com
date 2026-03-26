@@ -23,12 +23,14 @@
             </div>
 
             <div class="w-1/2 flex flex-wrap justify-end items-center">
+                @if (Auth::guard('admin')->user()->canCreateCampaigns())
                 <a href="{{ route('admin.hidden.link.campaign.create') }}"
                     class="flex !p-2 !py-3 text-[16px] font-normal w-fit justify-center
                bg-[var(--primary-color)] whitespace-nowrap text-white rounded
                hover:bg-[var(--primary-color)]/70 transition-all">
                     Create Campaign
                 </a>
+                @endif
             </div>
         </div>
     </div>
@@ -71,14 +73,28 @@
     {{-- table --}}
     <div class="w-full flex flex-wrap justify-between items-start content-card !mt-3">
 
-        <h2 class="text-xl capitalize !mb-4 bg-[var(--primary-color)] text-white w-fit !p-2 rounded">
-            Hidden Links Campaigns
-        </h2>
+        <div class="w-full flex flex-wrap items-center gap-3 !mb-4">
+            <h2 class="text-xl capitalize bg-[var(--primary-color)] text-white w-fit !p-2 rounded">
+                Hidden Links Campaigns
+            </h2>
+            <form id="bulk-delete-campaigns-form" action="{{ route('admin.hidden.link.campaign.bulk.delete') }}" method="POST" class="flex items-center gap-2">
+                @csrf
+                <div id="bulk-delete-campaign-ids-container"></div>
+                <button type="submit" id="bulk-delete-campaigns-btn" class="!px-3 !py-2 rounded bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Select one or more campaigns using the checkboxes, then click here">
+                    Bulk delete selected
+                </button>
+            </form>
+            <span class="text-sm text-gray-500">Select campaigns with checkboxes, then use &quot;Bulk delete selected&quot; or delete a single campaign with the red delete icon in each row.</span>
+        </div>
 
         <div class="overflow-x-auto w-full">
             <table class="display w-full border border-gray-200 border-collapse text-sm whitespace-nowrap searchable-table">
                 <thead>
                     <tr class="bg-gray-800 text-white">
+                        <th class="border border-gray-200 !px-2 !py-3 text-left w-10">
+                            <input type="checkbox" id="select-all-campaigns" title="Select all">
+                        </th>
                         @php
                             $tHead = [
                                 'S.No',
@@ -115,11 +131,12 @@
 
                             $progress = $total > 0 ? round(($completed / $total) * 100, 1) : 0;
 
+                            $isBulkUpdated = $campaign->last_bulk_updated_at ?? null;
                             if ($pending > 0 && $completed > 0) {
                                 $status = 'running';
                                 $statusClass = 'bg-yellow-100 text-yellow-700';
                             } elseif ($completed + $failed === $total && $failed === 0 && $total > 0) {
-                                $status = 'completed';
+                                $status = $isBulkUpdated ? 'updated' : 'completed';
                                 $statusClass = 'bg-green-100 text-green-700';
                             } elseif ($failed === $total && $total > 0) {
                                 $status = 'failed';
@@ -131,7 +148,9 @@
                         @endphp
 
                         <tr class="hover:bg-gray-50">
-
+                            <td class="border !px-2 !py-2 text-center">
+                                <input type="checkbox" class="campaign-select-cb" name="campaign_ids[]" value="{{ $campaign->id }}" form="bulk-delete-campaigns-form">
+                            </td>
                             <td class="border !px-2 !py-2 text-center">
                                 {{ $index + 1 + $offset }}
                             </td>
@@ -182,7 +201,7 @@
 
                             <td class="border !px-2 !py-2 text-center">
                                 <span class="!p-2 rounded text-xs font-semibold {{ $statusClass }}">
-                                    {{ ucfirst($status) }}
+                                    {{ $status === 'updated' ? 'Updated' : ucfirst($status) }}
                                 </span>
                             </td>
 
@@ -191,35 +210,45 @@
                             </td>
 
                             <td class="border !px-2 !py-2">
-                                <div class="flex gap-2 justify-center">
-                                    {{-- {{ route('admin.hidden.link.campaign.show', $campaign->id) }} --}}
+                                <div class="flex gap-2 justify-center flex-wrap">
                                     <a href="{{ route('admin.hidden.link.campaign.show', $campaign->id) }}"
-                                        class="bg-green-500 w-7 h-7 flex items-center justify-center rounded">
+                                        class="bg-green-500 w-7 h-7 flex items-center justify-center rounded" title="View campaign">
                                         <span class="material-symbols-outlined text-white !text-sm">visibility</span>
                                     </a>
-
+                                    <a href="{{ route('admin.hidden.link.campaign.edit', $campaign->id) }}"
+                                        class="bg-yellow-600 w-7 h-7 flex items-center justify-center rounded hover:bg-yellow-700" title="Edit links (bulk update)">
+                                        <span class="material-symbols-outlined text-white !text-sm">edit</span>
+                                    </a>
                                     <a href="javascript:void(0)"
                                         data-report="{{ route('admin.hidden.link.campaign.report', [
                                             'campaign_no' => $campaign->campaign_no,
                                             'token' => $campaign->report_token,
                                         ]) }}"
-                                        class="bg-yellow-500 copy-link flex items-center justify-center rounded w-7 h-7 hover:bg-yellow-600">
+                                        class="bg-yellow-500 copy-link flex items-center justify-center rounded w-7 h-7 hover:bg-yellow-600" title="Copy report link">
                                         <span class="material-symbols-outlined !text-sm text-white">content_copy</span>
                                     </a>
                                     <a href="{{ route('admin.hidden.link.campaign.report', [
                                         'campaign_no' => $campaign->campaign_no,
                                         'token' => $campaign->report_token,
                                     ]) }}"
-                                        class="bg-blue-600 w-7 h-7 flex items-center justify-center rounded">
+                                        class="bg-blue-600 w-7 h-7 flex items-center justify-center rounded" title="View report">
                                         <span class="material-symbols-outlined text-white !text-sm">assignment</span>
                                     </a>
+                                    <form action="{{ route('admin.hidden.link.campaign.bulk.delete') }}" method="POST" class="inline"
+                                        onsubmit="return confirm('Delete this campaign? Links will be removed from remote sites, then the campaign and its data will be deleted.');">
+                                        @csrf
+                                        <input type="hidden" name="campaign_ids[]" value="{{ $campaign->id }}">
+                                        <button type="submit" class="bg-red-500 w-7 h-7 flex items-center justify-center rounded hover:bg-red-600 border-0 cursor-pointer" title="Delete this campaign">
+                                            <span class="material-symbols-outlined text-white !text-sm">delete</span>
+                                        </button>
+                                    </form>
                                 </div>
                             </td>
 
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="13" class="text-center !py-4 text-gray-500 bg-gray-100">
+                            <td colspan="14" class="text-center !py-4 text-gray-500 bg-gray-100">
                                 No hidden links campaigns found...
                             </td>
                         </tr>
@@ -241,4 +270,53 @@
     <script src="{{ asset('js/updated_dynamic_dropdown.js') }}"></script>
 
     <script src="{{ asset('js/copy.js') }}"></script>
+
+    <script>
+        (function () {
+            var form = document.getElementById('bulk-delete-campaigns-form');
+            var bulkBtn = document.getElementById('bulk-delete-campaigns-btn');
+            var container = document.getElementById('bulk-delete-campaign-ids-container');
+            var selectAll = document.getElementById('select-all-campaigns');
+            var checkboxes = document.querySelectorAll('.campaign-select-cb');
+
+            function updateBulkDeleteState() {
+                var checked = document.querySelectorAll('.campaign-select-cb:checked');
+                var any = checked.length > 0;
+                if (bulkBtn) bulkBtn.disabled = !any;
+                if (container) {
+                    container.innerHTML = '';
+                    checked.forEach(function (cb) {
+                        var inp = document.createElement('input');
+                        inp.type = 'hidden';
+                        inp.name = 'campaign_ids[]';
+                        inp.value = cb.value;
+                        container.appendChild(inp);
+                    });
+                }
+            }
+
+            if (form) {
+                form.addEventListener('submit', function () {
+                    var checked = document.querySelectorAll('.campaign-select-cb:checked');
+                    if (checked.length === 0) {
+                        alert('Please select at least one campaign to delete.');
+                        return false;
+                    }
+                    return confirm('Delete selected campaign(s)? Links will be removed from remote sites, then campaigns and data deleted.');
+                });
+            }
+
+            if (selectAll) {
+                selectAll.addEventListener('change', function () {
+                    checkboxes.forEach(function (cb) { cb.checked = selectAll.checked; });
+                    updateBulkDeleteState();
+                });
+            }
+            checkboxes.forEach(function (cb) {
+                cb.addEventListener('change', updateBulkDeleteState);
+            });
+
+            updateBulkDeleteState();
+        })();
+    </script>
 @endpush

@@ -208,6 +208,45 @@
                 </div>
             </div>
 
+            {{-- User Creation Summary (By Period) --}}
+            <div class="content-card">
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 !mb-4">
+                    <div>
+                        <h3 class="text-lg font-semibold">User Created Data Summary</h3>
+                        <p class="text-sm text-gray-500">{{ $creationSummary['range_label'] }}</p>
+                    </div>
+
+                    <form method="GET" action="" class="flex items-center gap-2">
+                        <label for="range" class="text-sm text-gray-600">Period</label>
+                        <select id="range" name="range" onchange="this.form.submit()"
+                            class="!px-3 !py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500">
+                            <option value="day" {{ $range === 'day' ? 'selected' : '' }}>1 Day</option>
+                            <option value="week" {{ $range === 'week' ? 'selected' : '' }}>1 Week</option>
+                            <option value="year" {{ $range === 'year' ? 'selected' : '' }}>1 Year</option>
+                        </select>
+                    </form>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm border border-gray-200">
+                        <thead class="bg-gray-100 text-gray-700">
+                            <tr>
+                                <th class="text-left !px-4 !py-3 border">Module</th>
+                                <th class="text-right !px-4 !py-3 border">Created Count</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($creationSummary['rows'] as $row)
+                                <tr class="hover:bg-gray-50">
+                                    <td class="!px-4 !py-3 border">{{ $row['label'] }}</td>
+                                    <td class="!px-4 !py-3 border text-right font-semibold">{{ number_format($row['count']) }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
             {{-- Campaign Breakdown --}}
             <div class="content-card">
                 <h3 class="text-lg font-semibold !mb-4">Campaign Breakdown</h3>

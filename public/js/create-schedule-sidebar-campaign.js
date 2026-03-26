@@ -415,31 +415,16 @@ window.addEventListener("DOMContentLoaded", () => {
 
 
             //  -------------------------
-            // Date validation
-            // -------------------------
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-
+            // Date validation (past dates allowed, same as Schedule Campaign)
             const fromDate = new Date(fromDateInp.value);
             const toDate = new Date(toDateInp.value);
 
             fromDate.setHours(0, 0, 0, 0);
             toDate.setHours(0, 0, 0, 0);
 
-            // Rule: From date must be today or future
-            if (fromDate < today) {
-                return { ok: false, msg: "From date must be today or a future date" };
-            }
-
-            // Rule: To date must be after from date
-            if (toDate <= fromDate) {
-                return { ok: false, msg: "To date must be at least 1 day after From date" };
-            }
-
-            // Rule: Minimum 1 day gap
-            const diffDays = (toDate - fromDate) / (1000 * 60 * 60 * 24);
-            if (diffDays < 1) {
-                return { ok: false, msg: "Campaign duration must be at least 1 day" };
+            // Rule: To date must be on or after From date
+            if (toDate < fromDate) {
+                return { ok: false, msg: "To date must be on or after From date" };
             }
 
             let postQtyshower = document.querySelector('.dy-post-count');

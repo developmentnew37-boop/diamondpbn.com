@@ -71,18 +71,44 @@
 
         <div class="w-full flex flex-wrap justify-between items-start content-card">
             @csrf
-            <h2 class="text-lg capitalize !mb-4 bg-[var(--primary-color)] text-white w-fit !p-3 rounded">
-                {{ $campaign->campaign_no }} Blogroll Campaigns
-            </h2>
-            {{-- xxxxxxxxxxxxxxxxxx campaigns button xxxxxxxxxxxxxxxxxxxxxxxxxxxx --}}
+            <div class="flex flex-wrap items-center gap-2 !mb-4">
+                <h2 class="text-lg capitalize bg-[var(--primary-color)] text-white w-fit !p-3 rounded">
+                    {{ $campaign->campaign_no }} Blogroll Campaigns
+                </h2>
+                @if ($campaign->last_bulk_updated_at)
+                    <span class="!px-2 !py-1 rounded text-xs font-semibold bg-green-100 text-green-700">
+                        Campaign updated
+                    </span>
+                @endif
+                @php
+                    $hasPublishedLinks = $campaignTasks->contains(fn($t) => $t->remote_id && $t->status === 'success');
+                @endphp
+                @if ($hasPublishedLinks)
+                    <a href="{{ route('admin.sidebar.campaign.edit', $campaign->id) }}"
+                        class="!px-3 !py-2 rounded bg-green-600 text-white text-sm hover:bg-green-700">
+                        Bulk edit links
+                    </a>
+                @endif
+            </div>
 
-            {{-- table code here --}}
+            {{-- Bulk delete form - above table --}}
+            <form id="bulk-delete-form" action="{{ route('admin.sidebar.campaign.bulk.delete.tasks', $campaign->id) }}" method="POST" class="w-full !mb-3 hidden">
+                @csrf
+                <div id="bulk-delete-task-ids-container"></div>
+                <button type="submit" class="!px-3 !py-2 rounded bg-red-600 text-white text-sm hover:bg-red-700"
+                    onclick="return confirm('Remove selected links from remote sites and from the database?');">
+                    Bulk delete selected
+                </button>
+            </form>
 
             <div class="overflow-x-auto !mt-3 w-full">
                 <table
                     class="display w-full border border-gray-200 border-collapse text-sm whitespace-nowrap searchable-table">
                     <thead>
                         <tr class="bg-gray-800 text-white">
+                            <th class="border border-gray-200 font-sans !font-normal !px-2 !py-3 text-left w-10">
+                                <input type="checkbox" id="select-all-tasks" title="Select all">
+                            </th>
                             @php
                                 $tHead = [
                                     'S.No',
@@ -98,6 +124,7 @@
                                     'Next Retry',
                                     'Status',
                                     'Created At',
+                                    'Actions',
                                 ];
                             @endphp
                             @foreach ($tHead as $t)
@@ -110,7 +137,10 @@
                     <tbody>
                         @forelse ($campaignTasks as $index => $task)
                             <tr class="hover:bg-gray-50">
-
+                                {{-- Bulk delete checkbox --}}
+                                <td class="border !px-2 !py-2 text-center">
+                                    <input type="checkbox" class="task-checkbox" value="{{ $task->id }}" data-task-id="{{ $task->id }}">
+                                </td>
                                 {{-- S.No --}}
                                 <td class="border !px-2 !py-2 text-center">
                                     {{ $index + 1 + $offset }}
@@ -174,7 +204,7 @@
                                     {{ optional($task->next_retry_at)?->format('d M Y H:i') ?? '-' }}
                                 </td>
 
-                                {{-- Status --}}
+                                {{-- Status: show "Updated" when task was updated (single or bulk) --}}
                                 <td class="border !px-2 !py-2 text-center">
                                     @php
                                         $statusMap = [
@@ -183,10 +213,13 @@
                                             'success' => 'bg-green-100 text-green-700',
                                             'failed' => 'bg-red-100 text-red-700',
                                         ];
+                                        $statusLabel = ($task->status === 'success' && $task->content_updated_at)
+                                            ? 'Updated'
+                                            : ucfirst($task->status);
                                     @endphp
                                     <span
                                         class="!px-2 !py-1 rounded text-xs font-semibold {{ $statusMap[$task->status] ?? '' }}">
-                                        {{ ucfirst($task->status) }}
+                                        {{ $statusLabel }}
                                     </span>
                                 </td>
 
@@ -195,10 +228,36 @@
                                     {{ $task->created_at->format('d M Y H:i') }}
                                 </td>
 
+                                {{-- Actions --}}
+                                <td class="border !px-2 !py-2">
+                                    <div class="flex gap-2 justify-center">
+                                        @if ($task->status !== 'success')
+                                            <a href="{{ route('admin.sidebar.campaign.retry.task', $task->id) }}"
+                                                class="bg-orange-500 rounded w-7 h-7 flex items-center justify-center"
+                                                title="Manual retry from first">
+                                                <span class="material-symbols-outlined text-white text-sm">refresh</span>
+                                            </a>
+                                        @endif
+                                        @if ($task->remote_id)
+                                            <a href="{{ route('admin.sidebar.campaign.edit.task', $task->id) }}"
+                                                class="bg-yellow-500 rounded w-7 h-7 flex items-center justify-center"
+                                                title="Update keyword/link on remote and in DB">
+                                                <span class="material-symbols-outlined text-white !text-sm">edit</span>
+                                            </a>
+                                        @endif
+                                        <a href="{{ route('admin.sidebar.campaign.delete.task', $task->id) }}"
+                                            class="bg-red-500 rounded w-7 h-7 flex items-center justify-center"
+                                            title="Delete this link (remote + DB)"
+                                            onclick="return confirm('Remove this sidebar link from the remote site and database?');">
+                                            <span class="material-symbols-outlined text-white !text-sm">delete</span>
+                                        </a>
+                                    </div>
+                                </td>
+
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="13" class="text-center !py-4 text-gray-500 bg-gray-100">
+                                <td colspan="15" class="text-center !py-4 text-gray-500 bg-gray-100">
                                     No sidebar links found…
                                 </td>
                             </tr>
@@ -221,5 +280,43 @@
 
     @push('scripts')
         <script src="{{ asset('js/updated_dynamic_dropdown.js') }}"></script>
+        <script>
+            (function() {
+                var selectAll = document.getElementById('select-all-tasks');
+                var checkboxes = document.querySelectorAll('.task-checkbox');
+                var form = document.getElementById('bulk-delete-form');
+                var container = document.getElementById('bulk-delete-task-ids-container');
 
+                if (selectAll) {
+                    selectAll.addEventListener('change', function() {
+                        checkboxes.forEach(function(cb) { cb.checked = selectAll.checked; });
+                        toggleBulkDeleteButton();
+                    });
+                }
+                checkboxes.forEach(function(cb) {
+                    cb.addEventListener('change', toggleBulkDeleteButton);
+                });
+                function toggleBulkDeleteButton() {
+                    var checked = document.querySelectorAll('.task-checkbox:checked');
+                    if (form) {
+                        form.classList.toggle('hidden', checked.length === 0);
+                    }
+                }
+                if (form) {
+                    form.addEventListener('submit', function() {
+                        var checked = document.querySelectorAll('.task-checkbox:checked');
+                        if (container) {
+                            container.innerHTML = '';
+                            checked.forEach(function(cb) {
+                                var inp = document.createElement('input');
+                                inp.type = 'hidden';
+                                inp.name = 'task_ids[]';
+                                inp.value = cb.value;
+                                container.appendChild(inp);
+                            });
+                        }
+                    });
+                }
+            })();
+        </script>
     @endpush

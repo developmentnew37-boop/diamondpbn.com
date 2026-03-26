@@ -21,10 +21,12 @@
                 </div>
             </div>
             <div class="w-1/2 flex flex-wrap justify-end items-center">
+                @if (Auth::guard('admin')->user()->canCreateCampaigns())
                 <a href="{{ route('admin.sticky.campaign.create') }}"
                     class="flex !p-2 !py-3 text-[16px] font-normal w-fit justify-center duration:300 bg-[var(--primary-color)] 
                     whitespace-nowrap hover:bg-[var(--primary-color)]/70 text-white rounded transition-all duration">
                     Create Campaign</a>
+                @endif
             </div>
         </div>
     </div>

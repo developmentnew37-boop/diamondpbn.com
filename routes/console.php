@@ -6,6 +6,8 @@ use App\Models\Admin\ScheduleCampaignPost;
 use App\Jobs\PublishScheduledSidebarBlogrollJob;
 use App\Models\Admin\ScheduleSidebarCampaignTask;
 use Illuminate\Support\Facades\Log;
+
+$schedulerLockTtlMinutes = 2;
 /*
 |--------------------------------------------------------------------------
 | Scheduled POSTS (already working)
@@ -31,9 +33,14 @@ Schedule::call(function () {
     }
 })->everyMinute()
     ->name('dispatch_scheduled_campaign_posts')
-    ->withoutOverlapping()
+    ->withoutOverlapping($schedulerLockTtlMinutes)
     ->onOneServer();
 
+// Process Schedule Campaign posts (controller does not dispatch; scheduler dispatches + worker processes)
+Schedule::command('queue:work --queue=scheduled_campaigns --sleep=1 --tries=3 --stop-when-empty')
+    ->everyMinute()
+    ->withoutOverlapping($schedulerLockTtlMinutes)
+    ->name('work_scheduled_campaigns_queue');
 
 /*
 |--------------------------------------------------------------------------
@@ -62,30 +69,72 @@ Schedule::call(function () {
 })
     ->everyMinute()
     ->name('dispatch_scheduled_sidebar_campaign_tasks')
+    ->withoutOverlapping($schedulerLockTtlMinutes)
     ->onOneServer();
 
-
-Schedule::command('queue:work --queue=domainCheck --sleep=1 --tries=3 --stop-when-empty')
+// Process Scheduled Sidebar campaign tasks
+Schedule::command('queue:work --queue=scheduled_sidebar_campaigns --sleep=1 --tries=3 --stop-when-empty')
     ->everyMinute()
-    ->withoutOverlapping()
-    ->name('work_domain_check_queue');
+    ->withoutOverlapping($schedulerLockTtlMinutes)
+    ->name('work_scheduled_sidebar_campaigns_queue');
 
-Schedule::command('queue:work --queue=campaigns --sleep=1 --tries=3 --stop-when-empty')
-    ->everyMinute()
-    ->withoutOverlapping()
-    ->name('work_campaigns_queue');
 
-Schedule::command('queue:work --queue=sidebar_campaigns --sleep=1 --tries=3 --stop-when-empty')
-    ->everyMinute()
-    ->withoutOverlapping()
-    ->name('work_sidebar_campaigns_queue');
+// Schedule::command('queue:work --queue=domainCheck --sleep=1 --tries=3 --stop-when-empty')
+//     ->everyMinute()
+//     ->withoutOverlapping($schedulerLockTtlMinutes)
+//     ->name('work_domain_check_queue');
 
-Schedule::command('queue:work --queue=hidden_links_campaigns --sleep=1 --tries=3 --stop-when-empty')
-    ->everyMinute()
-    ->withoutOverlapping()
-    ->name('hidden_links_campaigns');
+// Schedule::command('queue:work --queue=campaigns --sleep=1 --tries=3 --stop-when-empty')
+//     ->everyMinute()
+//     ->withoutOverlapping($schedulerLockTtlMinutes)
+//     ->name('work_campaigns_queue');
+
+// Schedule::command('queue:work --queue=sidebar_campaigns --sleep=1 --tries=3 --stop-when-empty')
+//     ->everyMinute()
+//     ->withoutOverlapping($schedulerLockTtlMinutes)
+//     ->name('work_sidebar_campaigns_queue');
+
+// Schedule::command('queue:work --queue=hidden_links_campaigns --sleep=1 --tries=3 --stop-when-empty')
+//     ->everyMinute()
+//     ->withoutOverlapping($schedulerLockTtlMinutes)
+//     ->name('hidden_links_campaigns');
+
+// Schedule campaign: bulk update posts on remote + campaign deletion
+// Schedule::command('queue:work --queue=schedule_campaign_bulk_updates --sleep=1 --tries=3 --stop-when-empty')
+//     ->everyMinute()
+//     ->withoutOverlapping($schedulerLockTtlMinutes)
+//     ->name('work_schedule_campaign_bulk_updates');
+
+// Schedule::command('queue:work --queue=schedule_campaign_deletions --sleep=1 --tries=3 --stop-when-empty')
+//     ->everyMinute()
+//     ->withoutOverlapping($schedulerLockTtlMinutes)
+//     ->name('work_schedule_campaign_deletions');
+
+// Schedule Sidebar campaign: bulk update blogroll + campaign deletion
+// Schedule::command('queue:work --queue=schedule_sidebar_bulk_updates --sleep=1 --tries=3 --stop-when-empty')
+//     ->everyMinute()
+//     ->withoutOverlapping($schedulerLockTtlMinutes)
+//     ->name('work_schedule_sidebar_bulk_updates');
+
+// Schedule::command('queue:work --queue=schedule_sidebar_deletions --sleep=1 --tries=3 --stop-when-empty')
+//     ->everyMinute()
+//     ->withoutOverlapping($schedulerLockTtlMinutes)
+//     ->name('work_schedule_sidebar_deletions');
 
 
 Schedule::call(function () {
     Log::info('CRON OK (diamondpbn)');
 })->everyMinute();
+
+/*
+|--------------------------------------------------------------------------
+| WP Scheduled: sync status from WordPress (future → publish, missed schedule)
+|--------------------------------------------------------------------------
+*/
+Schedule::command('wp-scheduled:sync-status')->hourly()->name('wp_scheduled_sync_status')->onOneServer();
+
+// Safety net: clear stale scheduler overlap locks (cache_locks) once daily.
+Schedule::command('schedule:clear-cache')
+    ->dailyAt('03:05')
+    ->name('clear_scheduler_cache_locks')
+    ->onOneServer();

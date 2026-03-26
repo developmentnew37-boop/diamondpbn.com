@@ -45,12 +45,12 @@
 @if (session('cus__success') || session('cus__error'))
     <div class="mt-2">
         @if (session('cus__success'))
-            <div class="p-4 text-sm rounded bg-green-100 text-green-700">
+            <div class="!p-4 text-sm rounded bg-green-100 text-green-700">
                 {{ session('cus__success') }}
             </div>
         @endif
         @if (session('cus__error'))
-            <div class="p-4 text-sm rounded bg-red-100 text-red-700">
+            <div class="!p-4 text-sm rounded bg-red-100 text-red-700">
                 {{ session('cus__error') }}
             </div>
         @endif
@@ -59,14 +59,31 @@
 
 <div class="content-card mt-3">
 
-    <h2 class="text-lg !mb-4 bg-[var(--primary-color)] text-white w-fit !px-3 !py-2 rounded">
-        {{ $campaign->campaign_no }} — Hidden Links
-    </h2>
+    <div class="flex flex-wrap items-center gap-2 !mb-4">
+        <h2 class="text-lg bg-[var(--primary-color)] text-white w-fit !px-3 !py-2 rounded">
+            {{ $campaign->campaign_no }} — Hidden Links
+        </h2>
+        @if ($campaign->last_bulk_updated_at ?? null)
+            <span class="!px-2 !py-1 rounded text-xs font-semibold bg-green-100 text-green-700">Campaign updated</span>
+        @endif
+        <a href="{{ route('admin.hidden.link.campaign.edit', $campaign->id) }}"
+            class="!px-3 !py-2 rounded bg-green-600 text-white text-sm hover:bg-green-700">Bulk edit links</a>
+    </div>
+
+    <form id="bulk-delete-form" action="{{ route('admin.hidden.link.campaign.bulk.delete.tasks', $campaign->id) }}" method="POST" class="w-full !mb-3 hidden">
+        @csrf
+        <div id="bulk-delete-task-ids-container"></div>
+        <button type="submit" class="!px-3 !py-2 rounded bg-red-600 text-white text-sm hover:bg-red-700"
+            onclick="return confirm('Remove selected links from remote sites and database?');">Bulk delete selected</button>
+    </form>
 
     <div class="overflow-x-auto w-full">
         <table class="display w-full border border-gray-200 border-collapse text-sm whitespace-nowrap searchable-table">
             <thead>
                 <tr class="bg-gray-800 text-white">
+                    <th class="border border-gray-200 !px-2 !py-3 text-left w-10">
+                        <input type="checkbox" id="select-all-tasks" title="Select all">
+                    </th>
                     @php
                         $tHead = [
                             'S.No',
@@ -81,6 +98,7 @@
                             'Next Retry',
                             'Status',
                             'Created At',
+                            'Actions',
                         ];
                     @endphp
 
@@ -95,7 +113,9 @@
             <tbody>
                 @forelse ($campaignTasks as $index => $task)
                     <tr class="hover:bg-gray-50">
-
+                        <td class="border !px-2 !py-2 text-center">
+                            <input type="checkbox" class="task-checkbox" value="{{ $task->id }}" data-task-id="{{ $task->id }}">
+                        </td>
                         <td class="border !px-2 !py-2 text-center">
                             {{ $index + 1 + $offset }}
                         </td>
@@ -154,9 +174,10 @@
                                     'success' => 'bg-green-100 text-green-700',
                                     'failed' => 'bg-red-100 text-red-700',
                                 ];
+                                $statusLabel = ($task->status === 'success' && ($task->content_updated_at ?? null)) ? 'Updated' : ucfirst($task->status);
                             @endphp
                             <span class="!px-2 !py-1 rounded text-xs font-semibold {{ $statusMap[$task->status] ?? '' }}">
-                                {{ ucfirst($task->status) }}
+                                {{ $statusLabel }}
                             </span>
                         </td>
 
@@ -164,10 +185,32 @@
                             {{ $task->created_at?->format('d M Y H:i') }}
                         </td>
 
+                        <td class="border !px-2 !py-2">
+                            <div class="flex gap-2 justify-center">
+                                @if ($task->status === 'failed')
+                                    <a href="{{ route('admin.hidden.link.campaign.retry.task', $task->id) }}"
+                                        class="bg-blue-500 rounded w-7 h-7 flex items-center justify-center" title="Retry this task">
+                                        <span class="material-symbols-outlined text-white !text-sm">replay</span>
+                                    </a>
+                                @endif
+                                @if ($task->remote_id)
+                                    <a href="{{ route('admin.hidden.link.campaign.edit.task', $task->id) }}"
+                                        class="bg-yellow-500 rounded w-7 h-7 flex items-center justify-center" title="Edit keyword/link">
+                                        <span class="material-symbols-outlined text-white !text-sm">edit</span>
+                                    </a>
+                                @endif
+                                <a href="{{ route('admin.hidden.link.campaign.delete.task', $task->id) }}"
+                                    class="bg-red-500 rounded w-7 h-7 flex items-center justify-center" title="Delete this link"
+                                    onclick="return confirm('Remove this hidden link from remote and database?');">
+                                    <span class="material-symbols-outlined text-white !text-sm">delete</span>
+                                </a>
+                            </div>
+                        </td>
+
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="13" class="text-center !py-4 text-gray-500 bg-gray-100">
+                        <td colspan="14" class="text-center !py-4 text-gray-500 bg-gray-100">
                             No hidden links tasks found…
                         </td>
                     </tr>
@@ -181,5 +224,39 @@
     </div>
 
 </div>
+
+@push('scripts')
+<script>
+(function() {
+    var selectAll = document.getElementById('select-all-tasks');
+    var checkboxes = document.querySelectorAll('.task-checkbox');
+    var form = document.getElementById('bulk-delete-form');
+    var container = document.getElementById('bulk-delete-task-ids-container');
+
+    if (selectAll) {
+        selectAll.addEventListener('change', function() {
+            checkboxes.forEach(function(cb) { cb.checked = selectAll.checked; });
+            if (form) form.classList.toggle('hidden', document.querySelectorAll('.task-checkbox:checked').length === 0);
+        });
+    }
+    checkboxes.forEach(function(cb) {
+        cb.addEventListener('change', function() {
+            if (form) form.classList.toggle('hidden', document.querySelectorAll('.task-checkbox:checked').length === 0);
+        });
+    });
+    if (form && container) {
+        form.addEventListener('submit', function() {
+            var checked = document.querySelectorAll('.task-checkbox:checked');
+            container.innerHTML = '';
+            checked.forEach(function(cb) {
+                var inp = document.createElement('input');
+                inp.type = 'hidden'; inp.name = 'task_ids[]'; inp.value = cb.value;
+                container.appendChild(inp);
+            });
+        });
+    }
+})();
+</script>
+@endpush
 
 @endsection

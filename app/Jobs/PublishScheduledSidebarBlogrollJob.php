@@ -61,6 +61,10 @@ class PublishScheduledSidebarBlogrollJob implements ShouldQueue
             $t->lock_token = $lockToken;
             $t->save();
 
+            ScheduleSidebarCampaign::whereKey($t->schedule_sidebar_campaign_id)
+                ->whereNull('started_at')
+                ->update(['started_at' => now(), 'status' => 'running']);
+
             return $t;
         });
 
@@ -182,6 +186,29 @@ class PublishScheduledSidebarBlogrollJob implements ShouldQueue
                     )->increment('failed_targets');
                 }
             });
+        } finally {
+            $this->finalizeCampaignIfDone($task->schedule_sidebar_campaign_id);
         }
+    }
+
+    /**
+     * When all tasks are done: set finished_at and campaign status (completed / semi_failed / failed).
+     * Uses lock inside transaction to avoid race conditions when multiple jobs finish close together.
+     */
+    private function finalizeCampaignIfDone(int $campaignId): void
+    {
+        DB::transaction(function () use ($campaignId) {
+            $campaign = ScheduleSidebarCampaign::lockForUpdate()->find($campaignId);
+            if (!$campaign) {
+                return;
+            }
+
+            $totalDone = $campaign->completed_targets + $campaign->failed_targets;
+            if ($totalDone < $campaign->total_targets) {
+                return;
+            }
+
+            $campaign->syncStatusFromCounts();
+        });
     }
 }

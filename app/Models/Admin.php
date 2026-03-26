@@ -100,6 +100,15 @@ class Admin extends Authenticatable
     }
 
     /**
+     * Check if the admin can create campaigns.
+     * Members can only add articles; Super Admin and Admin can create campaigns.
+     */
+    public function canCreateCampaigns(): bool
+    {
+        return in_array((int) $this->type, [self::SUPER_ADMIN, self::ADMIN], true);
+    }
+
+    /**
      * Check if the admin has a specific role
      */
     public function hasRole(int $roleType): bool

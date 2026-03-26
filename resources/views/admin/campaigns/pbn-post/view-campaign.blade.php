@@ -137,9 +137,16 @@
 
         <div class="w-full flex flex-wrap justify-between items-start content-card">
             @csrf
-            <h2 class="text-lg capitalize !mb-4 bg-[var(--primary-color)] text-white w-fit !p-3 rounded">
-                {{ $campaign->campaign_no }} Posts
-            </h2>
+            <div class="flex items-center gap-2 !mb-4 flex-wrap">
+                <h2 class="text-lg capitalize bg-[var(--primary-color)] text-white w-fit !p-3 rounded">
+                    {{ $campaign->campaign_no }} Posts
+                </h2>
+                @if ($campaign->last_bulk_updated_at)
+                    <span class="!px-2 !py-1 rounded text-xs font-semibold bg-green-100 text-green-700">
+                        Campaign updated
+                    </span>
+                @endif
+            </div>
             {{-- xxxxxxxxxxxxxxxxxx campaigns button xxxxxxxxxxxxxxxxxxxxxxxxxxxx --}}
 
             {{-- table code here --}}
@@ -236,7 +243,7 @@
                                     {{ optional($post->next_retry_at)?->format('d M Y H:i') ?? '-' }}
                                 </td>
 
-                                {{-- Status --}}
+                                {{-- Status: show "Updated" when post was updated (single or bulk) --}}
                                 <td class="border border-gray-200 font-sans !px-2 !py-3 text-center">
                                     @php
                                         $statusMap = [
@@ -245,10 +252,13 @@
                                             'success' => 'bg-green-100 text-green-700',
                                             'failed' => 'bg-red-100 text-red-700',
                                         ];
+                                        $postStatusLabel = ($post->status === 'success' && $post->content_updated_at)
+                                            ? 'Updated'
+                                            : ucfirst($post->status);
                                     @endphp
                                     <span
                                         class="!px-2 !py-1 rounded text-xs font-semibold {{ $statusMap[$post->status] ?? 'bg-gray-100' }}">
-                                        {{ ucfirst($post->status) }}
+                                        {{ $postStatusLabel }}
                                     </span>
                                 </td>
 
@@ -268,15 +278,28 @@
                                                 <span
                                                     class="material-symbols-outlined !text-[16px] text-white text-sm">visibility</span>
                                             </a>
+                                            <a href="{{ route('admin.campaign.edit.post', $post->id) }}" 
+                                                class="bg-yellow-500 rounded w-7 h-7 flex items-center justify-center">
+                                                <span
+                                                    class="material-symbols-outlined !text-[16px] text-white text-sm">Edit</span>
+                                            </a>
+                                            {{-- {{ route('admin.campaign.edit.post', $post->id) }} --}}
+                                            <a href="{{ route('admin.campaign.delete.post',$post->id) }}" 
+                                                class="bg-red-500 rounded w-7 h-7 flex items-center justify-center">
+                                                <span
+                                                    class="material-symbols-outlined !text-[16px] text-white text-sm">delete</span>
+                                            </a>
+
                                         @endif
 
-                                        {{-- Retry --}}
-                                        {{-- @if ($post->status === 'failed')
-                                            <a href="{{ route('admin.campaign.posts.retry', $post->id) }}"
-                                                class="bg-yellow-500 rounded w-7 h-7 flex items-center justify-center">
+                                        {{-- Manual retry: allow for queued, publishing, or failed (e.g. jobs killed) --}}
+                                        @if ($post->status !== 'success')
+                                            <a href="{{ route('admin.campaign.retry', $post->id) }}"
+                                                class="bg-orange-500 rounded w-7 h-7 flex items-center justify-center"
+                                                title="Manual retry from first">
                                                 <span class="material-symbols-outlined text-white text-sm">refresh</span>
                                             </a>
-                                        @endif --}}
+                                        @endif
 
                                     </div>
                                 </td>

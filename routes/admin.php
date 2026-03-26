@@ -20,6 +20,7 @@ use App\Http\Controllers\Admin\ScheduleCampaignController;
 use App\Http\Controllers\Admin\ScheduleSidebarCampaignController;
 use App\Http\Controllers\Admin\SidebarCampaignController;
 use App\Http\Controllers\Admin\StickyPostCampaignController;
+use App\Http\Controllers\Admin\WpScheduledCampaignController;
 use App\Models\Admin\ArticleSet;
 
 Route::prefix('admin')->middleware('admin.guest')->group(function () {
@@ -39,65 +40,81 @@ Route::prefix('admin')->middleware('admin.guest')->group(function () {
     Route::post('/reset-password', [AdminPasswordResetController::class, 'resetPassword'])->name('admin.reset');
 });
 
+/*
+ * PUBLIC report/export routes (token-protected, no login required).
+ * withoutMiddleware() ensures shared links work on live (even if route/config cache is stale).
+ */
+$noCampaignAuth = \App\Http\Middleware\Admin\CanCreateCampaigns::class;
+
 /* campaign report route*/ // route('admin.campaign.report)
 Route::get(
     '/campaign/report/{campaign_no}/{token}',
     [campaignController::class, 'report']
-)->name('admin.campaign.report');
+)->name('admin.campaign.report')->withoutMiddleware($noCampaignAuth);
 
 // Export campaign report (PUBLIC, token-protected)
 Route::get(
     '/campaign/report/{campaign_no}/{token}/export',
     [campaignController::class, 'exportReport']
-)->name('admin.campaign.report.export');
+)->name('admin.campaign.report.export')->withoutMiddleware($noCampaignAuth);
 
 /* sidebar campaign report route*/ // route('admin.campaign.report)
 Route::get(
     '/sidebar/campaign/report/{campaign_no}/{token}',
     [SidebarCampaignController::class, 'report']
-)->name('admin.sidebar.campaign.report');
+)->name('admin.sidebar.campaign.report')->withoutMiddleware($noCampaignAuth);
 
 // Export sidebar campaign report (PUBLIC, token-protected)
 Route::get(
     '/sidebar/campaign/report/{campaign_no}/{token}/export',
     [SidebarCampaignController::class, 'exportReport']
-)->name('admin.sidebar.campaign.report.export');
+)->name('admin.sidebar.campaign.report.export')->withoutMiddleware($noCampaignAuth);
 
 // * Hidden Link Campaign Report * //
 
 Route::get(
     '/hidden/link/campaign/report/{campaign_no}/{token}',
     [HiddenLinkCampaignController::class, 'report']
-)->name('admin.hidden.link.campaign.report');
+)->name('admin.hidden.link.campaign.report')->withoutMiddleware($noCampaignAuth);
 
 Route::get(
     '/hidden/link/campaign/report/{campaign_no}/{token}/export',
     [HiddenLinkCampaignController::class, 'exportReport']
-)->name('admin.hidden.link.campaign.report.export');
+)->name('admin.hidden.link.campaign.report.export')->withoutMiddleware($noCampaignAuth);
 
 // * schdedule Campaign Report * //
 
 Route::get(
     '/schedule/campaign/report/{campaign_no}/{token}',
     [ScheduleCampaignController::class, 'report']
-)->name('admin.schedule.campaign.report');
+)->name('admin.schedule.campaign.report')->withoutMiddleware($noCampaignAuth);
 
 Route::get(
     '/schedule/campaign/report/{campaign_no}/{token}/export',
     [ScheduleCampaignController::class, 'exportReport']
-)->name('admin.schedule.campaign.report.export');
+)->name('admin.schedule.campaign.report.export')->withoutMiddleware($noCampaignAuth);
 
 // * schdedule Sidebar Campaign Report * //
 
 Route::get(
     '/schedule/sidebar/campaign/report/{campaign_no}/{token}',
     [ScheduleSidebarCampaignController::class, 'report']
-)->name('admin.schedule.sidebar.campaign.report');
+)->name('admin.schedule.sidebar.campaign.report')->withoutMiddleware($noCampaignAuth);
 
 Route::get(
     '/schedule/sidebar/campaign/report/{campaign_no}/{token}/export',
     [ScheduleSidebarCampaignController::class, 'exportReport']
-)->name('admin.schedule.sidebar.campaign.report.export');
+)->name('admin.schedule.sidebar.campaign.report.export')->withoutMiddleware($noCampaignAuth);
+
+// * WP Scheduled Campaign Report (token-protected) * //
+Route::get(
+    '/campaign/post/wp-schedule/report/{campaign_no}/{token}',
+    [WpScheduledCampaignController::class, 'report']
+)->name('admin.wp.schedule.campaign.report')->withoutMiddleware($noCampaignAuth);
+Route::get(
+    '/campaign/post/wp-schedule/report/{campaign_no}/{token}/export',
+    [WpScheduledCampaignController::class, 'exportReport']
+)->name('admin.wp.schedule.campaign.report.export')->withoutMiddleware($noCampaignAuth);
 
 // export csv
 // Route::get(
@@ -222,29 +239,68 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
 
     /* campaign report route ends here*/
 
-    Route::resource('/campaign', campaignController::class);
+    Route::get('/campaign/retry/{id}', [campaignController::class, 'retry'])->name('campaign.retry');
 
+    Route::get('/campaign/editpost/{id}',[campaignController::class,'editcampaignpost'])->name('campaign.edit.post'); // admin.campaign.blogpost
+
+    Route::post('/campaign/updatecampaignpost/{id}',[campaignController::class,'updateCampaignPost'])->name('campaign.update.post'); // admin.campaign.blogpost
+
+    Route::get('/campaign/deleteCampaignPost/{id}',[campaignController::class,'deleteCampaignPost'])->name('campaign.delete.post'); // admin.campaign.blogpost
+
+    Route::post('/campaign/bulk/update/{id}', [campaignController::class, 'bulkUpdateCampaignPosts'])->name('campaign.bulk.update');
+
+    Route::resource('/campaign', campaignController::class);
     /* sidebar campaign */
+    Route::get('/sidebar/campaign/retry-task/{id}', [SidebarCampaignController::class, 'retryTask'])->name('sidebar.campaign.retry.task');
+    Route::get('/sidebar/campaign/edit-task/{id}', [SidebarCampaignController::class, 'editSidebarTask'])->name('sidebar.campaign.edit.task');
+    Route::post('/sidebar/campaign/update-task/{id}', [SidebarCampaignController::class, 'updateSidebarTask'])->name('sidebar.campaign.update.task');
+    Route::get('/sidebar/campaign/delete-task/{id}', [SidebarCampaignController::class, 'deleteSidebarTask'])->name('sidebar.campaign.delete.task');
+    Route::post('/sidebar/campaign/{id}/bulk-delete-tasks', [SidebarCampaignController::class, 'bulkDeleteTasks'])->name('sidebar.campaign.bulk.delete.tasks');
 
     Route::resource('/sidebar/campaign', SidebarCampaignController::class)->names('sidebar.campaign');
 
     /* Hidden Link campaign */
+    Route::get('/hidden/link/campaign/edit-task/{id}', [HiddenLinkCampaignController::class, 'editTask'])->name('hidden.link.campaign.edit.task');
+    Route::post('/hidden/link/campaign/update-task/{id}', [HiddenLinkCampaignController::class, 'updateTask'])->name('hidden.link.campaign.update.task');
+    Route::get('/hidden/link/campaign/retry-task/{id}', [HiddenLinkCampaignController::class, 'retryTask'])->name('hidden.link.campaign.retry.task');
+    Route::get('/hidden/link/campaign/delete-task/{id}', [HiddenLinkCampaignController::class, 'deleteTask'])->name('hidden.link.campaign.delete.task');
+    Route::post('/hidden/link/campaign/{id}/bulk-delete-tasks', [HiddenLinkCampaignController::class, 'bulkDeleteTasks'])->name('hidden.link.campaign.bulk.delete.tasks');
+    Route::post('/hidden/link/campaign/bulk-delete', [HiddenLinkCampaignController::class, 'bulkDeleteCampaigns'])->name('hidden.link.campaign.bulk.delete');
 
     Route::resource('/hidden/link/campaign', HiddenLinkCampaignController::class)->names('hidden.link.campaign');
 
     /* Schedule campaign */
-
+    Route::post('/campaign/post/schedule/bulk/update/{id}', [ScheduleCampaignController::class, 'bulkUpdate'])->name('schedule.campaign.bulk.update');
+    Route::get('/campaign/post/schedule/edit-post/{postId}', [ScheduleCampaignController::class, 'editPost'])->name('schedule.campaign.edit.post');
+    Route::post('/campaign/post/schedule/update-post/{postId}', [ScheduleCampaignController::class, 'updatePost'])->name('schedule.campaign.update.post');
+    Route::post('/campaign/post/schedule/retry-post/{postId}', [ScheduleCampaignController::class, 'retryPost'])->name('schedule.campaign.retry.post');
+    Route::post('/campaign/post/schedule/delete-post/{postId}', [ScheduleCampaignController::class, 'deletePost'])->name('schedule.campaign.delete.post');
     Route::resource('/campaign/post/schedule', ScheduleCampaignController::class)->names('schedule.campaign');
 
-    /* Schedule Sidebar campaign */
+    /* WordPress-native scheduled campaign (posts scheduled on remote WP) */
+    Route::post('/campaign/post/wp-schedule/run/{id}', [WpScheduledCampaignController::class, 'run'])->name('wp.schedule.campaign.run');
+    Route::post('/campaign/post/wp-schedule/sync/{id}', [WpScheduledCampaignController::class, 'syncCampaign'])->name('wp.schedule.campaign.sync');
+    Route::post('/campaign/post/wp-schedule/retry-post/{postId}', [WpScheduledCampaignController::class, 'retryPost'])->name('wp.schedule.campaign.retry.post');
+    Route::post('/campaign/post/wp-schedule/sync-post/{postId}', [WpScheduledCampaignController::class, 'syncPost'])->name('wp.schedule.campaign.sync.post');
+    Route::get('/campaign/post/wp-schedule/editpost/{postId}', [WpScheduledCampaignController::class, 'editPost'])->name('wp.schedule.campaign.edit.post');
+    Route::post('/campaign/post/wp-schedule/updatepost/{postId}', [WpScheduledCampaignController::class, 'updatePost'])->name('wp.schedule.campaign.update.post');
+    Route::post('/campaign/post/wp-schedule/deletepost/{postId}', [WpScheduledCampaignController::class, 'deletePost'])->name('wp.schedule.campaign.delete.post');
+    Route::post('/campaign/post/wp-schedule/bulk/update/{id}', [WpScheduledCampaignController::class, 'bulkUpdate'])->name('wp.schedule.campaign.bulk.update');
+    Route::resource('/campaign/post/wp-schedule', WpScheduledCampaignController::class)->names('wp.schedule.campaign');
 
+    /* Schedule Sidebar campaign */
+    Route::post('/campaign/sidebar/schedule/bulk/update/{id}', [ScheduleSidebarCampaignController::class, 'bulkUpdate'])->name('schedule.sidebar.campaign.bulk.update');
+    Route::get('/campaign/sidebar/schedule/edit-task/{id}', [ScheduleSidebarCampaignController::class, 'editTask'])->name('schedule.sidebar.campaign.edit.task');
+    Route::post('/campaign/sidebar/schedule/update-task/{id}', [ScheduleSidebarCampaignController::class, 'updateTask'])->name('schedule.sidebar.campaign.update.task');
+    Route::post('/campaign/sidebar/schedule/retry-task/{id}', [ScheduleSidebarCampaignController::class, 'retryTask'])->name('schedule.sidebar.campaign.retry.task');
+    Route::post('/campaign/sidebar/schedule/delete-task/{id}', [ScheduleSidebarCampaignController::class, 'deleteTask'])->name('schedule.sidebar.campaign.delete.task');
     Route::resource('/campaign/sidebar/schedule', ScheduleSidebarCampaignController::class)->names('schedule.sidebar.campaign');
 
     /* sticky Sidebar campaign */
     Route::get('/sticky/campaign/create', [StickyPostCampaignController::class, 'create'])->name('sticky.campaign.create');
 
     Route::get('/sticky/campaign/', [StickyPostCampaignController::class, 'index'])->name('sticky.campaign.index');
-    // Route::view('/article','admin.article.articles')->name('articles');
+    // Route::view('/article','admin.article.articles')->name('articles
     // Route::view('/article/category','admin.article.category.category')->name('articles.category');
 
     // Domain routes here...

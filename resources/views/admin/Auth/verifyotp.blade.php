@@ -54,8 +54,10 @@
                         </div>
                     @enderror
 
-                    <input type='submit' value='Verify Otp'
-                        class='w-full !py-3 ! cursor-pointer px-2 rounded-lg bg-[var(--primary-color)] text-white capitalize'>
+                    <button type="submit"
+                        class="w-full !py-3 ! cursor-pointer px-2 rounded-lg bg-[var(--primary-color)] text-white capitalize">
+                        Verify Otp
+                    </button>
                 </div>
                 @error('Otp')
                     <div class="!p-4 !mb-4 text-sm text-yellow-800 rounded-lg bg-yellow-50 dark:bg-gray-800 dark:text-yellow-300"

@@ -21,10 +21,12 @@
                 </div>
             </div>
             <div class="w-1/2 flex flex-wrap justify-end items-center">
+                @if (Auth::guard('admin')->user()->canCreateCampaigns())
                 <a href="{{ route('admin.sidebar.campaign.create') }}"
                     class="flex !p-2 !py-3 text-[16px] font-normal w-fit justify-center duration:300 bg-[var(--primary-color)] 
                     whitespace-nowrap hover:bg-[var(--primary-color)]/70 text-white rounded transition-all duration">
                     Create Campaign</a>
+                @endif
             </div>
         </div>
     </div>
@@ -178,11 +180,12 @@
 
                             $progress = $total > 0 ? round(($completed / $total) * 100, 1) : 0;
 
+                            $isBulkUpdated = $campaign->last_bulk_updated_at !== null;
                             if ($pending > 0 && $completed > 0) {
                                 $status = 'running';
                                 $statusClass = 'bg-yellow-100 text-yellow-700';
                             } elseif ($completed + $failed === $total && $failed === 0 && $total > 0) {
-                                $status = 'completed';
+                                $status = $isBulkUpdated ? 'updated' : 'completed';
                                 $statusClass = 'bg-green-100 text-green-700';
                             } elseif ($failed === $total && $total > 0) {
                                 $status = 'failed';
@@ -261,7 +264,7 @@
                             {{-- status --}}
                             <td class="border border-gray-200 !px-2 !py-3 text-center">
                                 <span class="!px-2 !py-1 rounded text-xs font-semibold {{ $statusClass }}">
-                                    {{ ucfirst($status) }}
+                                    {{ $status === 'updated' ? 'Updated' : ucfirst($status) }}
                                 </span>
                             </td>
 
@@ -273,17 +276,25 @@
                             {{-- actions --}}
                             <td class="border border-gray-200 !px-2 !py-3">
                                 <div class="flex gap-2 justify-center">
-                                    {{-- {{ route('admin.sidebar-campaigns.show', $campaign->id) }} --}}
+                                    {{-- View campaign (tasks/links) --}}
                                     <a href="{{ route('admin.sidebar.campaign.show', $campaign->id) }}"
-                                        class="bg-green-500 w-7 h-7 flex items-center justify-center rounded hover:bg-green-600">
+                                        class="bg-green-500 w-7 h-7 flex items-center justify-center rounded hover:bg-green-600"
+                                        title="View campaign">
                                         <span class="material-symbols-outlined text-white !text-sm">visibility</span>
+                                    </a>
+                                    {{-- Edit / bulk edit links --}}
+                                    <a href="{{ route('admin.sidebar.campaign.edit', $campaign->id) }}"
+                                        class="bg-yellow-400 w-7 h-7 flex items-center justify-center rounded hover:bg-yellow-500"
+                                        title="Edit links (bulk update keyword/URL on remote and in DB)">
+                                        <span class="material-symbols-outlined text-white !text-sm">edit</span>
                                     </a>
                                     <a href="javascript:void(0)"
                                         data-report="{{ route('admin.sidebar.campaign.report', [
                                             'campaign_no' => $campaign->campaign_no,
                                             'token' => $campaign->report_token,
                                         ]) }}"
-                                        class="bg-yellow-500 copy-link flex items-center justify-center rounded w-7 h-7 hover:bg-yellow-600">
+                                        class="bg-gray-500 copy-link flex items-center justify-center rounded w-7 h-7 hover:bg-amber-600"
+                                        title="Copy report link">
                                         <span class="material-symbols-outlined !text-sm text-white">content_copy</span>
                                     </a>
                                     {{-- {{ route('admin.sidebar-campaigns.report', $campaign->id) }} --}}
@@ -294,6 +305,16 @@
                                         class="bg-blue-600 w-7 h-7 flex items-center justify-center rounded hover:bg-blue-700">
                                         <span class="material-symbols-outlined text-white !text-sm">assignment</span>
                                     </a>
+                                    <form action="{{ route('admin.sidebar.campaign.destroy', $campaign->id) }}" method="POST"
+                                        class="inline"
+                                        onsubmit="return confirm('Delete this sidebar campaign? All tasks will be removed from the database and from remote blogroll.');">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="bg-red-500 w-7 h-7 flex items-center justify-center rounded hover:bg-red-600"
+                                            title="Delete campaign and all tasks (DB + remote)">
+                                            <span class="material-symbols-outlined text-white !text-sm">delete</span>
+                                        </button>
+                                    </form>
                                 </div>
                             </td>
                         </tr>

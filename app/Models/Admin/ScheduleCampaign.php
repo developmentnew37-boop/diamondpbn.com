@@ -72,7 +72,13 @@ class ScheduleCampaign extends Model
         );
     }
 
-
+    public function dateRows()
+    {
+        return $this->hasMany(
+            ScheduleCampaignDate::class,
+            'schedule_campaign_id'
+        )->orderBy('schedule_date');
+    }
 
     public function posts()
     {

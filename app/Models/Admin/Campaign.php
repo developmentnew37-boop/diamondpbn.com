@@ -20,12 +20,14 @@ class Campaign extends Model
         'completed_targets',
         'failed_targets',
         'started_at',
-        'finished_at'
+        'finished_at',
+        'last_bulk_updated_at',
     ];
 
     protected $casts = [
-        'started_at'  => 'datetime',
-        'finished_at' => 'datetime',
+        'started_at'            => 'datetime',
+        'finished_at'           => 'datetime',
+        'last_bulk_updated_at'  => 'datetime',
     ];
 
 

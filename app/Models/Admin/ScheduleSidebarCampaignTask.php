@@ -12,17 +12,26 @@ class ScheduleSidebarCampaignTask extends Model
         'schedule_sidebar_campaign_id',
         'schedule_sidebar_campaign_domain_id',
         'schedule_sidebar_campaign_link_id',
+        'schedule_sidebar_campaign_date_id',
         'schedule_at',
         'status',
         'attempt_count',
         'next_retry_at',
         'last_error',
+        'locked_at',
+        'lock_token',
+        'remote_id',
+        'remote_url',
+        'http_status',
+        'remote_response',
+        'published_at',
     ];
 
     protected $casts = [
         'schedule_at'   => 'datetime',
-         'published_at' => 'datetime',
+        'published_at'  => 'datetime',
         'next_retry_at' => 'datetime',
+        'locked_at'     => 'datetime',
     ];
 
     /* =========================
@@ -52,5 +61,15 @@ class ScheduleSidebarCampaignTask extends Model
             'schedule_sidebar_campaign_link_id'
         );
     }
-    
+
+    /**
+     * Date row this task was created from (when using date table). Report uses this for display so date is never overwritten by jobs.
+     */
+    public function scheduleDate()
+    {
+        return $this->belongsTo(
+            ScheduleSidebarCampaignDate::class,
+            'schedule_sidebar_campaign_date_id'
+        );
+    }
 }

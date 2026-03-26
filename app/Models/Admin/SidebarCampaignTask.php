@@ -29,6 +29,7 @@ class SidebarCampaignTask extends Model
         'published_at',
         'started_at',
         'finished_at',
+        'content_updated_at',
     ];
 
 
@@ -38,9 +39,10 @@ class SidebarCampaignTask extends Model
         'next_retry_at' => 'datetime',
         'locked_at' => 'datetime',
         'locked_until' => 'datetime',
-        'published_at' => 'datetime',
-        'started_at' => 'datetime',
-        'finished_at' => 'datetime',
+        'published_at'      => 'datetime',
+        'started_at'        => 'datetime',
+        'finished_at'       => 'datetime',
+        'content_updated_at' => 'datetime',
     ];
 
     public function campaign()

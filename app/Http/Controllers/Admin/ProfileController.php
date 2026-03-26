@@ -15,6 +15,8 @@ use App\Models\Admin\Campaign;
 use App\Models\Admin\SidebarCampaign;
 use App\Models\Admin\HiddenLinksCampaign;
 use App\Models\Admin\ScheduleCampaign;
+use App\Models\Admin\ScheduleSidebarCampaign;
+use App\Models\Admin\WpScheduledCampaign;
 use Carbon\Carbon;
 use Illuminate\Support\Str;
 
@@ -26,8 +28,9 @@ class ProfileController extends Controller
     public function index()
     {
         $admin = Auth::guard('admin')->user();
+        $range = request()->query('range', 'year');
 
-        return $this->showProfile($admin);
+        return $this->showProfile($admin, null, $range);
     }
 
     /**
@@ -37,6 +40,7 @@ class ProfileController extends Controller
     {
         $currentAdmin = Auth::guard('admin')->user();
         $profileAdmin = Admin::where('slug', $slug)->firstOrFail();
+        $range = request()->query('range', 'year');
 
         // Only Super Admin can view other users' profiles
         if (!$currentAdmin->isSuperAdmin() && $currentAdmin->id !== $profileAdmin->id) {
@@ -44,20 +48,22 @@ class ProfileController extends Controller
                 ->with('cus__error', 'You do not have permission to view this profile');
         }
 
-        return $this->showProfile($profileAdmin, $currentAdmin);
+        return $this->showProfile($profileAdmin, $currentAdmin, $range);
     }
 
     /**
      * Show profile with statistics
      */
-    private function showProfile(Admin $profileAdmin, ?Admin $viewingAdmin = null)
+    private function showProfile(Admin $profileAdmin, ?Admin $viewingAdmin = null, string $range = 'year')
     {
         $viewingAdmin = $viewingAdmin ?? $profileAdmin;
         $isOwnProfile = $viewingAdmin->id === $profileAdmin->id;
         $canEdit = $isOwnProfile || $viewingAdmin->isSuperAdmin();
+        $range = in_array($range, ['day', 'week', 'year'], true) ? $range : 'year';
 
         // Get user statistics
         $stats = $this->getUserStats($profileAdmin);
+        $creationSummary = $this->getCreationSummary($profileAdmin, $range);
 
         // Get recent activity
         $recentActivity = $this->getRecentActivity($profileAdmin);
@@ -71,9 +77,77 @@ class ProfileController extends Controller
             'isOwnProfile',
             'canEdit',
             'stats',
+            'creationSummary',
+            'range',
             'recentActivity',
             'monthlyData'
         ));
+    }
+
+    /**
+     * Get profile creation summary for selected period.
+     */
+    private function getCreationSummary(Admin $admin, string $range): array
+    {
+        $start = match ($range) {
+            'day' => now()->subDay(),
+            'week' => now()->subWeek(),
+            default => now()->subYear(),
+        };
+
+        $articleCount = Article::where('admin_id', $admin->id)
+            ->where('created_at', '>=', $start)
+            ->count();
+
+        $campaignCount = Campaign::where('admin_id', $admin->id)
+            ->where(function ($q) {
+                $q->whereNull('is_sticky_campaign')
+                    ->orWhere('is_sticky_campaign', false);
+            })
+            ->where('created_at', '>=', $start)
+            ->count();
+
+        $sidebarCampaignCount = SidebarCampaign::where('admin_id', $admin->id)
+            ->where('created_at', '>=', $start)
+            ->count();
+
+        $hiddenLinksCampaignCount = HiddenLinksCampaign::where('admin_id', $admin->id)
+            ->where('created_at', '>=', $start)
+            ->count();
+
+        $scheduleCampaignCount = ScheduleCampaign::where('admin_id', $admin->id)
+            ->where('created_at', '>=', $start)
+            ->count();
+
+        $scheduleSidebarCampaignCount = ScheduleSidebarCampaign::where('admin_id', $admin->id)
+            ->where('created_at', '>=', $start)
+            ->count();
+
+        $wpScheduledCampaignCount = WpScheduledCampaign::where('admin_id', $admin->id)
+            ->where('created_at', '>=', $start)
+            ->count();
+
+        $allScheduledCampaigns = $scheduleCampaignCount + $scheduleSidebarCampaignCount + $wpScheduledCampaignCount;
+
+        return [
+            'range_key' => $range,
+            'range_label' => match ($range) {
+                'day' => 'Last 1 Day',
+                'week' => 'Last 1 Week',
+                default => 'Last 1 Year',
+            },
+            'start_at' => $start,
+            'rows' => [
+                ['label' => 'Articles', 'count' => $articleCount],
+                ['label' => 'Campaigns', 'count' => $campaignCount],
+                ['label' => 'Sidebar Campaigns', 'count' => $sidebarCampaignCount],
+                ['label' => 'Hidden Links Campaigns', 'count' => $hiddenLinksCampaignCount],
+                ['label' => 'Schedule Campaigns (Post)', 'count' => $scheduleCampaignCount],
+                ['label' => 'Schedule Sidebar Campaigns', 'count' => $scheduleSidebarCampaignCount],
+                ['label' => 'WP Scheduled Campaigns', 'count' => $wpScheduledCampaignCount],
+                ['label' => 'All Schedule Campaigns', 'count' => $allScheduledCampaigns],
+            ],
+        ];
     }
 
     /**

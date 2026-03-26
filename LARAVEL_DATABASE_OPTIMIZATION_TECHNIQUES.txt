@@ -1,0 +1,195 @@
+================================================================================
+   LARAVEL: REDUCE DATABASE HITTING & OPTIMIZE FOR HIGH REQUEST LOAD
+   Normal and advanced techniques for Laravel developers
+================================================================================
+
+--- 1. NORMAL / FOUNDATIONAL TECHNIQUES ---
+
+1.1  FIX N+1 QUERIES (Eager loading)
+-------------------------------------
+  - Always use with() when you will access relationships in a loop.
+  - BAD:  foreach (Post::all() as $p) { $p->user->name; }   // 1 + N queries
+  - GOOD: Post::with('user')->get(); then loop              // 2 queries
+  - Use withCount(), withSum(), withExists() when you only need counts/sums.
+  - Nested: with(['comments' => fn($q) => $q->latest()->limit(5)])
+
+1.2  SELECT ONLY COLUMNS YOU NEED
+---------------------------------
+  - BAD:  User::get()  or  User::all()
+  - GOOD: User::select('id','name','email')->get()
+  - In eager loading: User::with('posts:id,user_id,title')->get()
+  - Reduces memory and network between app and DB.
+
+1.3  USE PAGINATION INSTEAD OF get() FOR LARGE SETS
+---------------------------------------------------
+  - BAD:  Model::where(...)->get()   on 100k rows
+  - GOOD: Model::where(...)->paginate(50)  or  cursorPaginate(50)
+  - cursorPaginate() is better for very large tables (no OFFSET).
+
+1.4  CHUNKING FOR BULK READS/WRITES
+-----------------------------------
+  - Read: Model::chunk(500, function ($rows) { ... });
+  - Lazy: Model::lazy(500)  (Laravel 8+) for memory-efficient iteration
+  - Prevents loading 100k rows into memory at once.
+
+1.5  USE DATABASE INDEXES
+-------------------------
+  - Index columns used in WHERE, JOIN, ORDER BY, GROUP BY.
+  - Unique index for unique constraints (email, slug, etc.).
+  - Composite index for multiple columns in one query (order matters).
+  - Avoid over-indexing: each index slows writes; use for hot queries only.
+
+1.6  AVOID SELECT * IN RAW QUERIES
+----------------------------------
+  - Always list columns in SELECT in raw/DB::select().
+  - Keeps payload small and allows index-only scans where supported.
+
+1.7  USE TRANSACTIONS WISELY
+----------------------------
+  - Wrap multi-step writes in DB::transaction() to keep consistency and reduce round-trips.
+  - Keep transactions short; do not run heavy logic or external HTTP inside.
+
+1.8  BULK INSERTS / UPDATES
+---------------------------
+  - Insert: Model::insert([...])  or  upsert()  instead of many create().
+  - Update: Model::where(...)->update([...])  instead of loop + save().
+  - Fewer round-trips and less query overhead.
+
+--- 2. CACHING (REDUCE DATABASE HITTING) ---
+
+2.1  CACHE QUERY RESULTS
+------------------------
+  - Cache::remember('key', 3600, fn() => Model::with(...)->get());
+  - Use tags if supported (Redis): Cache::tags(['users'])->remember(...)
+  - Invalidate on create/update/delete (Cache::forget or tags()->flush).
+
+2.2  CACHE CONFIG / REFERENCE DATA
+----------------------------------
+  - config('...') is already cached with php artisan config:cache.
+  - Cache small lookup tables (categories, statuses) that change rarely.
+
+2.3  CACHE COMPUTED VALUES
+--------------------------
+  - Store counts, aggregates, or heavy computations in cache with TTL.
+  - Refresh via job or on write (observer/event).
+
+2.4  CACHE FULL PAGE / FRAGMENTS (VIEW CACHE)
+---------------------------------------------
+  - @cache('key', 3600)  or  Cache::remember in controller for view data.
+  - For full pages (e.g. public report): cache the whole HTML or key sections.
+
+--- 3. ADVANCED QUERY TECHNIQUES ---
+
+3.1  USE EXISTS / DOESNT EXIST INSTEAD OF COUNT
+-----------------------------------------------
+  - When you only need "any exists": whereExists()  instead of count() > 0.
+  - BAD:  if (User::where('active', 1)->count() > 0)
+  - GOOD: if (User::where('active', 1)->exists())
+
+3.2  USE UPDATES THAT AVOID LOADING MODELS
+------------------------------------------
+  - Model::where('id', $id)->update([...])   instead of find + save.
+  - Increment: Model::where(...)->increment('views')  / decrement().
+
+3.3  AVOID LAZY LOADING IN PRODUCTION
+-------------------------------------
+  - Prevent accidental N+1: in AppServiceProvider:
+      Model::preventLazyLoading(!app()->isProduction());
+  - Or use strict mode and always eager load where needed.
+
+3.4  USE SUBQUERIES / JOIN INSTEAD OF MULTIPLE QUERIES
+------------------------------------------------------
+  - Select with subquery: selectSub(Comment::selectRaw('count(*)')->whereColumn(...), 'comments_count')
+  - One query instead of N+1 for counts.
+
+3.5  QUERY SCOPE AND REUSE
+--------------------------
+  - Define scopes (scopeActive) and reuse; keeps queries consistent and index-friendly.
+  - Use shared query objects to add conditions once and reuse.
+
+--- 4. CONNECTION & CONFIGURATION ---
+
+4.1  PERSISTENT CONNECTIONS (MYSQL/PGSQL)
+-----------------------------------------
+  - In config/database.php: 'options' => [ PDO::ATTR_PERSISTENT => true ]
+  - Reduces connection overhead when handling many requests (use with care; can exhaust DB connections).
+
+4.2  READ REPLICAS (WRITE TO MASTER, READ FROM REPLICA)
+------------------------------------------------------
+  - config/database.php: 'mysql' => ['read' => ['host' => replica], 'write' => ['host' => master], 'sticky' => true]
+  - Laravel sends reads to replica and writes to master; balances load.
+
+4.3  CONNECTION POOL SIZE
+-------------------------
+  - Ensure max connections in DB server and in app (pool size) match expected concurrency.
+  - Too many connections = contention; too few = queueing.
+
+--- 5. JOBS & QUEUES (OFFLOAD DB WORK) ---
+
+5.1  MOVE HEAVY READS/WRITES TO JOBS
+------------------------------------
+  - Export, report generation, bulk updates: run in queued jobs.
+  - Web request returns fast; DB work happens in background.
+
+5.2  BATCH JOBS
+---------------
+  - Use Bus::batch() or chunk jobs (e.g. 100 records per job) to avoid one huge transaction.
+  - Reduces lock time and memory.
+
+5.3  RATE-LIMIT JOB DISPATCH
+----------------------------
+  - Use rate limiting (e.g. 100 sync jobs per minute) so DB is not hammered by many jobs at once.
+  - Throttle per queue or per job class.
+
+--- 6. MODEL & ELOQUENT OPTIMIZATION ---
+
+6.1  DISABLE UPDATED_AT WHEN NOT NEEDED
+---------------------------------------
+  - const UPDATED_AT = null;  on models that never need it (e.g. log tables).
+  - Saves one column update per save.
+
+6.2  USE UNGUARDED CAREFULLY
+----------------------------
+  - Prefer $fillable; avoid $guarded = [] in production for security.
+  - Mass assignment only for trusted input.
+
+6.3  AVOID LOADING RELATIONS YOU DON'T USE
+------------------------------------------
+  - with('relation') only when you will use $model->relation.
+  - Unset or makeAttributeHidden if you must load but not expose in JSON.
+
+--- 7. MONITORING & DEBUGGING ---
+
+7.1  ENABLE QUERY LOG (DEVELOPMENT ONLY)
+----------------------------------------
+  - DB::enableQueryLog(); ... DB::getQueryLog();
+  - Or use Laravel Debugbar / Telescope to spot N+1 and slow queries.
+
+7.2  SLOW QUERY LOG
+-------------------
+  - Enable in MySQL: slow_query_log, long_query_time.
+  - Find and index or rewrite slow queries.
+
+7.3  DATABASE METRICS
+----------------------
+  - Monitor connections, lock waits, replication lag (if using replicas).
+  - Use APM (e.g. Laravel Telescope, New Relic) to see query time per request.
+
+--- 8. QUICK REFERENCE CHECKLIST ---
+
+  [ ] Eager load relations in loops (with, withCount, etc.)
+  [ ] Select only needed columns (select, with('rel:id,foreign_id'))
+  [ ] Paginate or chunk large result sets (paginate, cursorPaginate, chunk, lazy)
+  [ ] Add indexes on WHERE / JOIN / ORDER BY columns
+  [ ] Cache expensive or rarely changing queries (Cache::remember)
+  [ ] Use exists() instead of count() when checking presence
+  [ ] Bulk insert/update instead of many single writes
+  [ ] Prefer update()/increment() over find+save when no model events needed
+  [ ] Run heavy DB work in queued jobs
+  [ ] Use read replicas if read volume is high
+  [ ] Prevent lazy loading in production (preventLazyLoading)
+  [ ] Rate limit manual actions that trigger many DB/sync operations
+
+================================================================================
+                              END OF DOCUMENT
+================================================================================

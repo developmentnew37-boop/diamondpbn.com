@@ -1036,8 +1036,8 @@ window.addEventListener("DOMContentLoaded", () => {
             // -------------------------
             // Date validation
             // -------------------------
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
+            const form = document.getElementById("campaign-form");
+            const isWpScheduled = form && form.action && String(form.action).indexOf("wp-schedule") !== -1;
 
             const fromDate = new Date(fromDateInp.value);
             const toDate = new Date(toDateInp.value);
@@ -1045,20 +1045,32 @@ window.addEventListener("DOMContentLoaded", () => {
             fromDate.setHours(0, 0, 0, 0);
             toDate.setHours(0, 0, 0, 0);
 
-            // Rule: From date must be today or future
-            if (fromDate < today) {
-                return { ok: false, msg: "From date must be today or a future date" };
+            // Rule: To date must be on or after from date
+            if (toDate < fromDate) {
+                return { ok: false, msg: "To date must be on or after From date" };
             }
 
-            // Rule: To date must be after from date
-            if (toDate <= fromDate) {
-                return { ok: false, msg: "To date must be at least 1 day after From date" };
-            }
-
-            // Rule: Minimum 1 day gap
-            const diffDays = (toDate - fromDate) / (1000 * 60 * 60 * 24);
-            if (diffDays < 1) {
-                return { ok: false, msg: "Campaign duration must be at least 1 day" };
+            // WP Scheduled: date distribution table must be generated and sum must equal post quantity
+            if (isWpScheduled) {
+                const distDiv = document.getElementById("wp-sch-date-distribution");
+                const tbody = document.getElementById("wp-sch-date-tbody");
+                if (distDiv && tbody) {
+                    const visible = distDiv.style.display !== "none";
+                    const inputs = tbody.querySelectorAll(".wp-sch-date-qty");
+                    if (!visible || !inputs.length) {
+                        return { ok: false, msg: "Click \"Generate date table\" and fill the number of posts per date." };
+                    }
+                    let sum = 0;
+                    inputs.forEach(function (inp) {
+                        sum += parseInt(inp.value, 10) || 0;
+                    });
+                    if (sum !== pq) {
+                        return {
+                            ok: false,
+                            msg: "The total in the date distribution table must equal the Post Quantity (" + pq + "). Current total: " + sum + ".",
+                        };
+                    }
+                }
             }
 
             // -------------------------

@@ -16,6 +16,7 @@ use App\Models\Admin\CampaignArticle;
 use App\Models\Admin\CampaignPost;
 use App\Models\Admin\CampaignDomain;
 use App\Models\Admin\Article;
+use App\Services\CampaignPostContentBuilder;
 use Throwable;
 
 class PublishCampaignPostJob implements ShouldQueue
@@ -73,9 +74,11 @@ class PublishCampaignPostJob implements ShouldQueue
             'campaignArticle.article',
         ]);
 
+
+
         try {
             // 🧠 STEP 2: Build content
-            [$title, $content] = $this->buildContent($post);
+            [$title, $content] = CampaignPostContentBuilder::build($post);
 
             // 🌐 STEP 3: Send to WordPress
             $remote = $this->postToWordPress($post, $title, $content);
@@ -83,25 +86,47 @@ class PublishCampaignPostJob implements ShouldQueue
             // ✅ STEP 4: Mark success
             DB::transaction(function () use ($post, $remote) {
 
+                // Lock campaign post
                 $fresh = CampaignPost::lockForUpdate()->find($post->id);
-                if (!$fresh || $fresh->lock_token !== $post->lock_token) return;
+                if (!$fresh || $fresh->lock_token !== $post->lock_token) {
+                    return;
+                }
 
-                $fresh->status        = 'success';
-                $fresh->remote_id    = $remote['post_id'] ?? null;
-                $fresh->remote_title = $post->campaignArticle->article->name;
-                $fresh->remote_url    = $remote['remote_url'] ?? null;
-                $fresh->published_at  = now();
-                $fresh->last_error    = null;
-                $fresh->next_retry_at = null;
-                $fresh->locked_at     = null;
-                $fresh->lock_token    = null;
-                $fresh->save();
+                // Update post status
+                $fresh->update([
+                    'status'        => 'success',
+                    'remote_id'     => $remote['post_id'] ?? null,
+                    'remote_title'  => $post->campaignArticle->article->name,
+                    'remote_url'    => $remote['remote_url'] ?? null,
+                    'published_at'  => now(),
+                    'last_error'    => null,
+                    'next_retry_at' => null,
+                    'locked_at'     => null,
+                    'lock_token'    => null,
+                ]);
 
-                Campaign::whereKey($fresh->campaign_id)
-                    ->increment('completed_targets');
+                // 🔒 LOCK campaign row FIRST
+                $campaign = Campaign::lockForUpdate()->find($fresh->campaign_id);
+                if (!$campaign) {
+                    return;
+                }
 
-                // Article::whereKey($fresh->campaignArticle->article_id)
-                //     ->update(['status' => 1]);
+                // ➕ Increment locally
+                $campaign->completed_targets++;
+
+                // ✅ Check completion
+                if ($campaign->completed_targets >= $campaign->total_targets) {
+                    $campaign->status = 'completed';
+                }
+
+                if ($campaign->completed_targets + $campaign->failed_targets > $campaign->total_targets) {
+                    $campaign->failed_targets--;
+                }
+
+                // 💾 Save once
+                $campaign->save();
+
+                // 🗑️ Remove article
                 Article::find($fresh->campaignArticle->article_id)?->delete();
             });
         } catch (Throwable $e) {
@@ -138,9 +163,27 @@ class PublishCampaignPostJob implements ShouldQueue
                     $fresh->locked_at  = null;
                     $fresh->lock_token = null;
                     $fresh->save();
+                    // first mark post as failed, then increment failed_targets in campaign
+                    $campaign = Campaign::lockForUpdate()->find($fresh->campaign_id);
 
-                    Campaign::whereKey($fresh->campaign_id)
-                        ->increment('failed_targets');
+                    if (!$campaign) return;
+
+                    $currentTotal = $campaign->completed_targets + $campaign->failed_targets; //
+
+                    // Only increment if it will not exceed total_targets
+                    if ($currentTotal < $campaign->total_targets) {
+
+                        $campaign->failed_targets++;
+
+                        // Optional status update
+                        if ($campaign->completed_targets > 0) {
+                            $campaign->status = 'semi_failed';
+                        } else {
+                            $campaign->status = 'failed';
+                        }
+
+                        $campaign->save();
+                    }
                 }
             });
         } finally {

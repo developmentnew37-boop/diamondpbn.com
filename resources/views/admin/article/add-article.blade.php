@@ -14,9 +14,6 @@
 
 @section('main-content')
 
-
-
-
     {{-- bread-crumbs --}}
     <div class="page-header">
         <div class="w-full flex flex-wrap items-center">

@@ -27,3 +27,5 @@ window.addEventListener('DOMContentLoaded', () => {
     //     console.log(title.value, content);
     // });
 });
+
+

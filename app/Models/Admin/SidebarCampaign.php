@@ -18,6 +18,13 @@ class SidebarCampaign extends Model
         'failed_targets',
         'started_at',
         'finished_at',
+        'last_bulk_updated_at',
+    ];
+
+    protected $casts = [
+        'started_at'           => 'datetime',
+        'finished_at'          => 'datetime',
+        'last_bulk_updated_at' => 'datetime',
     ];
 
 

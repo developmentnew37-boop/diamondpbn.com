@@ -23,34 +23,36 @@
             </div>
 
             <div class="w-1/2 flex flex-wrap justify-end items-center">
+                @if (Auth::guard('admin')->user()->canCreateCampaigns())
                 <a href="{{ route('admin.schedule.campaign.create') }}"
                     class="flex !p-2 !py-3 text-[16px] font-normal w-fit justify-center
                     bg-[var(--primary-color)] whitespace-nowrap hover:bg-[var(--primary-color)]/70
                     text-white rounded transition-all">
                     Create Schedule Campaign
                 </a>
+                @endif
             </div>
         </div>
     </div>
 
     {{-- success & error alerts --}}
-    <div class="w-full flex flex-col gap-2 items-center !mt-2">
+    <div class="w-full flex flex-col gap-2 items-center !mt-2 !mb-2">
         @if (session('cus__success') || session('cus__error'))
             <div class="w-full flex flex-col gap-2">
                 @if (session('cus__success'))
-                    <div class="!p-4 text-sm rounded bg-green-100 text-green-700">
+                    <div class="js-cus-alert !p-4 text-sm rounded bg-green-100 text-green-700" role="alert">
                         {{ session('cus__success') }}
                     </div>
                 @endif
 
                 @if (session('cus__error'))
-                    <div class="!p-4 text-sm rounded bg-red-100 text-red-700">
+                    <div class="js-cus-alert !p-4 text-sm rounded bg-red-100 text-red-700" role="alert">
                         {{ session('cus__error') }}
                     </div>
                 @endif
             </div>
         @endif
-    </div>
+    </div>  
 
     {{-- filters --}}
     <div class="flex flex-wrap items-center content-card w-full">
@@ -211,30 +213,48 @@
                             </td>
 
                             <td class="border !px-2 !py-3">
-                                <div class="flex flex-wrap gap-2 justify-center">
-                                    {{-- {{ route('admin.campaigns.report', $campaign->id) }} --}}
-                                    {{-- {{ route('admin.campaign.show', $campaign->id) }} --}}
+                                <div class="flex  gap-2 justify-center">
                                     <a href="{{ route('admin.schedule.campaign.show', $campaign->id) }}"
-                                        class="bg-green-500 flex items-center justify-center rounded w-7 h-7 hover:bg-green-600">
+                                        class="bg-green-500 flex items-center justify-center rounded w-7 h-7 hover:bg-green-600"
+                                        title="View campaign">
                                         <span class="material-symbols-outlined !text-sm text-white">visibility</span>
                                     </a>
 
+                                    <a href="{{ route('admin.schedule.campaign.edit', $campaign->id) }}"
+                                        class="bg-black flex items-center justify-center rounded w-7 h-7 hover:bg-amber-600"
+                                        title="Edit campaign">
+                                        <span class="material-symbols-outlined !text-sm text-white">edit</span>
+                                    </a>
+
                                     <a href="javascript:void(0)"
-                                        data-report="   {{ route('admin.schedule.campaign.report', [
+                                        data-report="{{ route('admin.schedule.campaign.report', [
                                             'campaign_no' => $campaign->campaign_no,
                                             'token' => $campaign->report_token,
                                         ]) }}"
-                                        class="bg-yellow-500 copy-link flex items-center justify-center rounded w-7 h-7 hover:bg-yellow-600">
+                                        class="bg-yellow-500 copy-link flex items-center justify-center rounded w-7 h-7 hover:bg-yellow-600"
+                                        title="Copy report link">
                                         <span class="material-symbols-outlined !text-sm text-white">content_copy</span>
                                     </a>
 
-                                    <a href="   {{ route('admin.schedule.campaign.report', [
+                                    <a href="{{ route('admin.schedule.campaign.report', [
                                         'campaign_no' => $campaign->campaign_no,
                                         'token' => $campaign->report_token,
                                     ]) }}"
-                                        class="bg-blue-700 flex items-center justify-center rounded w-7 h-7 hover:bg-blue-800">
+                                        target="_blank"
+                                        class="bg-blue-700 flex items-center justify-center rounded w-7 h-7 hover:bg-blue-800"
+                                        title="Open report">
                                         <span class="material-symbols-outlined !text-sm text-white">assignment</span>
                                     </a>
+
+                                    <form action="{{ route('admin.schedule.campaign.destroy', $campaign->id) }}" method="post" class="inline"
+                                        onsubmit="return confirm('Delete this campaign? All posts will be removed from the database and from the remote site.');">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="bg-red-500 flex items-center justify-center rounded w-7 h-7 hover:bg-red-600 border-0 cursor-pointer"
+                                            title="Delete campaign">
+                                            <span class="material-symbols-outlined !text-sm text-white">delete</span>
+                                        </button>
+                                    </form>
                                 </div>
                             </td>
                         </tr>
