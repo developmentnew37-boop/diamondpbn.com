@@ -107,6 +107,11 @@
 
 @section('main-content')
 
+    @php
+        $scheduleListRoute = !empty($isStickySchedule)
+            ? route('admin.schedule.sticky.campaign.index')
+            : route('admin.schedule.campaign.index');
+    @endphp
     {{-- bread-crumbs --}}
     <div class="page-header">
         <div class="w-full flex flex-wrap items-center">
@@ -122,7 +127,7 @@
                         <span>›</span>
                     </div>
                     <div class="breadcrumb-item">
-                        <a href="{{ route('admin.schedule.campaign.index') }}" class="breadcrumb-link">Schedule</a>
+                        <a href="{{ $scheduleListRoute }}" class="breadcrumb-link">{{ !empty($isStickySchedule) ? 'Schedule Sticky Post' : 'Schedule' }}</a>
                         <span>›</span>
                     </div>
                     <div class="breadcrumb-item">
@@ -131,7 +136,7 @@
                 </div>
             </div>
             <div class="w-1/2 flex flex-wrap justify-end items-center">
-                <a href="{{ route('admin.schedule.campaign.index') }}"
+                <a href="{{ $scheduleListRoute }}"
                     class="flex !p-2 !py-3 text-[16px] font-normal w-fit justify-center duration:300 bg-green-500 whitespace-nowrap hover:bg-[var(--primary-color)] text-white rounded ">Dripfeed
                     History</a>
             </div>
@@ -190,7 +195,11 @@
     <form action="{{ route('admin.schedule.campaign.store') }}" method="POST" id="campaign-form"
         class="w-full flex flex-wrap justify-between items-start content-card">
         @csrf
-        <h2 class="text-xl capitalize !mb-4 bg-[var(--primary-color)] text-white w-fit !p-2 rounded">Create Post Campaigns
+        @if (!empty($isStickySchedule))
+            <input type="hidden" name="is_sticky_campaign" value="1">
+        @endif
+        <h2 class="text-xl capitalize !mb-4 bg-[var(--primary-color)] text-white w-fit !p-2 rounded">
+            {{ !empty($isStickySchedule) ? 'Create Schedule Sticky Post Campaign' : 'Create Post Campaigns' }}
         </h2>
         {{-- xxxxxxxxxxxxxxxxxx campaigns button xxxxxxxxxxxxxxxxxxxxxxxxxxxx --}}
         <div class="w-full flex flex-wrap gap-5 !p-2">
@@ -978,6 +987,16 @@
 
                     <div id="domain-pagination" class="flex flex-wrap gap-2 mt-3 justify-center">
                     </div>
+                    <div class="w-full flex justify-end !mt-2">
+                        <div class="flex items-center gap-2">
+                            <button type="button" id="autoSelectRandomDomainsBtn"
+                                class="cursor-pointer bg-indigo-600 text-white rounded !px-3 !py-2 text-sm"
+                                style="background-color:#4f46e5 !important;color:#ffffff !important;">
+                                Auto Select Required
+                            </button>
+                            <span id="autoSelectRandomDomainsProgress" class="text-xs text-gray-700"></span>
+                        </div>
+                    </div>
                 </div>
 
             </div>
@@ -1102,6 +1121,16 @@
 
                     <div class="w-full flex justify-center !mt-4">
                         <div id="domain-set-pagination" class="flex flex-wrap gap-2 items-center">
+                        </div>
+                    </div>
+                    <div class="w-full flex justify-end !mt-2">
+                        <div class="flex items-center gap-2">
+                            <button type="button" id="autoSelectSetDomainsBtn"
+                                class="cursor-pointer bg-indigo-600 text-white rounded !px-3 !py-2 text-sm"
+                                style="background-color:#4f46e5 !important;color:#ffffff !important;">
+                                Auto Select Required
+                            </button>
+                            <span id="autoSelectSetDomainsProgress" class="text-xs text-gray-700"></span>
                         </div>
                     </div>
                 </div>
@@ -1234,6 +1263,12 @@
                         class="randomSelBtn cursor-pointer bg-blue-500 text-white  rounded !p-2 text-sm">
                         Random
                     </button>
+                    <button type="button" id="autoSelectArticlesBtn"
+                        class="cursor-pointer bg-indigo-600 text-white rounded !p-2 text-sm"
+                        style="background-color:#4f46e5 !important;color:#ffffff !important;">
+                        Auto Select Required
+                    </button>
+                    <span id="autoSelectArticlesProgress" class="text-xs text-gray-700"></span>
                 </div>
                 <a href="#" id="multiple-articles-select"
                     class="cursor-pointer bg-green-500 text-white rounded !p-3">

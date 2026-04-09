@@ -22,4 +22,9 @@ class SidebarCampaignLink extends Model
     {
         return $this->belongsTo(SidebarCampaign::class, 'sidebar_campaign_id');
     }
+
+    public function tasks()
+    {
+        return $this->hasMany(SidebarCampaignTask::class, 'sidebar_campaign_link_id');
+    }
 }

@@ -52,6 +52,7 @@
             top: 15px;
             right: 40px;
         }
+
     </style>
 @endpush
 
@@ -154,7 +155,7 @@
             </button>
             <button data-id="add-keywords-url" type="button"
                 class="group flex flex-col gap-3  rounded !p-2 cursor-pointer duration-300 transition-all hover:text-[var(--primary-color)]  w-fit text-lg tab-switcher">
-                <span>Add keywords & Url</span>
+                <span>URLs &amp; keywords</span>
                 <div class="w-full flex items-center gap-1">
                     <div class="flex items-center gap-1">
                         <span
@@ -284,8 +285,7 @@
         <div class="w-full !p-4 duration-500 transition-all campaigns-section hidden" id="add-keywords-url">
             <div class="w-full">
                 <button type="button" id="add-keywords-url-btn"
-                    class="bg-[var(--primary-color)] !p-3 text-white text-center rounded cursor-pointer">Add keywords &
-                    Urls</button>
+                    class="bg-[var(--primary-color)] !p-3 text-white text-center rounded cursor-pointer">Add multiple URLs &amp; keywords</button>
             </div>
 
             {{-- table for showing data  --}}
@@ -467,6 +467,16 @@
                     </table>
                     <div id="domain-pagination" class="flex flex-wrap gap-2 mt-3 justify-center">
                     </div>
+                    <div class="w-full flex justify-end !mt-2">
+                        <div class="flex items-center gap-2">
+                            <button type="button" id="autoSelectSidebarDomainsBtn"
+                                class="cursor-pointer bg-indigo-600 text-white rounded !px-3 !py-2 text-sm"
+                                style="background-color:#4f46e5 !important;color:#ffffff !important;">
+                                Auto Select Required
+                            </button>
+                            <span id="autoSelectSidebarDomainsProgress" class="text-xs text-gray-700"></span>
+                        </div>
+                    </div>
                 </div>
 
             </div>
@@ -589,6 +599,16 @@
                      {{-- ✅ PAGINATION GOES HERE --}}
                     <div class="w-full flex justify-center !mt-4">
                         <div id="domain-set-pagination" class="flex flex-wrap gap-2 items-center">
+                        </div>
+                    </div>
+                    <div class="w-full flex justify-end !mt-2">
+                        <div class="flex items-center gap-2">
+                            <button type="button" id="autoSelectSidebarSetDomainsBtn"
+                                class="cursor-pointer bg-indigo-600 text-white rounded !px-3 !py-2 text-sm"
+                                style="background-color:#4f46e5 !important;color:#ffffff !important;">
+                                Auto Select Required
+                            </button>
+                            <span id="autoSelectSidebarSetDomainsProgress" class="text-xs text-gray-700"></span>
                         </div>
                     </div>
                 </div>
@@ -745,10 +765,8 @@
                             value="bulk" data-id="bulk-keyword-url-container" hidden>
                     </label>
                 </div>
-                {{-- border-b border-b-[var(--primary-color)] --}}
-                <div class="w-full flex flex-col max-h-[280px] overflow-hidden overflow-y-auto  keyword-tab-sec"
+                <div class="w-full flex flex-col max-h-[280px] overflow-hidden overflow-y-auto keyword-tab-sec"
                     id="keyword-url-container">
-                    {{-- keyword url box here --}}
                     <div class="flex w-full bg-orange-100 keyword-url-box static-box relative">
                         <div class="w-3/5 flex flex-col gap-2 !p-4 !pt-[45px]">
                             <div class="w-full flex items-center">
@@ -762,16 +780,6 @@
                                         class="bg-gray-50 !p-2 text-sm outline-none text-center border border-gray-300 w-1/5 client-url-quantity num-inp">
                                 </div>
                             </div>
-                            {{-- <div class="w-full flex items-center">
-                                <label for=""
-                                    class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-1/5 ">Media
-                                    Link</label>
-                                <div class="w-4/5 flex items-center justify-between">
-                                    <textarea name="" id=""
-                                        class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none media-link" rows="2"
-                                        placeholder="Enter Media Link Here"></textarea>
-                                </div>
-                            </div> --}}
                             <div class="w-full flex items-center justify-end">
                                 <button type="button"
                                     class="!p-1 bg-red-600 rounded text-sm cursor-pointer text-white remove-keyword-box">delete</button>
@@ -804,9 +812,7 @@
                         <a href="javascript:void(0)" class="bg-blue-400 !p-2 text-sm rounded text-white"
                             id="add-more-keyword-URL">+Add More Url</a>
                     </div>
-
                 </div>
-                {{-- bulk url div here --}}
                 <div class="w-full flex flex-wrap justify-between max-h-[320px] overflow-hidden overflow-y-auto bg-gray-100 keyword-tab-sec hidden"
                     id="bulk-keyword-url-container">
                     <div class="w-[49.5%] flex flex-col gap-2">

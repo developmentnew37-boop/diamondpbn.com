@@ -1,9 +1,17 @@
 @extends('admin.layout.layout')
 
-@section('title', 'Scheduled Campaigns')
+@section('title', !empty($isStickySchedule) ? 'Schedule Sticky Posts' : 'Scheduled Campaigns')
 
 @section('main-content')
 
+    @php
+        $scheduleListRoute = !empty($isStickySchedule)
+            ? route('admin.schedule.sticky.campaign.index')
+            : route('admin.schedule.campaign.index');
+        $scheduleCreateRoute = !empty($isStickySchedule)
+            ? route('admin.schedule.sticky.campaign.create')
+            : route('admin.schedule.campaign.create');
+    @endphp
     {{-- bread-crumbs --}}
     <div class="page-header">
         <div class="w-full flex flex-wrap items-center">
@@ -15,8 +23,8 @@
                         <span>›</span>
                     </div>
                     <div class="breadcrumb-item">
-                        <a href="{{ route('admin.schedule.campaign.index') }}" class="breadcrumb-link">
-                            Scheduled Posts
+                        <a href="{{ $scheduleListRoute }}" class="breadcrumb-link">
+                            {{ !empty($isStickySchedule) ? 'Schedule Sticky Post' : 'Scheduled Posts' }}
                         </a>
                     </div>
                 </div>
@@ -24,11 +32,11 @@
 
             <div class="w-1/2 flex flex-wrap justify-end items-center">
                 @if (Auth::guard('admin')->user()->canCreateCampaigns())
-                <a href="{{ route('admin.schedule.campaign.create') }}"
+                <a href="{{ $scheduleCreateRoute }}"
                     class="flex !p-2 !py-3 text-[16px] font-normal w-fit justify-center
                     bg-[var(--primary-color)] whitespace-nowrap hover:bg-[var(--primary-color)]/70
                     text-white rounded transition-all">
-                    Create Schedule Campaign
+                    {{ !empty($isStickySchedule) ? 'Create Schedule Sticky Post' : 'Create Schedule Campaign' }}
                 </a>
                 @endif
             </div>
@@ -100,8 +108,17 @@
     {{-- table --}}
     <div class="w-full flex flex-wrap justify-between items-start content-card">
         <h2 class="text-xl capitalize !mb-4 bg-[var(--primary-color)] text-white !p-2 rounded">
-            Scheduled Campaigns
+            {{ !empty($isStickySchedule) ? 'Schedule Sticky Post Campaigns' : 'Scheduled Campaigns' }}
         </h2>
+        <form id="schedule-bulk-purge-local-form" action="{{ route('admin.schedule.campaign.bulk.purge.local') }}" method="POST" class="hidden">@csrf</form>
+        <div class="w-full flex flex-wrap items-center gap-2 !mb-2">
+            <button type="button" id="schedule-bulk-purge-local-btn"
+                class="!px-3 !py-2 rounded bg-orange-600 text-white text-sm hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Remove selected from this app only">
+                Bulk remove locally only
+            </button>
+            <span class="text-sm text-gray-500">Select with checkboxes; does not delete remote posts.</span>
+        </div>
 
         <div class="overflow-x-auto w-full">
             <table class="display w-full border border-gray-200 text-sm whitespace-nowrap searchable-table">
@@ -158,7 +175,7 @@
 
                         <tr class="hover:bg-gray-50">
                             <td class="border !px-2 !py-3 text-center">
-                                <input type="checkbox" class="multi-check" value="{{ $campaign->id }}">
+                                <input type="checkbox" class="multi-check campaign-bulk-cb" name="campaign_ids[]" value="{{ $campaign->id }}">
                             </td>
 
                             <td class="border !px-2 !py-3 text-center">
@@ -170,7 +187,7 @@
                             </td>
 
                             <td class="border !px-2 !py-3">
-                                Scheduled Campaign
+                                {{ !empty($isStickySchedule) ? 'Schedule Sticky Post' : 'Scheduled Campaign' }}
                             </td>
 
                             <td class="border !px-2 !py-3">
@@ -255,6 +272,14 @@
                                             <span class="material-symbols-outlined !text-sm text-white">delete</span>
                                         </button>
                                     </form>
+                                    <form action="{{ route('admin.schedule.campaign.purge.local', $campaign->id) }}" method="post" class="inline"
+                                        onsubmit="return confirm('Remove this campaign from the dashboard only? Remote posts stay published. You will not be able to edit this campaign here anymore.');">
+                                        @csrf
+                                        <button type="submit" class="bg-orange-500 flex items-center justify-center rounded w-7 h-7 hover:bg-orange-600 border-0 cursor-pointer"
+                                            title="Dashboard only — does not delete remote posts">
+                                            <span class="material-symbols-outlined !text-sm text-white">database</span>
+                                        </button>
+                                    </form>
                                 </div>
                             </td>
                         </tr>
@@ -262,7 +287,7 @@
                     @empty
                         <tr>
                             <td colspan="15" class="text-center !py-4 text-gray-500 bg-gray-100">
-                                No schedule campaigns found...
+                                {{ !empty($isStickySchedule) ? 'No schedule sticky post campaigns found...' : 'No schedule campaigns found...' }}
                             </td>
                         </tr>
                     @endforelse
@@ -280,4 +305,60 @@
 @push('scripts')
     <script src="{{ asset('js/updated_dynamic_dropdown.js') }}"></script>
     <script src="{{ asset('js/copy.js') }}"></script>
+    <script>
+        (function () {
+            var form = document.getElementById('schedule-bulk-purge-local-form');
+            var btn = document.getElementById('schedule-bulk-purge-local-btn');
+            if (!form || !btn) return;
+            btn.addEventListener('click', function () {
+                var ids = Array.prototype.slice.call(document.querySelectorAll('.campaign-bulk-cb:checked')).map(function (cb) { return cb.value; });
+                if (ids.length === 0) {
+                    alert('Please select at least one campaign.');
+                    return;
+                }
+                if (!confirm('Remove ' + ids.length + ' campaign(s) from this dashboard only? Remote posts will NOT be deleted.')) {
+                    return;
+                }
+                Array.prototype.slice.call(form.querySelectorAll('input[name="campaign_ids[]"]')).forEach(function (n) { n.remove(); });
+                ids.forEach(function (id) {
+                    var inp = document.createElement('input');
+                    inp.type = 'hidden';
+                    inp.name = 'campaign_ids[]';
+                    inp.value = id;
+                    form.appendChild(inp);
+                });
+                form.submit();
+            });
+            function syncPurgeBtn() {
+                btn.disabled = document.querySelectorAll('.campaign-bulk-cb:checked').length === 0;
+            }
+            function syncSelectAllHeader() {
+                var boxes = document.querySelectorAll('.campaign-bulk-cb');
+                var selAll = document.getElementById('bulk-checkBox-selector');
+                if (!selAll || boxes.length === 0) return;
+                var allOn = Array.prototype.every.call(boxes, function (c) { return c.checked; });
+                var anyOn = Array.prototype.some.call(boxes, function (c) { return c.checked; });
+                selAll.checked = allOn;
+                selAll.indeterminate = anyOn && !allOn;
+            }
+            document.querySelectorAll('.campaign-bulk-cb').forEach(function (cb) {
+                cb.addEventListener('change', function () {
+                    syncPurgeBtn();
+                    syncSelectAllHeader();
+                });
+            });
+            var selAll = document.getElementById('bulk-checkBox-selector');
+            if (selAll) {
+                selAll.addEventListener('change', function () {
+                    selAll.indeterminate = false;
+                    document.querySelectorAll('.campaign-bulk-cb').forEach(function (cb) {
+                        cb.checked = selAll.checked;
+                    });
+                    syncPurgeBtn();
+                });
+            }
+            syncPurgeBtn();
+            syncSelectAllHeader();
+        })();
+    </script>
 @endpush

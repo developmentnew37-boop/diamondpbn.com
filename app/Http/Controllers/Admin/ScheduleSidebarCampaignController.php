@@ -21,12 +21,18 @@ use Illuminate\Support\Facades\Cache;
 use Spatie\SimpleExcel\SimpleExcelWriter;
 use Illuminate\Support\Str;
 use App\Jobs\BulkUpdateScheduleSidebarBlogrollJob;
+use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
+use App\Http\Controllers\Admin\Concerns\ValidatesBulkCampaignIds;
 use App\Jobs\DeleteScheduleSidebarCampaignJob;
+use App\Services\PurgeLocalCampaignDataService;
 use App\Jobs\PublishScheduledSidebarBlogrollJob;
 use App\Services\BlogrollApiService;
 
 class ScheduleSidebarCampaignController extends Controller
 {
+    use AuthorizesAdminCampaign;
+    use ValidatesBulkCampaignIds;
+
     public function __construct()
     {
         $this->middleware('can.create.campaigns')->except(['report', 'exportReport']);
@@ -654,6 +660,7 @@ class ScheduleSidebarCampaignController extends Controller
     public function edit(string $id)
     {
         $campaign = ScheduleSidebarCampaign::findOrFail($id);
+        $this->authorizeCampaignAccess($campaign);
 
         $links = ScheduleSidebarCampaignLink::where('schedule_sidebar_campaign_id', $campaign->id)->get();
 
@@ -685,8 +692,20 @@ class ScheduleSidebarCampaignController extends Controller
         unset($batch);
 
         $distinctBatches = array_values(array_filter($batches, fn($b) => $b['count'] > 0));
+        $allLinksForBulk = ScheduleSidebarCampaignLink::where('schedule_sidebar_campaign_id', $campaign->id)
+            ->orderBy('id')
+            ->get(['id', 'anchor_keyword', 'target_url'])
+            ->map(fn ($link) => [
+                'link_id' => (int) $link->id,
+                'keyword' => trim((string) ($link->anchor_keyword ?? '')),
+                'url' => trim((string) ($link->target_url ?? '')),
+            ])
+            ->all();
 
-        return view('admin.campaigns.pbn-sidebar.edit-schedule-sidebar-campaign', compact('campaign', 'distinctBatches'));
+        return view(
+            'admin.campaigns.pbn-sidebar.edit-schedule-sidebar-campaign',
+            compact('campaign', 'distinctBatches', 'allLinksForBulk')
+        );
     }
 
     /**
@@ -704,7 +723,9 @@ class ScheduleSidebarCampaignController extends Controller
         $campaignNo = $this->generateUniqueCampaignNo($validated['campaign_no'], (int) $campaign->id);
         $campaign->update(['campaign_no' => $campaignNo]);
 
-        return back()->with('cus__success', 'Campaign updated.');
+        return back()
+            ->with('cus__success', 'Campaign updated.')
+            ->with('edit_schedule_sidebar_campaign_tab', 'campaign');
     }
 
     /**
@@ -718,14 +739,33 @@ class ScheduleSidebarCampaignController extends Controller
         }
 
         $representativeLinkIds = $request->input('batch_representative_link_id', []);
-        $batchKeywords         = $request->input('batch_keyword', []);
-        $batchUrls             = $request->input('batch_url', []);
-
         if (!is_array($representativeLinkIds)) {
             $representativeLinkIds = [];
         }
-        $batchKeywords = is_array($batchKeywords) ? array_values($batchKeywords) : [];
-        $batchUrls     = is_array($batchUrls) ? array_values($batchUrls) : [];
+        $isBulkTextarea = $request->exists('bulk_urls') && $request->exists('bulk_keywords');
+        $isSingleTab = ! $isBulkTextarea && $request->input('edit_kw_tab') === 'normal';
+        if ($isBulkTextarea) {
+            $expected = count($representativeLinkIds);
+            $batchUrls = $this->parseManualLinesStrict((string) $request->input('bulk_urls', ''), $expected);
+            $batchKeywords = $this->parseManualLinesStrict((string) $request->input('bulk_keywords', ''), $expected);
+            if ($batchUrls === null || $batchKeywords === null) {
+                return redirect()
+                    ->route('admin.schedule.sidebar.campaign.edit', $campaign->id)
+                    ->with('cus__error', 'Bulk URLs and Bulk Keywords must each have exactly ' . $expected . ' non-empty lines.')
+                    ->withInput($request->only(['bulk_urls', 'bulk_keywords']))
+                    ->with(
+                        'edit_schedule_sidebar_campaign_tab',
+                        in_array($request->input('edit_kw_tab'), ['normal', 'bulk'], true)
+                            ? $request->input('edit_kw_tab')
+                            : 'bulk'
+                    );
+            }
+        } else {
+            $batchKeywords = $request->input('batch_keyword', []);
+            $batchUrls = $request->input('batch_url', []);
+            $batchKeywords = is_array($batchKeywords) ? array_values($batchKeywords) : [];
+            $batchUrls = is_array($batchUrls) ? array_values($batchUrls) : [];
+        }
 
         $updates = [];
         $updatedBatches = 0;
@@ -751,11 +791,13 @@ class ScheduleSidebarCampaignController extends Controller
                 continue;
             }
 
-            $linkIds = ScheduleSidebarCampaignLink::where('schedule_sidebar_campaign_id', $campaign->id)
-                ->where('anchor_keyword', $representative->anchor_keyword)
-                ->where('target_url', $representative->target_url)
-                ->pluck('id')
-                ->all();
+            $linkIds = ($isBulkTextarea || $isSingleTab)
+                ? [$representative->id]
+                : ScheduleSidebarCampaignLink::where('schedule_sidebar_campaign_id', $campaign->id)
+                    ->where('anchor_keyword', $representative->anchor_keyword)
+                    ->where('target_url', $representative->target_url)
+                    ->pluck('id')
+                    ->all();
 
             ScheduleSidebarCampaignLink::whereIn('id', $linkIds)->update([
                 'anchor_keyword' => $newKeyword,
@@ -793,7 +835,13 @@ class ScheduleSidebarCampaignController extends Controller
 
         return redirect()
             ->route('admin.schedule.sidebar.campaign.edit', $campaign->id)
-            ->with($updatedBatches > 0 ? 'cus__success' : 'cus__error', $msg);
+            ->with($updatedBatches > 0 ? 'cus__success' : 'cus__error', $msg)
+            ->with(
+                'edit_schedule_sidebar_campaign_tab',
+                in_array($request->input('edit_kw_tab'), ['normal', 'bulk'], true)
+                    ? $request->input('edit_kw_tab')
+                    : 'bulk'
+            );
     }
 
     /**
@@ -811,6 +859,63 @@ class ScheduleSidebarCampaignController extends Controller
         return redirect()
             ->route('admin.schedule.sidebar.campaign.index')
             ->with('cus__success', 'Campaign deletion queued.');
+    }
+
+    private function parseManualLinesStrict(string $text, int $expectedCount): ?array
+    {
+        $lines = preg_split('/\r\n|\r|\n/', $text);
+        $lines = array_map(static fn ($line) => trim((string) $line), $lines ?: []);
+        $lines = array_values(array_filter($lines, static fn ($line) => $line !== ''));
+        if (count($lines) !== $expectedCount) {
+            return null;
+        }
+        return $lines;
+    }
+
+    /**
+     * Remove campaign data from this application only. Remote blogroll entries are not deleted.
+     */
+    public function purgeLocalOnly(string $id)
+    {
+        $campaign = ScheduleSidebarCampaign::find($id);
+        if (!$campaign) {
+            return back()->with('cus__error', 'Campaign not found');
+        }
+        $this->authorizeCampaignAccess($campaign);
+        PurgeLocalCampaignDataService::purgeScheduleSidebarCampaign((int) $campaign->id);
+
+        return redirect()
+            ->route('admin.schedule.sidebar.campaign.index')
+            ->with(
+                'cus__success',
+                'Campaign removed from this dashboard only. Remote blogroll links were not deleted.'
+            );
+    }
+
+    /**
+     * Remove multiple schedule sidebar campaigns from the database only (no remote API calls).
+     */
+    public function bulkPurgeLocal(Request $request)
+    {
+        $ids = $this->validatedBulkCampaignIds($request);
+        if ($ids === []) {
+            return back()->with('cus__error', 'No campaigns selected.');
+        }
+
+        $allowed = $this->campaignIdsOwnedByCurrentAdmin($ids, ScheduleSidebarCampaign::class);
+        if ($allowed === []) {
+            return back()->with('cus__error', 'No campaigns found or you do not have permission.');
+        }
+
+        foreach ($allowed as $id) {
+            PurgeLocalCampaignDataService::purgeScheduleSidebarCampaign($id);
+        }
+
+        $n = count($allowed);
+
+        return redirect()
+            ->route('admin.schedule.sidebar.campaign.index')
+            ->with('cus__success', $n . ' campaign(s) removed from this dashboard only. Remote blogroll links were not deleted.');
     }
 
     /**

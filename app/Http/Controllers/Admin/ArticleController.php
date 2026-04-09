@@ -11,6 +11,7 @@ use App\Models\Admin\Article;
 use Illuminate\Support\Facades\Auth;
 use PhpOffice\PhpWord\IOFactory;
 use Illuminate\Support\Facades\Cache;
+use App\Jobs\PermanentlyDeleteTrashedUsedArticlesJob;
 use App\Models\Admin;
 
 class ArticleController extends Controller
@@ -72,6 +73,265 @@ class ArticleController extends Controller
         );
     }
 
+    /**
+     * Base query: soft-deleted used articles for this admin, optional list filters, newest deleted first.
+     */
+    private function trashedUsedArticlesQuery(Request $request, Admin $admin)
+    {
+        $query = Article::onlyTrashed()
+            ->where('articles.status', Article::STATUS_USED)
+            ->when(
+                ! $admin->isSuperAdmin(),
+                fn ($q) => $q->where('articles.admin_id', $admin->id)
+            )
+            ->orderBy('articles.deleted_at', 'desc')
+            ->orderBy('articles.id', 'desc');
+
+        if ($request->filled('search')) {
+            $query->whereFullText(
+                ['name', 'description'],
+                $request->search
+            );
+        }
+
+        if ($request->filled('category')) {
+            $query->where('article_category_id', $request->category);
+        }
+
+        if ($request->filled('language')) {
+            $query->where('article_language_id', $request->language);
+        }
+
+        return $query;
+    }
+
+    /**
+     * List soft-deleted **used** articles only (status = used). Permanent removal is queued.
+     */
+    public function trashedIndex(Request $request)
+    {
+        $categories = Cache::remember('article_categories', 3600, function () {
+            return ArticleCategory::select('id', 'name')->get();
+        });
+
+        $languages = Cache::remember('article_languages', 3600, function () {
+            return ArticleLanguage::select('id', 'name')->get();
+        });
+
+        $limit = 100;
+        $admin = Auth::guard('admin')->user();
+
+        $query = $this->trashedUsedArticlesQuery($request, $admin);
+
+        $totalTrashedUsedMatchingFilters = (clone $query)->count();
+        $articles = (clone $query)
+            ->with([
+                'category:id,name',
+                'language:id,name',
+                'admin:id,name',
+            ])
+            ->paginate($limit)
+            ->appends($request->query());
+        $offset = ($articles->currentPage() - 1) * $limit;
+
+        $totalTrashedUsedForPurgeAll = Article::onlyTrashed()
+            ->where('articles.status', Article::STATUS_USED)
+            ->when(
+                ! $admin->isSuperAdmin(),
+                fn ($q) => $q->where('articles.admin_id', $admin->id)
+            )
+            ->count();
+
+        return view(
+            'admin.article.trashed-articles',
+            compact(
+                'categories',
+                'languages',
+                'articles',
+                'offset',
+                'totalTrashedUsedMatchingFilters',
+                'totalTrashedUsedForPurgeAll'
+            )
+        );
+    }
+
+    /**
+     * Queue permanent delete for one soft-deleted **used** article.
+     */
+    public function forceDestroy(string $id)
+    {
+        $admin = Auth::guard('admin')->user();
+        if (! $admin) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $query = Article::onlyTrashed()
+            ->whereKey($id)
+            ->where('status', Article::STATUS_USED);
+        if (! $admin->isSuperAdmin()) {
+            $query->where('admin_id', $admin->id);
+        }
+
+        $article = $query->first();
+        if (! $article) {
+            return back()->with(
+                'cus__error',
+                'Deleted used article not found, or it is not in the trash, or you do not have access.'
+            );
+        }
+
+        PermanentlyDeleteTrashedUsedArticlesJob::dispatch(
+            [(int) $article->id],
+            (int) $admin->id,
+            $admin->isSuperAdmin()
+        );
+
+        return back()->with(
+            'cus__success',
+            'Permanent removal has been queued. Ensure the queue worker is running (queue: article_permanent_purge).'
+        );
+    }
+
+    /**
+     * Queue permanent delete for selected soft-deleted **used** articles.
+     */
+    public function forceDestroyBulk(Request $request)
+    {
+        $admin = Auth::guard('admin')->user();
+        if (! $admin) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $validated = $request->validate([
+            'bulk_ids' => 'required|string',
+        ]);
+
+        $ids = array_values(array_unique(array_filter(array_map('intval', explode(',', $validated['bulk_ids'])))));
+        if ($ids === []) {
+            return back()->with('cus__error', 'No valid article ids were submitted.');
+        }
+
+        $query = Article::onlyTrashed()
+            ->where('status', Article::STATUS_USED)
+            ->whereIn('id', $ids);
+        if (! $admin->isSuperAdmin()) {
+            $query->where('admin_id', $admin->id);
+        }
+
+        $found = $query->pluck('id')->map(fn ($i) => (int) $i)->all();
+        $missing = array_diff($ids, $found);
+        if ($missing !== []) {
+            return back()->with(
+                'cus__error',
+                'Some selected rows are not deleted-used articles or are not yours: ' . implode(', ', $missing)
+            );
+        }
+
+        PermanentlyDeleteTrashedUsedArticlesJob::dispatch(
+            $found,
+            (int) $admin->id,
+            $admin->isSuperAdmin()
+        );
+
+        $n = count($found);
+
+        return back()->with(
+            'cus__success',
+            "Permanent removal of {$n} article(s) has been queued. Ensure the queue worker is running (queue: article_permanent_purge)."
+        );
+    }
+
+    /**
+     * Queue permanent delete for **all** soft-deleted **used** articles visible to this admin.
+     */
+    public function queuePurgeAllTrashedUsed(Request $request)
+    {
+        $admin = Auth::guard('admin')->user();
+        if (! $admin) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $count = Article::onlyTrashed()
+            ->where('status', Article::STATUS_USED)
+            ->when(
+                ! $admin->isSuperAdmin(),
+                fn ($q) => $q->where('admin_id', $admin->id)
+            )
+            ->count();
+
+        if ($count === 0) {
+            return back()->with('cus__error', 'No deleted used articles are in the trash to purge.');
+        }
+
+        PermanentlyDeleteTrashedUsedArticlesJob::dispatch(
+            null,
+            (int) $admin->id,
+            $admin->isSuperAdmin()
+        );
+
+        return back()->with(
+            'cus__success',
+            "Permanent removal of {$count} deleted used article(s) has been queued. Ensure the queue worker is running (queue: article_permanent_purge)."
+        );
+    }
+
+    /**
+     * Queue permanent delete for up to N soft-deleted used articles (newest deleted first).
+     * Uses the same search/category/language filters as the current list when passed in the request.
+     */
+    public function queuePurgeTrashedUsedByQuantity(Request $request)
+    {
+        $admin = Auth::guard('admin')->user();
+        if (! $admin) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $validated = $request->validate([
+            'quantity' => 'required|integer|min:1|max:500000',
+            'search'   => 'nullable|string|max:500',
+            'category' => 'nullable|integer|exists:article_categories,id',
+            'language' => 'nullable|integer|exists:article_languages,id',
+        ]);
+
+        $filterRequest = Request::create(
+            $request->url(),
+            'GET',
+            array_filter(
+                [
+                    'search'   => $validated['search'] ?? null,
+                    'category' => $validated['category'] ?? null,
+                    'language' => $validated['language'] ?? null,
+                ],
+                fn ($v) => $v !== null && $v !== ''
+            )
+        );
+
+        $query = $this->trashedUsedArticlesQuery($filterRequest, $admin);
+
+        $available = (clone $query)->count();
+        if ($available === 0) {
+            return back()->with(
+                'cus__error',
+                'No deleted used articles match the filters for this purge.'
+            );
+        }
+
+        $take = min($validated['quantity'], $available);
+        $ids = (clone $query)->limit($take)->pluck('id')->map(fn ($i) => (int) $i)->all();
+
+        PermanentlyDeleteTrashedUsedArticlesJob::dispatch(
+            $ids,
+            (int) $admin->id,
+            $admin->isSuperAdmin()
+        );
+
+        $msg = "Queued permanent removal of {$take} article(s) (newest deleted first). Ensure the queue worker is running (queue: article_permanent_purge).";
+        if ($take < $validated['quantity']) {
+            $msg .= " Only {$available} matched the current filters.";
+        }
+
+        return back()->with('cus__success', $msg);
+    }
 
     public function opt()
     {

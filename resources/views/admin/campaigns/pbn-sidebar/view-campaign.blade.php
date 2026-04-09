@@ -80,9 +80,6 @@
                         Campaign updated
                     </span>
                 @endif
-                @php
-                    $hasPublishedLinks = $campaignTasks->contains(fn($t) => $t->remote_id && $t->status === 'success');
-                @endphp
                 @if ($hasPublishedLinks)
                     <a href="{{ route('admin.sidebar.campaign.edit', $campaign->id) }}"
                         class="!px-3 !py-2 rounded bg-green-600 text-white text-sm hover:bg-green-700">

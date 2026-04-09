@@ -12,6 +12,8 @@ class ScheduleCampaignArticle extends Model
    protected $fillable = [
         'schedule_campaign_id',
         'article_id',
+        'article_title_snapshot',
+        'article_body_snapshot',
 
         // 🔥 SNAPSHOT DATA
         'keyword',

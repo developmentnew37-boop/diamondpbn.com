@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 420" fill="none" aria-hidden="true">
+  <defs>
+    <linearGradient id="h1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff4a17"/>
+      <stop offset="100%" stop-color="#c73a12"/>
+    </linearGradient>
+    <linearGradient id="h2" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1a1d26"/>
+      <stop offset="100%" stop-color="#252836"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <style type="text/css"><![CDATA[
+    @keyframes hubPulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.92; transform: scale(1.04); }
+    }
+    @keyframes barShine {
+      0%, 100% { opacity: 0.5; }
+      50% { opacity: 1; }
+    }
+    @keyframes lineFlow {
+      0%, 100% { opacity: 0.88; }
+      50% { opacity: 1; }
+    }
+    @keyframes nodeFloat {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-5px); }
+    }
+    @keyframes bgPulse {
+      0%, 100% { opacity: 0.1; }
+      50% { opacity: 0.16; }
+    }
+    @keyframes statusBlink {
+      0%, 100% { opacity: 0.65; }
+      50% { opacity: 1; }
+    }
+    .hub-group {
+      transform-origin: 260px 140px;
+      animation: hubPulse 3s ease-in-out infinite;
+    }
+    .line-a { animation: lineFlow 2.8s ease-in-out infinite; animation-delay: 0s; }
+    .line-b { animation: lineFlow 2.8s ease-in-out infinite; animation-delay: 0.35s; }
+    .line-c { animation: lineFlow 2.8s ease-in-out infinite; animation-delay: 0.7s; }
+    .line-d { animation: lineFlow 2.8s ease-in-out infinite; animation-delay: 0.2s; }
+    .line-e { animation: lineFlow 2.8s ease-in-out infinite; animation-delay: 0.55s; }
+    .line-f { animation: lineFlow 2.8s ease-in-out infinite; animation-delay: 0.9s; }
+    .bar-a { animation: barShine 2.2s ease-in-out infinite; animation-delay: 0s; }
+    .bar-b { animation: barShine 2.2s ease-in-out infinite; animation-delay: 0.25s; }
+    .bar-c { animation: barShine 2.2s ease-in-out infinite; animation-delay: 0.5s; }
+    .bar-d { animation: barShine 2.2s ease-in-out infinite; animation-delay: 0.75s; }
+    .bar-e { animation: barShine 2.2s ease-in-out infinite; animation-delay: 1s; }
+    .bar-f { animation: barShine 2.2s ease-in-out infinite; animation-delay: 1.15s; }
+    .bg-ellipse { animation: bgPulse 5s ease-in-out infinite; }
+    .node-float-1 { animation: nodeFloat 3.5s ease-in-out infinite; animation-delay: 0s; }
+    .node-float-2 { animation: nodeFloat 3.8s ease-in-out infinite; animation-delay: 0.4s; }
+    .node-float-3 { animation: nodeFloat 3.2s ease-in-out infinite; animation-delay: 0.8s; }
+    .node-float-4 { animation: nodeFloat 3.6s ease-in-out infinite; animation-delay: 0.2s; }
+    .node-float-5 { animation: nodeFloat 3.4s ease-in-out infinite; animation-delay: 0.6s; }
+    .node-float-6 { animation: nodeFloat 3.7s ease-in-out infinite; animation-delay: 1s; }
+    .status-dot { animation: statusBlink 1.8s ease-in-out infinite; }
+    @media (prefers-reduced-motion: reduce) {
+      .hub-group, .line-a, .line-b, .line-c, .line-d, .line-e, .line-f,
+      .bar-a, .bar-b, .bar-c, .bar-d, .bar-e, .bar-f,
+      .bg-ellipse, .node-float-1, .node-float-2, .node-float-3, .node-float-4, .node-float-5, .node-float-6,
+      .status-dot {
+        animation: none !important;
+      }
+    }
+  ]]></style>
+  <ellipse class="bg-ellipse" cx="380" cy="200" rx="160" ry="140" fill="url(#h1)" opacity="0.12"/>
+  <rect x="140" y="72" width="280" height="220" rx="16" fill="url(#h2)" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+  <rect x="156" y="88" width="120" height="10" rx="3" fill="rgba(255,255,255,0.08)"/>
+  <rect x="156" y="108" width="80" height="6" rx="2" fill="rgba(255,255,255,0.05)"/>
+  <rect class="bar-a" x="156" y="200" width="28" height="64" rx="4" fill="rgba(255,255,255,0.06)"/>
+  <rect class="bar-b" x="192" y="168" width="28" height="96" rx="4" fill="url(#h1)" opacity="0.85"/>
+  <rect class="bar-c" x="228" y="184" width="28" height="80" rx="4" fill="rgba(255,255,255,0.08)"/>
+  <rect class="bar-d" x="264" y="152" width="28" height="112" rx="4" fill="url(#h1)" opacity="0.55"/>
+  <rect class="bar-f" x="300" y="176" width="28" height="88" rx="4" fill="rgba(255,255,255,0.07)"/>
+  <rect class="bar-e" x="336" y="144" width="28" height="120" rx="4" fill="url(#h1)" opacity="0.95" filter="url(#glow)"/>
+  <rect x="156" y="288" width="248" height="1" fill="rgba(255,255,255,0.06)"/>
+  <rect x="156" y="302" width="180" height="8" rx="2" fill="rgba(255,255,255,0.06)"/>
+  <rect x="156" y="318" width="140" height="8" rx="2" fill="rgba(255,255,255,0.04)"/>
+  <circle class="status-dot" cx="388" cy="306" r="6" fill="url(#h1)" opacity="0.9"/>
+  <g class="hub-group">
+    <circle cx="260" cy="140" r="19" fill="#12141a" stroke="url(#h1)" stroke-width="1.5" stroke-opacity="0.9"/>
+    <path d="M252 140h16M260 132v16" stroke="url(#h1)" stroke-width="1.5" stroke-linecap="round" stroke-opacity="0.95"/>
+  </g>
+  <!-- Refined links: faint halo + thin core (no blur filter = no “neon tube”) -->
+  <g class="line-a">
+    <line x1="260" y1="140" x2="72" y2="100" stroke="#ff4a17" stroke-opacity="0.14" stroke-width="3" stroke-linecap="round"/>
+    <line x1="260" y1="140" x2="72" y2="100" stroke="#c96b4a" stroke-opacity="0.55" stroke-width="1.2" stroke-linecap="round"/>
+  </g>
+  <g class="line-b">
+    <line x1="260" y1="140" x2="48" y2="220" stroke="#ff4a17" stroke-opacity="0.12" stroke-width="3" stroke-linecap="round"/>
+    <line x1="260" y1="140" x2="48" y2="220" stroke="#9aa0aa" stroke-opacity="0.45" stroke-width="1.15" stroke-linecap="round"/>
+  </g>
+  <g class="line-c">
+    <line x1="260" y1="140" x2="88" y2="320" stroke="#ff4a17" stroke-opacity="0.11" stroke-width="3" stroke-linecap="round"/>
+    <line x1="260" y1="140" x2="88" y2="320" stroke="#9aa0aa" stroke-opacity="0.4" stroke-width="1.15" stroke-linecap="round"/>
+  </g>
+  <g class="line-d">
+    <line x1="260" y1="140" x2="448" y2="88" stroke="#ff4a17" stroke-opacity="0.15" stroke-width="3" stroke-linecap="round"/>
+    <line x1="260" y1="140" x2="448" y2="88" stroke="#d97252" stroke-opacity="0.58" stroke-width="1.2" stroke-linecap="round"/>
+  </g>
+  <g class="line-e">
+    <line x1="260" y1="140" x2="472" y2="200" stroke="#ff4a17" stroke-opacity="0.12" stroke-width="3" stroke-linecap="round"/>
+    <line x1="260" y1="140" x2="472" y2="200" stroke="#9aa0aa" stroke-opacity="0.42" stroke-width="1.15" stroke-linecap="round"/>
+  </g>
+  <g class="line-f">
+    <line x1="260" y1="140" x2="420" y2="340" stroke="#ff4a17" stroke-opacity="0.12" stroke-width="3" stroke-linecap="round"/>
+    <line x1="260" y1="140" x2="420" y2="340" stroke="#b56548" stroke-opacity="0.5" stroke-width="1.15" stroke-linecap="round"/>
+  </g>
+  <g transform="translate(72,100)">
+    <g class="node-float-1">
+      <circle cx="0" cy="0" r="11" fill="#181b24" stroke="rgba(255,74,23,0.38)" stroke-width="1.2"/>
+      <circle cx="0" cy="0" r="2.5" fill="url(#h1)" opacity="0.75"/>
+    </g>
+  </g>
+  <g transform="translate(48,220)">
+    <g class="node-float-2">
+      <circle cx="0" cy="0" r="9.5" fill="#181b24" stroke="rgba(255,255,255,0.14)" stroke-width="1.2"/>
+    </g>
+  </g>
+  <g transform="translate(88,320)">
+    <g class="node-float-3">
+      <circle cx="0" cy="0" r="9" fill="#181b24" stroke="rgba(255,255,255,0.11)" stroke-width="1.2"/>
+    </g>
+  </g>
+  <g transform="translate(448,88)">
+    <g class="node-float-4">
+      <circle cx="0" cy="0" r="10.5" fill="#181b24" stroke="url(#h1)" stroke-width="1.2" opacity="0.75"/>
+      <circle cx="0" cy="0" r="2.5" fill="url(#h1)" opacity="0.9"/>
+    </g>
+  </g>
+  <g transform="translate(472,200)">
+    <g class="node-float-5">
+      <circle cx="0" cy="0" r="8.5" fill="#181b24" stroke="rgba(255,255,255,0.11)" stroke-width="1.2"/>
+    </g>
+  </g>
+  <g transform="translate(420,340)">
+    <g class="node-float-6">
+      <circle cx="0" cy="0" r="9.5" fill="#181b24" stroke="rgba(255,74,23,0.28)" stroke-width="1.2"/>
+    </g>
+  </g>
+</svg>

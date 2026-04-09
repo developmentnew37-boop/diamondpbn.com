@@ -96,8 +96,14 @@ class DashboardController extends Controller
             ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
             ->count();
 
-        // Schedule Post Campaigns count
+        // Schedule Post Campaigns count (non-sticky only; sticky has its own list)
         $schedulePostCampaignsCount = ScheduleCampaign::query()
+            ->where('is_sticky_campaign', false)
+            ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
+            ->count();
+
+        $scheduleStickyPostCampaignsCount = ScheduleCampaign::query()
+            ->where('is_sticky_campaign', true)
             ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
             ->count();
 
@@ -166,6 +172,15 @@ class DashboardController extends Controller
                 'label' => 'Schedule Post Campaigns',
                 'bg' => 'bg-[#8cdcff]',
                 'stroke' => '#0094d4',
+                'icon' => '<circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>',
+                'visible' => true,
+            ],
+            [
+                'count' => $scheduleStickyPostCampaignsCount,
+                'label' => 'Schedule Sticky Post Campaigns',
+                'bg' => 'bg-[#b8e0ff]',
+                'stroke' => '#0077b6',
                 'icon' => '<circle cx="12" cy="12" r="10"></circle>
                     <polyline points="12 6 12 12 16 14"></polyline>',
                 'visible' => true,
@@ -321,6 +336,7 @@ class DashboardController extends Controller
             case 'dripfeed':
             case 'schedule':
                 $campaigns = ScheduleCampaign::query()
+                    ->where('is_sticky_campaign', false)
                     ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
                     ->with('domainCategory')
                     ->withCount('articles', 'domains')
@@ -336,6 +352,27 @@ class DashboardController extends Controller
                         'date' => $c->created_at->format('d-m-Y'),
                         'id' => $c->id,
                         'type' => 'schedule',
+                    ]);
+                break;
+
+            case 'schedule_sticky':
+                $campaigns = ScheduleCampaign::query()
+                    ->where('is_sticky_campaign', true)
+                    ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
+                    ->with('domainCategory')
+                    ->withCount('articles', 'domains')
+                    ->latest()
+                    ->take(10)
+                    ->get()
+                    ->map(fn($c) => [
+                        'campaign' => $c->campaign_no,
+                        'domain' => $c->domainCategory->name ?? 'N/A',
+                        'quantity' => $c->total_targets ?? 0,
+                        'links' => $c->articles_count ?? 0,
+                        'keywords' => $c->domains_count ?? 0,
+                        'date' => $c->created_at->format('d-m-Y'),
+                        'id' => $c->id,
+                        'type' => 'schedule_sticky',
                     ]);
                 break;
 

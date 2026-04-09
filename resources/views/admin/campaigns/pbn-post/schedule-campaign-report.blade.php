@@ -5,8 +5,7 @@
 @section('main-content')
 
     @php
-        // schedule campaigns are NOT sticky
-        $hasStickyPost = false;
+        $hasStickyPost = (bool) ($campaign->is_sticky_campaign ?? false);
     @endphp
 
     <div class="w-full flex flex-wrap justify-between items-start content-card">
@@ -16,7 +15,7 @@
         <div class="w-full flex md:flex-row flex-col gap-3 items-center">
             <div class="flex sm:w-1/2 w-full justify-center md:justify-start">
                 <h2 class="md:text-lg text-sm capitalize bg-[var(--primary-color)] text-white !p-3 rounded">
-                    {{ $campaign->campaign_no }} Scheduled Campaign Report
+                    {{ $campaign->campaign_no }} {{ $hasStickyPost ? 'Schedule Sticky Post' : 'Scheduled' }} Campaign Report
                 </h2>
             </div>
 
@@ -91,12 +90,15 @@
 
                             $ca = $post->campaignArticle;
 
-                            if ($keywordType === 'json') {
+                            if ($ca && ($ca->keyword_type ?? 'single') === 'json') {
                                 $keywords = json_decode($ca->keyword ?? '[]', true) ?? [];
                                 $urls = json_decode($ca->url ?? '[]', true) ?? [];
+                            } elseif ($ca) {
+                                $keywords = [trim((string) ($ca->keyword ?? ''))];
+                                $urls = [trim((string) ($ca->url ?? ''))];
                             } else {
-                                $keywords = [$ca->keyword ?? '-'];
-                                $urls = [$ca->url ?? '-'];
+                                $keywords = [];
+                                $urls = [];
                             }
                         @endphp
 
@@ -105,11 +107,12 @@
 
                             <td class="border !px-2 !py-3">{{ $domain }}</td>
 
-                            <td class="border !px-2 !py-3 break-all">
-                                @if ($post->remote_url)
-                                    <a href="{{ $post->remote_url }}" target="_blank" class="text-blue-600 hover:underline">
-                                        {{ $post->remote_url }}
-                                    </a>
+                            @php $blogLink = \App\Support\ReportDisplay::externalLink($post->remote_url); @endphp
+                            <td class="border !px-2 !py-3 max-w-[18rem] align-top">
+                                @if ($blogLink['href'] !== '')
+                                    <a href="{{ $blogLink['href'] }}" target="_blank" rel="noopener"
+                                        class="text-blue-600 hover:underline"
+                                        title="{{ $blogLink['title'] }}">{{ $blogLink['display'] }}</a>
                                 @else
                                     -
                                 @endif
@@ -117,12 +120,24 @@
 
                             @if ($keywordType === 'json')
                                 @for ($i = 0; $i < $maxKeywordCount; $i++)
-                                    <td class="border !px-2 !py-3">{{ $keywords[$i] ?? '-' }}</td>
-                                    <td class="border !px-2 !py-3 break-all">{{ $urls[$i] ?? '-' }}</td>
+                                    @php
+                                        $kwCell = \App\Support\ReportDisplay::keyword($keywords[$i] ?? null);
+                                        $urlCell = \App\Support\ReportDisplay::url($urls[$i] ?? null);
+                                    @endphp
+                                    <td class="border !px-2 !py-3 max-w-[12rem] align-top"
+                                        @if ($kwCell['title'] !== '') title="{{ $kwCell['title'] }}" @endif>{{ $kwCell['display'] }}</td>
+                                    <td class="border !px-2 !py-3 max-w-[18rem] align-top"
+                                        @if ($urlCell['title'] !== '') title="{{ $urlCell['title'] }}" @endif>{{ $urlCell['display'] }}</td>
                                 @endfor
                             @else
-                                <td class="border !px-2 !py-3">{{ $keywords[0] ?? '-' }}</td>
-                                <td class="border !px-2 !py-3 break-all">{{ $urls[0] ?? '-' }}</td>
+                                @php
+                                    $kwCell = \App\Support\ReportDisplay::keyword($keywords[0] ?? null);
+                                    $urlCell = \App\Support\ReportDisplay::url($urls[0] ?? null);
+                                @endphp
+                                <td class="border !px-2 !py-3 max-w-[12rem] align-top"
+                                    @if ($kwCell['title'] !== '') title="{{ $kwCell['title'] }}" @endif>{{ $kwCell['display'] }}</td>
+                                <td class="border !px-2 !py-3 max-w-[18rem] align-top"
+                                    @if ($urlCell['title'] !== '') title="{{ $urlCell['title'] }}" @endif>{{ $urlCell['display'] }}</td>
                             @endif
                             <td class="border !px-2 !py-3 text-center">
                                 {{ optional($post->schedule_at)->format('d-M-Y') ?? '-' }}

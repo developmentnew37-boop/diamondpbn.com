@@ -77,15 +77,20 @@
             <h2 class="text-xl capitalize bg-[var(--primary-color)] text-white w-fit !p-2 rounded">
                 Hidden Links Campaigns
             </h2>
-            <form id="bulk-delete-campaigns-form" action="{{ route('admin.hidden.link.campaign.bulk.delete') }}" method="POST" class="flex items-center gap-2">
-                @csrf
-                <div id="bulk-delete-campaign-ids-container"></div>
-                <button type="submit" id="bulk-delete-campaigns-btn" class="!px-3 !py-2 rounded bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Select one or more campaigns using the checkboxes, then click here">
-                    Bulk delete selected
-                </button>
-            </form>
-            <span class="text-sm text-gray-500">Select campaigns with checkboxes, then use &quot;Bulk delete selected&quot; or delete a single campaign with the red delete icon in each row.</span>
+            {{-- Separate forms (no nesting with per-row forms in the table). IDs submitted via JS. --}}
+            <form id="bulk-delete-campaigns-form" action="{{ route('admin.hidden.link.campaign.bulk.delete') }}" method="POST" class="hidden">@csrf</form>
+            <form id="bulk-purge-local-campaigns-form" action="{{ route('admin.hidden.link.campaign.bulk.purge.local') }}" method="POST" class="hidden">@csrf</form>
+            <button type="button" id="bulk-delete-campaigns-btn"
+                class="!px-3 !py-2 rounded bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Removes links from remote sites, then deletes data">
+                Bulk delete selected (remote + DB)
+            </button>
+            <button type="button" id="bulk-purge-local-campaigns-btn"
+                class="!px-3 !py-2 rounded bg-orange-600 text-white text-sm hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Only removes rows in this app; remote links stay">
+                Bulk remove locally only
+            </button>
+            <span class="text-sm text-gray-500">Select campaigns with checkboxes. Red = remote + database. Orange = this app only. Row icons work the same way.</span>
         </div>
 
         <div class="overflow-x-auto w-full">
@@ -149,7 +154,7 @@
 
                         <tr class="hover:bg-gray-50">
                             <td class="border !px-2 !py-2 text-center">
-                                <input type="checkbox" class="campaign-select-cb" name="campaign_ids[]" value="{{ $campaign->id }}" form="bulk-delete-campaigns-form">
+                                <input type="checkbox" class="campaign-select-cb" name="campaign_ids[]" value="{{ $campaign->id }}">
                             </td>
                             <td class="border !px-2 !py-2 text-center">
                                 {{ $index + 1 + $offset }}
@@ -210,7 +215,7 @@
                             </td>
 
                             <td class="border !px-2 !py-2">
-                                <div class="flex gap-2 justify-center flex-wrap">
+                                <div class="flex gap-2 justify-center">
                                     <a href="{{ route('admin.hidden.link.campaign.show', $campaign->id) }}"
                                         class="bg-green-500 w-7 h-7 flex items-center justify-center rounded" title="View campaign">
                                         <span class="material-symbols-outlined text-white !text-sm">visibility</span>
@@ -240,6 +245,13 @@
                                         <input type="hidden" name="campaign_ids[]" value="{{ $campaign->id }}">
                                         <button type="submit" class="bg-red-500 w-7 h-7 flex items-center justify-center rounded hover:bg-red-600 border-0 cursor-pointer" title="Delete this campaign">
                                             <span class="material-symbols-outlined text-white !text-sm">delete</span>
+                                        </button>
+                                    </form>
+                                    <form action="{{ route('admin.hidden.link.campaign.purge.local', $campaign->id) }}" method="POST" class="inline"
+                                        onsubmit="return confirm('Remove this campaign from the dashboard only? Remote hidden links stay. You will not be able to edit this campaign here anymore.');">
+                                        @csrf
+                                        <button type="submit" class="bg-orange-500 w-7 h-7 flex items-center justify-center rounded hover:bg-orange-600 border-0 cursor-pointer" title="Dashboard only — keeps remote links">
+                                            <span class="material-symbols-outlined text-white !text-sm">database</span>
                                         </button>
                                     </form>
                                 </div>
@@ -273,50 +285,79 @@
 
     <script>
         (function () {
-            var form = document.getElementById('bulk-delete-campaigns-form');
-            var bulkBtn = document.getElementById('bulk-delete-campaigns-btn');
-            var container = document.getElementById('bulk-delete-campaign-ids-container');
+            var formDelete = document.getElementById('bulk-delete-campaigns-form');
+            var formPurge = document.getElementById('bulk-purge-local-campaigns-form');
+            var bulkDeleteBtn = document.getElementById('bulk-delete-campaigns-btn');
+            var bulkPurgeBtn = document.getElementById('bulk-purge-local-campaigns-btn');
             var selectAll = document.getElementById('select-all-campaigns');
             var checkboxes = document.querySelectorAll('.campaign-select-cb');
 
-            function updateBulkDeleteState() {
-                var checked = document.querySelectorAll('.campaign-select-cb:checked');
-                var any = checked.length > 0;
-                if (bulkBtn) bulkBtn.disabled = !any;
-                if (container) {
-                    container.innerHTML = '';
-                    checked.forEach(function (cb) {
-                        var inp = document.createElement('input');
-                        inp.type = 'hidden';
-                        inp.name = 'campaign_ids[]';
-                        inp.value = cb.value;
-                        container.appendChild(inp);
-                    });
-                }
+            function selectedCampaignIds() {
+                return Array.prototype.slice.call(document.querySelectorAll('.campaign-select-cb:checked')).map(function (cb) {
+                    return cb.value;
+                });
             }
 
-            if (form) {
-                form.addEventListener('submit', function () {
-                    var checked = document.querySelectorAll('.campaign-select-cb:checked');
-                    if (checked.length === 0) {
-                        alert('Please select at least one campaign to delete.');
-                        return false;
+            function fillFormWithCampaignIds(formEl, ids) {
+                Array.prototype.slice.call(formEl.querySelectorAll('input[name="campaign_ids[]"]')).forEach(function (n) {
+                    n.remove();
+                });
+                ids.forEach(function (id) {
+                    var inp = document.createElement('input');
+                    inp.type = 'hidden';
+                    inp.name = 'campaign_ids[]';
+                    inp.value = id;
+                    formEl.appendChild(inp);
+                });
+            }
+
+            function updateBulkButtonsState() {
+                var any = selectedCampaignIds().length > 0;
+                if (bulkDeleteBtn) bulkDeleteBtn.disabled = !any;
+                if (bulkPurgeBtn) bulkPurgeBtn.disabled = !any;
+            }
+
+            if (bulkDeleteBtn && formDelete) {
+                bulkDeleteBtn.addEventListener('click', function () {
+                    var ids = selectedCampaignIds();
+                    if (ids.length === 0) {
+                        alert('Please select at least one campaign.');
+                        return;
                     }
-                    return confirm('Delete selected campaign(s)? Links will be removed from remote sites, then campaigns and data deleted.');
+                    if (!confirm('Delete selected campaign(s) from remote sites and from the database?')) {
+                        return;
+                    }
+                    fillFormWithCampaignIds(formDelete, ids);
+                    formDelete.submit();
+                });
+            }
+
+            if (bulkPurgeBtn && formPurge) {
+                bulkPurgeBtn.addEventListener('click', function () {
+                    var ids = selectedCampaignIds();
+                    if (ids.length === 0) {
+                        alert('Please select at least one campaign.');
+                        return;
+                    }
+                    if (!confirm('Remove selected campaign(s) from this dashboard only? Remote hidden links will NOT be deleted.')) {
+                        return;
+                    }
+                    fillFormWithCampaignIds(formPurge, ids);
+                    formPurge.submit();
                 });
             }
 
             if (selectAll) {
                 selectAll.addEventListener('change', function () {
                     checkboxes.forEach(function (cb) { cb.checked = selectAll.checked; });
-                    updateBulkDeleteState();
+                    updateBulkButtonsState();
                 });
             }
             checkboxes.forEach(function (cb) {
-                cb.addEventListener('change', updateBulkDeleteState);
+                cb.addEventListener('change', updateBulkButtonsState);
             });
 
-            updateBulkDeleteState();
+            updateBulkButtonsState();
         })();
     </script>
 @endpush

@@ -27,7 +27,7 @@
           'admin.articles.language',
           'admin.articles.upload',
       ];
-      $dripfeedRoutes = ['admin.schedule.campaign', 'admin.schedule.sidebar.campaign', 'admin.wp.schedule.campaign'];
+      $dripfeedRoutes = ['admin.schedule.campaign', 'admin.schedule.sticky.campaign', 'admin.schedule.sidebar.campaign', 'admin.wp.schedule.campaign'];
       $userRoutes = ['admin.user'];
   @endphp
   <!-- Sidebar -->
@@ -142,7 +142,7 @@
               <div class="menu-title">Articles</div>
 
               <a href="{{ route('admin.article.index') }}"
-                  class="menu-item {{ str_starts_with($currentRoute, 'admin.article.') ? 'active' : '' }}">
+                  class="menu-item {{ str_starts_with($currentRoute, 'admin.article.') && ! str_starts_with($currentRoute, 'admin.article.trashed') ? 'active' : '' }}">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="menu-icon">
                       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                       <polyline points="14 2 14 8 20 8"></polyline>
@@ -151,6 +151,18 @@
                       <polyline points="10 9 9 9 8 9"></polyline>
                   </svg>
                   <span class="menu-text">Articles</span>
+              </a>
+
+              <a href="{{ route('admin.article.trashed.index') }}"
+                  class="menu-item {{ str_starts_with($currentRoute, 'admin.article.trashed') ? 'active' : '' }}">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="menu-icon">
+                      <path d="M3 6h18"></path>
+                      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                      <line x1="10" y1="11" x2="10" y2="17"></line>
+                      <line x1="14" y1="11" x2="14" y2="17"></line>
+                  </svg>
+                  <span class="menu-text">Deleted used articles</span>
               </a>
 
               <div class="menu-item side-menu-btn {{ $isActive($articleAddRoutes) ? 'active' : '' }}"
@@ -214,8 +226,10 @@
               </div>
               <div class="submenu {{ $isActive($dripfeedRoutes) ? 'open' : '' }}">
                   <a href="{{ route('admin.schedule.campaign.index') }}"
-                      class="submenu-item {{ str_starts_with($currentRoute, 'admin.schedule.campaign') && !str_starts_with($currentRoute, 'admin.wp.schedule') ? 'active' : '' }}">Schedule
+                      class="submenu-item {{ str_starts_with($currentRoute, 'admin.schedule.campaign') && !str_starts_with($currentRoute, 'admin.wp.schedule') && !str_starts_with($currentRoute, 'admin.schedule.sticky.campaign') ? 'active' : '' }}">Schedule
                       Post</a>
+                  <a href="{{ route('admin.schedule.sticky.campaign.index') }}"
+                      class="submenu-item {{ str_starts_with($currentRoute, 'admin.schedule.sticky.campaign') ? 'active' : '' }}">Schedule Sticky Post</a>
                   <a href="{{ route('admin.wp.schedule.campaign.index') }}"
                       class="submenu-item {{ str_starts_with($currentRoute, 'admin.wp.schedule.campaign') ? 'active' : '' }}">WP Scheduled</a>
                   <a href="{{ route('admin.schedule.sidebar.campaign.index') }}"

@@ -18,18 +18,25 @@ class WpScheduledPostContentBuilder
      */
     public static function build(WpScheduledCampaignPost $post): array
     {
-        $article = $post->campaignArticle->article ?? null;
-        if (!$article) {
-            throw new \Exception("Article not found. post_id={$post->id}");
-        }
-
-        $title = trim((string) $article->name);
-        $html = trim((string) $article->description);
-        if ($title === '' || $html === '') {
-            throw new \Exception("Article missing content");
-        }
-
         $ca = $post->campaignArticle;
+        if (! $ca) {
+            throw new \Exception("Campaign article not found. post_id={$post->id}");
+        }
+
+        $article = $ca->article;
+        if ($article) {
+            $title = trim((string) $article->name);
+            $html = trim((string) $article->description);
+        } else {
+            $title = trim((string) ($ca->article_title_snapshot ?? ''));
+            $html = trim((string) ($ca->article_body_snapshot ?? ''));
+        }
+
+        if ($title === '' || $html === '') {
+            throw new \Exception(
+                "Article content missing for post_id={$post->id} (library article removed; snapshots required)."
+            );
+        }
         $keywords = $ca->keyword_type === 'json' ? json_decode($ca->keyword, true) : [$ca->keyword];
         $urls = $ca->url_type === 'json' ? json_decode($ca->url, true) : [$ca->url];
         if (!is_array($keywords) || !is_array($urls)) {

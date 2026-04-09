@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\ExtraKeywordLinksHtmlInserter;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -83,21 +84,7 @@ class RemotePostUpdateService
      */
     public static function appendLinksToHtml(string $html, array $addPairs): string
     {
-        if (count($addPairs) === 0) {
-            return $html;
-        }
-        $links = [];
-        foreach ($addPairs as $pair) {
-            if (count($pair) >= 2 && ($pair[0] !== '' || $pair[1] !== '')) {
-                $url  = htmlspecialchars($pair[1], ENT_QUOTES, 'UTF-8');
-                $text = htmlspecialchars($pair[0], ENT_QUOTES, 'UTF-8');
-                $links[] = '<a href="' . $url . '" target="_blank" rel="noopener">' . $text . '</a>';
-            }
-        }
-        if (count($links) === 0) {
-            return $html;
-        }
-        return $html . "\n" . '<p>' . implode(' ', $links) . '</p>';
+        return ExtraKeywordLinksHtmlInserter::insertBetweenParagraphs($html, $addPairs, 'noopener');
     }
 
     /**

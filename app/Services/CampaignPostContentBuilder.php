@@ -19,19 +19,25 @@ class CampaignPostContentBuilder
     {
         $post->loadMissing(['campaignArticle.article', 'campaignArticle']);
 
-        $article = $post->campaignArticle?->article;
-        if (!$article) {
-            throw new \Exception("Article not found for campaign_post_id={$post->id}");
+        $ca = $post->campaignArticle;
+        if (! $ca) {
+            throw new \Exception("Campaign article not found for campaign_post_id={$post->id}");
         }
 
-        $title = trim((string) $article->name);
-        $html  = trim((string) $article->description);
+        $article = $ca->article;
+        if ($article) {
+            $title = trim((string) $article->name);
+            $html  = trim((string) $article->description);
+        } else {
+            $title = trim((string) ($ca->article_title_snapshot ?? ''));
+            $html  = trim((string) ($ca->article_body_snapshot ?? ''));
+        }
 
         if ($title === '' || $html === '') {
-            throw new \Exception("Article missing content");
+            throw new \Exception(
+                "Article content missing for campaign_post_id={$post->id} (link to library article removed; fill snapshots or restore article)."
+            );
         }
-
-        $ca = $post->campaignArticle;
 
         $keywords = $ca->keyword_type === 'json'
             ? json_decode($ca->keyword, true)

@@ -130,12 +130,16 @@
     {{-- ******************* Ends here  ***************** --}}
 
     <div class="w-full flex flex-wrap justify-between items-start content-card">
-        @csrf
         <h2 class="text-xl capitalize !mb-4 bg-[var(--primary-color)] text-white w-fit !p-2 rounded">Sidebar Campaigns
         </h2>
-        {{-- xxxxxxxxxxxxxxxxxx campaigns button xxxxxxxxxxxxxxxxxxxxxxxxxxxx --}}
-
-        {{-- table code here --}}
+        <form id="schedule-sidebar-bulk-purge-local-form" action="{{ route('admin.schedule.sidebar.campaign.bulk.purge.local') }}" method="POST" class="hidden">@csrf</form>
+        <div class="w-full flex flex-wrap items-center gap-2 !mb-2">
+            <button type="button" id="schedule-sidebar-bulk-purge-local-btn"
+                class="!px-3 !py-2 rounded bg-orange-600 text-white text-sm hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                Bulk remove locally only
+            </button>
+            <span class="text-sm text-gray-500">Select with checkboxes; remote blogroll is not changed.</span>
+        </div>
 
         <div class="overflow-x-auto !mt-3 w-full">
             <table class="display w-full border border-gray-200 border-collapse text-sm whitespace-nowrap searchable-table">
@@ -219,7 +223,7 @@
 
                             {{-- checkbox --}}
                             <td class="border border-gray-200 !px-2 !py-3 text-center">
-                                <input type="checkbox" class="multi-check" value="{{ $campaign->id }}">
+                                <input type="checkbox" class="multi-check campaign-bulk-cb" name="campaign_ids[]" value="{{ $campaign->id }}">
                             </td>
 
                             {{-- sno --}}
@@ -342,6 +346,13 @@
                                             <span class="material-symbols-outlined text-white !text-sm">delete</span>
                                         </button>
                                     </form>
+                                    <form action="{{ route('admin.schedule.sidebar.campaign.purge.local', $campaign->id) }}" method="post" class="inline"
+                                        onsubmit="return confirm('Remove this campaign from the dashboard only? Remote blogroll links stay. You will not be able to edit this campaign here anymore.');">
+                                        @csrf
+                                        <button type="submit" class="bg-orange-500 w-7 h-7 flex items-center justify-center rounded hover:bg-orange-600 border-0 cursor-pointer" title="Dashboard only — keeps remote links">
+                                            <span class="material-symbols-outlined text-white !text-sm">database</span>
+                                        </button>
+                                    </form>
                                 </div>
                             </td>
 
@@ -373,4 +384,48 @@
 @push('scripts')
     <script src="{{ asset('js/updated_dynamic_dropdown.js') }}"></script>
     <script src="{{ asset('js/copy.js') }}"></script>
+    <script>
+        (function () {
+            var form = document.getElementById('schedule-sidebar-bulk-purge-local-form');
+            var btn = document.getElementById('schedule-sidebar-bulk-purge-local-btn');
+            if (!form || !btn) return;
+            btn.addEventListener('click', function () {
+                var ids = Array.prototype.slice.call(document.querySelectorAll('.campaign-bulk-cb:checked')).map(function (cb) { return cb.value; });
+                if (ids.length === 0) { alert('Please select at least one campaign.'); return; }
+                if (!confirm('Remove ' + ids.length + ' campaign(s) from this dashboard only? Remote blogroll links will NOT be deleted.')) return;
+                Array.prototype.slice.call(form.querySelectorAll('input[name="campaign_ids[]"]')).forEach(function (n) { n.remove(); });
+                ids.forEach(function (id) {
+                    var inp = document.createElement('input');
+                    inp.type = 'hidden';
+                    inp.name = 'campaign_ids[]';
+                    inp.value = id;
+                    form.appendChild(inp);
+                });
+                form.submit();
+            });
+            function sync() { btn.disabled = document.querySelectorAll('.campaign-bulk-cb:checked').length === 0; }
+            function syncSelectAllHeader() {
+                var boxes = document.querySelectorAll('.campaign-bulk-cb');
+                var selAll = document.getElementById('bulk-checkBox-selector');
+                if (!selAll || boxes.length === 0) return;
+                var allOn = Array.prototype.every.call(boxes, function (c) { return c.checked; });
+                var anyOn = Array.prototype.some.call(boxes, function (c) { return c.checked; });
+                selAll.checked = allOn;
+                selAll.indeterminate = anyOn && !allOn;
+            }
+            document.querySelectorAll('.campaign-bulk-cb').forEach(function (cb) {
+                cb.addEventListener('change', function () { sync(); syncSelectAllHeader(); });
+            });
+            var selAll = document.getElementById('bulk-checkBox-selector');
+            if (selAll) {
+                selAll.addEventListener('change', function () {
+                    selAll.indeterminate = false;
+                    document.querySelectorAll('.campaign-bulk-cb').forEach(function (cb) { cb.checked = selAll.checked; });
+                    sync();
+                });
+            }
+            sync();
+            syncSelectAllHeader();
+        })();
+    </script>
 @endpush

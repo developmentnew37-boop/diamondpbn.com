@@ -15,8 +15,13 @@ use App\Models\Admin\ScheduleCampaignDomain;
 use App\Models\Admin\ScheduleCampaignArticle;
 use App\Models\Admin\ScheduleCampaignPost;
 use App\Models\Admin\ScheduleCampaignDate;
+use App\Support\WordPressApiFetchedPost;
+use App\Services\CampaignKeywordPairValidator;
 use App\Jobs\BulkUpdateScheduleCampaignPostsJob;
+use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
+use App\Http\Controllers\Admin\Concerns\ValidatesBulkCampaignIds;
 use App\Jobs\DeleteScheduleCampaignJob;
+use App\Services\PurgeLocalCampaignDataService;
 use App\Jobs\PublishScheduledCampaignPostJob;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -25,10 +30,14 @@ use Spatie\SimpleExcel\SimpleExcelWriter;
 use App\Models\Admin\Article;
 use App\Models\Admin\ArticleLanguage;
 use Illuminate\Support\Str;
+use App\Services\EditCampaignMultiLevelKeywordState;
 
 
 class ScheduleCampaignController extends Controller
 {
+    use AuthorizesAdminCampaign;
+    use ValidatesBulkCampaignIds;
+
     public function __construct()
     {
         $this->middleware('can.create.campaigns')->except(['report', 'exportReport']);
@@ -43,6 +52,7 @@ class ScheduleCampaignController extends Controller
         $limit = 100;
 
         $query = ScheduleCampaign::query()
+            ->where('is_sticky_campaign', false)
             ->with([
                 'domainCategory',
             ]);
@@ -69,7 +79,45 @@ class ScheduleCampaignController extends Controller
 
         return view(
             'admin.campaigns.pbn-post.schedule-campaign',
-            compact('campaigns', 'offset')
+            array_merge(compact('campaigns', 'offset'), ['isStickySchedule' => false])
+        );
+    }
+
+    /**
+     * Scheduled sticky post campaigns (same flow as schedule post, is_sticky on API).
+     */
+    public function indexSticky(Request $request)
+    {
+        $limit = 100;
+
+        $query = ScheduleCampaign::query()
+            ->where('is_sticky_campaign', true)
+            ->with([
+                'domainCategory',
+            ]);
+
+        if ($request->filled('search')) {
+            $query->where(
+                'campaign_no',
+                'LIKE',
+                '%' . trim($request->search) . '%'
+            );
+        }
+        $admin = Auth::guard('admin')->user();
+        if (!$admin->isSuperAdmin()) {
+            $query->where('admin_id', $admin->id);
+        }
+
+        $campaigns = $query
+            ->orderByDesc('id')
+            ->paginate($limit)
+            ->appends($request->all());
+
+        $offset = ($campaigns->currentPage() - 1) * $limit;
+
+        return view(
+            'admin.campaigns.pbn-post.schedule-campaign',
+            array_merge(compact('campaigns', 'offset'), ['isStickySchedule' => true])
         );
     }
 
@@ -93,7 +141,35 @@ class ScheduleCampaignController extends Controller
                 ->whereNull('lock_at');
         }])->having('article_count', '>', 0)->get();
         // return view('admin.campaigns.pbn-post.create-campaign',);
-        return view('admin.campaigns.pbn-post.create-schedule-campaign', compact('campaignId', 'domainCategory', 'articleCategory', 'articleSet', 'domainSets', 'articleLanguages'));
+        return view(
+            'admin.campaigns.pbn-post.create-schedule-campaign',
+            array_merge(
+                compact('campaignId', 'domainCategory', 'articleCategory', 'articleSet', 'domainSets', 'articleLanguages'),
+                ['isStickySchedule' => false]
+            )
+        );
+    }
+
+    public function createSticky()
+    {
+        $campaignId = 'SST-' . now()->format('YmdHis') . '-' . random_int(1000, 9999);
+        $domainCategory = DomainCategory::all();
+        $articleCategory = ArticleCategory::all();
+        $articleSet = ArticleSet::withCount('articles')->where('admin_id', auth('admin')->id())->get();
+        $domainSets = DomainSet::where('admin_id', Auth::guard('admin')->id())->get();
+        $articleLanguages = ArticleLanguage::withCount(['Article' => function ($query) {
+            $query->where('status', 0)
+                ->whereNull('deleted_at')
+                ->whereNull('lock_at');
+        }])->having('article_count', '>', 0)->get();
+
+        return view(
+            'admin.campaigns.pbn-post.create-schedule-campaign',
+            array_merge(
+                compact('campaignId', 'domainCategory', 'articleCategory', 'articleSet', 'domainSets', 'articleLanguages'),
+                ['isStickySchedule' => true]
+            )
+        );
     }
 
     /**
@@ -210,6 +286,8 @@ class ScheduleCampaignController extends Controller
 
         $campaignNo = $this->generateUniqueCampaignNo($request->campaign_no);
 
+        $isStickySchedule = $request->boolean('is_sticky_campaign');
+
         if ($useDateTable) {
             $this->storeWithDateTable(
                 $request,
@@ -221,7 +299,8 @@ class ScheduleCampaignController extends Controller
                 $domainIds,
                 $keywords,
                 $dateRows,
-                $isMultiple
+                $isMultiple,
+                $isStickySchedule
             );
         } else {
             $from = Carbon::parse($scheduleFrom)->startOfDay();
@@ -240,12 +319,17 @@ class ScheduleCampaignController extends Controller
                 $totalDays,
                 $perDay,
                 $remainder,
-                $isMultiple
+                $isMultiple,
+                $isStickySchedule
             );
         }
 
+        $redirectRoute = $isStickySchedule
+            ? 'admin.schedule.sticky.campaign.index'
+            : 'admin.schedule.campaign.create';
+
         return redirect()
-            ->route('admin.schedule.campaign.create')
+            ->route($redirectRoute)
             ->with('cus__success', 'Scheduled campaign created successfully.');
     }
 
@@ -262,7 +346,8 @@ class ScheduleCampaignController extends Controller
         array $domainIds,
         array $keywords,
         array $dateRows,
-        bool $isMultiple
+        bool $isMultiple,
+        bool $isStickySchedule = false
     ): void {
         DB::transaction(function () use (
             $request,
@@ -274,7 +359,8 @@ class ScheduleCampaignController extends Controller
             $domainIds,
             $keywords,
             $dateRows,
-            $isMultiple
+            $isMultiple,
+            $isStickySchedule
         ) {
             $campaign = ScheduleCampaign::create([
                 'campaign_no'         => $campaignNo,
@@ -285,6 +371,7 @@ class ScheduleCampaignController extends Controller
                 'schedule_to_date'    => $scheduleTo,
                 'status'              => 'queued',
                 'total_targets'       => $postQty,
+                'is_sticky_campaign'  => $isStickySchedule,
                 'completed_targets'   => 0,
                 'failed_targets'      => 0,
             ]);
@@ -321,15 +408,21 @@ class ScheduleCampaignController extends Controller
                     $kwType = 'single';
                     $urlType = 'single';
                 }
+                $articleRow = Article::find($articleId);
+                if (! $articleRow) {
+                    throw new \Exception("Article {$articleId} not found.");
+                }
                 $sca = ScheduleCampaignArticle::create([
-                    'schedule_campaign_id' => $campaign->id,
-                    'article_id'           => $articleId,
-                    'keyword'              => $kwStore,
-                    'url'                  => $urlStore,
-                    'keyword_type'         => $kwType,
-                    'url_type'             => $urlType,
-                    'media'                => $row['media'] ?? null,
-                    'nofollow'             => !empty($row['nofollow']),
+                    'schedule_campaign_id'   => $campaign->id,
+                    'article_id'               => $articleId,
+                    'article_title_snapshot'   => $articleRow->name,
+                    'article_body_snapshot'    => $articleRow->description,
+                    'keyword'                  => $kwStore,
+                    'url'                      => $urlStore,
+                    'keyword_type'             => $kwType,
+                    'url_type'                 => $urlType,
+                    'media'                    => $row['media'] ?? null,
+                    'nofollow'                 => ! empty($row['nofollow']),
                 ]);
                 $articleMap[$i] = $sca->id;
                 $affected = Article::where('id', $articleId)->whereNull('lock_at')->update(['lock_at' => now()]);
@@ -394,7 +487,8 @@ class ScheduleCampaignController extends Controller
         int $totalDays,
         int $perDay,
         int $remainder,
-        bool $isMultiple
+        bool $isMultiple,
+        bool $isStickySchedule = false
     ): void {
         DB::transaction(function () use (
             $request,
@@ -407,7 +501,8 @@ class ScheduleCampaignController extends Controller
             $totalDays,
             $perDay,
             $remainder,
-            $isMultiple
+            $isMultiple,
+            $isStickySchedule
         ) {
             $campaign = ScheduleCampaign::create([
                 'campaign_no'         => $campaignNo,
@@ -418,6 +513,7 @@ class ScheduleCampaignController extends Controller
                 'schedule_to_date'    => $request->schedule_to_date,
                 'status'              => 'queued',
                 'total_targets'       => $postQty,
+                'is_sticky_campaign'  => $isStickySchedule,
                 'completed_targets'   => 0,
                 'failed_targets'      => 0,
             ]);
@@ -455,15 +551,21 @@ class ScheduleCampaignController extends Controller
                     $kwType  = 'single';
                     $urlType = 'single';
                 }
+                $articleRow = Article::find($articleId);
+                if (! $articleRow) {
+                    throw new \Exception("Article {$articleId} not found.");
+                }
                 $sca = ScheduleCampaignArticle::create([
-                    'schedule_campaign_id' => $campaign->id,
-                    'article_id'           => $articleId,
-                    'keyword'              => $kwStore,
-                    'url'                  => $urlStore,
-                    'keyword_type'         => $kwType,
-                    'url_type'             => $urlType,
-                    'media'                => $row['media'] ?? null,
-                    'nofollow'             => !empty($row['nofollow']),
+                    'schedule_campaign_id'   => $campaign->id,
+                    'article_id'               => $articleId,
+                    'article_title_snapshot'   => $articleRow->name,
+                    'article_body_snapshot'    => $articleRow->description,
+                    'keyword'                  => $kwStore,
+                    'url'                      => $urlStore,
+                    'keyword_type'             => $kwType,
+                    'url_type'                 => $urlType,
+                    'media'                    => $row['media'] ?? null,
+                    'nofollow'                 => ! empty($row['nofollow']),
                 ]);
                 $articleMap[$i] = $sca->id;
                 $affected = Article::where('id', $articleId)->whereNull('lock_at')->update(['lock_at' => now()]);
@@ -563,21 +665,24 @@ class ScheduleCampaignController extends Controller
             ->where('schedule_campaign_id', $campaign->id)
             ->get();
 
-        // 🔎 4️⃣ Detect keyword type
-        $keywordType = optional(
-            $posts->first()?->campaignArticle
-        )->keyword_type ?? 'single';
-
-        // 🔢 5️⃣ Detect max keyword count (only for json)
+        // 🔎 4️⃣ Max keyword/URL pairs across all posts (mixed single + multi-link campaigns)
         $maxKeywordCount = 1;
-
-        if ($keywordType === 'json') {
-            $maxKeywordCount = $posts->map(function ($post) {
-                $ca = $post->campaignArticle;
-                $keywords = json_decode($ca->keyword ?? '[]', true) ?? [];
-                return count($keywords);
-            })->max() ?? 1;
+        foreach ($posts as $post) {
+            $ca = $post->campaignArticle;
+            if (! $ca) {
+                continue;
+            }
+            if (($ca->keyword_type ?? 'single') === 'json') {
+                $n = count(json_decode($ca->keyword ?? '[]', true) ?? []);
+            } else {
+                $n = (($ca->keyword ?? '') !== '' || ($ca->url ?? '') !== '') ? 1 : 0;
+            }
+            $maxKeywordCount = max($maxKeywordCount, $n);
         }
+        $maxKeywordCount = max(1, $maxKeywordCount);
+
+        // Table layout: multi columns when any row needs more than one pair (same idea as export)
+        $keywordType = $maxKeywordCount > 1 ? 'json' : 'single';
 
         return view(
             'admin.campaigns.pbn-post.schedule-campaign-report',
@@ -719,10 +824,14 @@ class ScheduleCampaignController extends Controller
             ->get();
 
         $batches = [];
+        $hasJsonKeywords = false;
         foreach ($articles as $ca) {
             $k = $ca->keyword === null ? '' : (string) $ca->keyword;
             $u = $ca->url === null ? '' : (string) $ca->url;
             $key = $k . "\n" . $u;
+            if (($ca->keyword_type ?? 'single') === 'json') {
+                $hasJsonKeywords = true;
+            }
 
             if (!isset($batches[$key])) {
                 $batches[$key] = [
@@ -748,7 +857,62 @@ class ScheduleCampaignController extends Controller
         unset($batch);
         $distinctBatches = array_values($batches);
 
-        return view('admin.campaigns.pbn-post.edit-schedule-campaign', compact('campaign', 'distinctBatches'));
+        $orderedArticleIds = $this->orderedScheduleCampaignArticleIds($campaign);
+        $postQuantity = count($orderedArticleIds);
+        $articleById = ScheduleCampaignArticle::where('schedule_campaign_id', $campaign->id)
+            ->get(['id', 'keyword', 'url', 'keyword_type', 'url_type'])
+            ->keyBy('id');
+        $allLinksForBulk = [];
+        foreach ($orderedArticleIds as $articleId) {
+            $ca = $articleById->get($articleId);
+            if (! $ca) {
+                continue;
+            }
+            if (($ca->keyword_type ?? 'single') === 'json') {
+                $kwList = json_decode((string) ($ca->keyword ?? '[]'), true);
+                $urlList = json_decode((string) ($ca->url ?? '[]'), true);
+                $keyword = trim((string) (($kwList[0] ?? '')));
+                $url = trim((string) (($urlList[0] ?? '')));
+            } else {
+                $keyword = trim((string) ($ca->keyword ?? ''));
+                $url = trim((string) ($ca->url ?? ''));
+            }
+            $allLinksForBulk[] = [
+                'article_id' => (int) $ca->id,
+                'keyword' => $keyword,
+                'url' => $url,
+            ];
+        }
+        $multiLevelBoxes = $postQuantity > 0
+            ? EditCampaignMultiLevelKeywordState::buildBoxes(
+                $orderedArticleIds,
+                fn (int $id) => ScheduleCampaignArticle::where('schedule_campaign_id', $campaign->id)->find($id),
+                fn ($ca) => EditCampaignMultiLevelKeywordState::payloadFromKeywordColumns($ca)
+            )
+            : [];
+        $initialNofollow = false;
+        if ($postQuantity > 0) {
+            $firstCa = ScheduleCampaignArticle::find($orderedArticleIds[0]);
+            $initialNofollow = $firstCa && (bool) $firstCa->nofollow;
+        }
+        $scheduleIndexUrl = $campaign->is_sticky_campaign
+            ? route('admin.schedule.sticky.campaign.index')
+            : route('admin.schedule.campaign.index');
+        $preferredKeywordTab = $hasJsonKeywords ? 'multi' : 'batch';
+
+        return view(
+            'admin.campaigns.pbn-post.edit-schedule-campaign',
+            compact(
+                'campaign',
+                'distinctBatches',
+                'postQuantity',
+                'allLinksForBulk',
+                'multiLevelBoxes',
+                'initialNofollow',
+                'scheduleIndexUrl',
+                'preferredKeywordTab'
+            )
+        );
     }
 
     /**
@@ -766,7 +930,222 @@ class ScheduleCampaignController extends Controller
         $campaignNo = $this->generateUniqueCampaignNo($validated['campaign_no'], (int) $campaign->id);
         $campaign->update(['campaign_no' => $campaignNo]);
 
-        return back()->with('cus__success', 'Campaign updated.');
+        return back()
+            ->with('cus__success', 'Campaign updated.')
+            ->with('edit_schedule_campaign_tab', 'campaign');
+    }
+
+    /**
+     * Per-post keyword order (matches post creation: schedule_at, then id).
+     *
+     * @return array<int, int>
+     */
+    private function orderedScheduleCampaignArticleIds(ScheduleCampaign $campaign): array
+    {
+        return ScheduleCampaignPost::query()
+            ->where('schedule_campaign_id', $campaign->id)
+            ->orderBy('schedule_at')
+            ->orderBy('id')
+            ->pluck('schedule_campaign_article_id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<int>|null  $onlyArticleIds  When set, only these rows are updated (multi-level per-post).
+     * @return array{error?: string, changed: bool, post_ids: array<int>}
+     */
+    private function applyScheduleCampaignKeywordBatch(
+        ScheduleCampaign $campaign,
+        ScheduleCampaignArticle $representative,
+        $kwInput,
+        $urlInput,
+        ?array $onlyArticleIds = null
+    ): array {
+        if (is_array($kwInput) && is_array($urlInput)) {
+            $newKwList  = array_values(array_map(fn ($v) => trim((string) $v), $kwInput));
+            $newUrlList = array_values(array_map(fn ($v) => trim((string) $v), $urlInput));
+            $len = min(count($newKwList), count($newUrlList));
+            $newPairs = [];
+            for ($i = 0; $i < $len; $i++) {
+                $newPairs[] = [$newKwList[$i] ?? '', $newUrlList[$i] ?? ''];
+            }
+        } else {
+            $newKw  = trim((string) $kwInput);
+            $newUrl = trim((string) $urlInput);
+            $newPairs = ($newKw !== '' || $newUrl !== '') ? [[$newKw, $newUrl]] : [];
+        }
+
+        if ($msg = CampaignKeywordPairValidator::validateEditPairs($newPairs)) {
+            return ['error' => $msg, 'changed' => false, 'post_ids' => []];
+        }
+
+        $pairsToStore = array_values(array_filter(
+            $newPairs,
+            fn ($p) => trim((string) ($p[0] ?? '')) !== '' && trim((string) ($p[1] ?? '')) !== ''
+        ));
+        $newIsJson = count($pairsToStore) > 1;
+
+        if (count($pairsToStore) === 0) {
+            $kwStore = null;
+            $urlStore = null;
+        } elseif (count($pairsToStore) === 1 && ! $newIsJson) {
+            $kwStore  = $pairsToStore[0][0];
+            $urlStore = $pairsToStore[0][1];
+        } else {
+            $kwStore  = json_encode(array_column($pairsToStore, 0), JSON_UNESCAPED_UNICODE);
+            $urlStore = json_encode(array_column($pairsToStore, 1), JSON_UNESCAPED_UNICODE);
+        }
+        $newKeywordType = $newIsJson ? 'json' : 'single';
+        $newUrlType     = $newIsJson ? 'json' : 'single';
+
+        if ($representative->keyword === $kwStore && $representative->url === $urlStore
+            && ($representative->keyword_type ?? 'single') === $newKeywordType
+            && ($representative->url_type ?? 'single') === $newUrlType) {
+            return ['changed' => false, 'post_ids' => []];
+        }
+
+        if ($onlyArticleIds !== null) {
+            $articleIds = ScheduleCampaignArticle::where('schedule_campaign_id', $campaign->id)
+                ->whereIn('id', array_map('intval', $onlyArticleIds))
+                ->pluck('id')
+                ->values()
+                ->all();
+        } else {
+            $articleIds = ScheduleCampaignArticle::where('schedule_campaign_id', $campaign->id)
+                ->where('keyword', $representative->keyword)
+                ->where('url', $representative->url)
+                ->pluck('id')
+                ->all();
+        }
+
+        if (count($articleIds) === 0) {
+            return ['changed' => false, 'post_ids' => []];
+        }
+
+        ScheduleCampaignArticle::whereIn('id', $articleIds)->update([
+            'keyword'      => $kwStore,
+            'url'          => $urlStore,
+            'keyword_type' => $newKeywordType,
+            'url_type'     => $newUrlType,
+        ]);
+
+        $ids = ScheduleCampaignPost::whereIn('schedule_campaign_article_id', $articleIds)
+            ->where('status', 'success')
+            ->whereNotNull('remote_id')
+            ->pluck('id')
+            ->all();
+
+        return ['changed' => true, 'post_ids' => $ids];
+    }
+
+    /**
+     * Multi-level keyword update (same JSON shape as create schedule campaign, one row per post in schedule order).
+     */
+    public function multiLevelUpdateScheduleKeywords(Request $request, string $id)
+    {
+        $campaign = ScheduleCampaign::find($id);
+        if (! $campaign) {
+            return redirect()
+                ->route('admin.schedule.campaign.index')
+                ->with('cus__error', 'Campaign not found');
+        }
+
+        $request->validate([
+            'keywordmethod'    => 'required|in:multiple',
+            'keywordsDataHolder' => 'required|string',
+        ]);
+
+        $keywords = json_decode((string) $request->keywordsDataHolder, true);
+        if (! is_array($keywords)) {
+            return redirect()
+                ->route('admin.schedule.campaign.edit', $campaign->id)
+                ->with('cus__error', 'Invalid keywords JSON.')
+                ->with('edit_schedule_campaign_tab', 'keywords')
+                ->with('edit_schedule_campaign_keywords_tab', 'multi');
+        }
+
+        $orderedIds = $this->orderedScheduleCampaignArticleIds($campaign);
+        if (count($orderedIds) === 0) {
+            return redirect()
+                ->route('admin.schedule.campaign.edit', $campaign->id)
+                ->with('cus__error', 'No campaign articles found.')
+                ->with('edit_schedule_campaign_tab', 'keywords')
+                ->with('edit_schedule_campaign_keywords_tab', 'multi');
+        }
+
+        if (count($keywords) !== count($orderedIds)) {
+            return redirect()
+                ->route('admin.schedule.campaign.edit', $campaign->id)
+                ->with(
+                    'cus__error',
+                    'Keyword rows must be exactly '.count($orderedIds).' (your campaign post count).'
+                )
+                ->with('edit_schedule_campaign_tab', 'keywords')
+                ->with('edit_schedule_campaign_keywords_tab', 'multi');
+        }
+
+        $postIdsToUpdateOnRemote = [];
+
+        try {
+            DB::transaction(function () use ($campaign, $keywords, $orderedIds, &$postIdsToUpdateOnRemote) {
+                foreach ($orderedIds as $i => $articleId) {
+                    $ca = ScheduleCampaignArticle::where('schedule_campaign_id', $campaign->id)->find($articleId);
+                    if (! $ca) {
+                        throw new \RuntimeException('Campaign article missing.');
+                    }
+
+                    $row = $keywords[$i] ?? [];
+                    $res = $this->applyScheduleCampaignKeywordBatch(
+                        $campaign,
+                        $ca,
+                        $row['keyword'] ?? null,
+                        $row['url'] ?? null,
+                        [$ca->id]
+                    );
+
+                    if (! empty($res['error'])) {
+                        throw new \RuntimeException($res['error']);
+                    }
+
+                    if (! empty($res['changed'])) {
+                        $postIdsToUpdateOnRemote = array_merge($postIdsToUpdateOnRemote, $res['post_ids']);
+                    }
+
+                    $mediaVal = isset($row['media']) ? trim((string) $row['media']) : '';
+                    $mediaVal = $mediaVal === '' ? null : $mediaVal;
+                    $nofollow = ! empty($row['nofollow']);
+
+                    ScheduleCampaignArticle::where('id', $ca->id)->update([
+                        'media'    => $mediaVal,
+                        'nofollow' => $nofollow,
+                    ]);
+                }
+            });
+        } catch (\RuntimeException $e) {
+            return redirect()
+                ->route('admin.schedule.campaign.edit', $campaign->id)
+                ->with('cus__error', $e->getMessage())
+                ->with('edit_schedule_campaign_tab', 'keywords')
+                ->with('edit_schedule_campaign_keywords_tab', 'multi');
+        }
+
+        $postIdsToUpdateOnRemote = array_values(array_unique($postIdsToUpdateOnRemote));
+
+        if (count($postIdsToUpdateOnRemote) > 0) {
+            BulkUpdateScheduleCampaignPostsJob::dispatch($postIdsToUpdateOnRemote)->onQueue('schedule_campaign_bulk_updates');
+        }
+
+        $msg = count($postIdsToUpdateOnRemote) > 0
+            ? 'Keywords updated. '.count($postIdsToUpdateOnRemote).' post(s) queued to update on remote.'
+            : 'Keywords and media saved. No published posts to update on remote.';
+
+        return redirect()
+            ->route('admin.schedule.campaign.edit', $campaign->id)
+            ->with('cus__success', $msg)
+            ->with('edit_schedule_campaign_tab', 'keywords')
+            ->with('edit_schedule_campaign_keywords_tab', 'multi');
     }
 
     /**
@@ -780,14 +1159,29 @@ class ScheduleCampaignController extends Controller
         }
 
         $representativeIds = $request->input('batch_representative_id', []);
-        $batchKeywords     = $request->input('batch_keyword', []);
-        $batchUrls         = $request->input('batch_url', []);
 
         if (!is_array($representativeIds)) {
             return back()->with('cus__error', 'Invalid form data.');
         }
-        $batchKeywords = is_array($batchKeywords) ? array_values($batchKeywords) : [];
-        $batchUrls     = is_array($batchUrls) ? array_values($batchUrls) : [];
+        $isBulkTextarea = $request->exists('bulk_urls') && $request->exists('bulk_keywords');
+        if ($isBulkTextarea) {
+            $expected = count($representativeIds);
+            $batchUrls = $this->parseManualLinesStrict((string) $request->input('bulk_urls', ''), $expected);
+            $batchKeywords = $this->parseManualLinesStrict((string) $request->input('bulk_keywords', ''), $expected);
+            if ($batchUrls === null || $batchKeywords === null) {
+                return redirect()
+                    ->route('admin.schedule.campaign.edit', $campaign->id)
+                    ->with('cus__error', 'Bulk URLs and Bulk Keywords must each have exactly ' . $expected . ' non-empty lines.')
+                    ->withInput($request->only(['bulk_urls', 'bulk_keywords']))
+                    ->with('edit_schedule_campaign_tab', 'keywords')
+                    ->with('edit_schedule_campaign_keywords_tab', 'bulk');
+            }
+        } else {
+            $batchKeywords = $request->input('batch_keyword', []);
+            $batchUrls     = $request->input('batch_url', []);
+            $batchKeywords = is_array($batchKeywords) ? array_values($batchKeywords) : [];
+            $batchUrls     = is_array($batchUrls) ? array_values($batchUrls) : [];
+        }
 
         $updatedBatches = 0;
         $postIdsToUpdateOnRemote = [];
@@ -802,69 +1196,26 @@ class ScheduleCampaignController extends Controller
             $kwInput  = $batchKeywords[$index] ?? null;
             $urlInput = $batchUrls[$index] ?? null;
 
-            if (is_array($kwInput) && is_array($urlInput)) {
-                $newKwList  = array_values(array_map(fn ($v) => trim((string) $v), $kwInput));
-                $newUrlList = array_values(array_map(fn ($v) => trim((string) $v), $urlInput));
-                $len = min(count($newKwList), count($newUrlList));
-                $newPairs = [];
-                for ($i = 0; $i < $len; $i++) {
-                    $newPairs[] = [$newKwList[$i] ?? '', $newUrlList[$i] ?? ''];
-                }
-            } else {
-                $newKw  = trim((string) $kwInput);
-                $newUrl = trim((string) $urlInput);
-                $newPairs = ($newKw !== '' || $newUrl !== '') ? [[$newKw, $newUrl]] : [];
+            $res = $this->applyScheduleCampaignKeywordBatch(
+                $campaign,
+                $representative,
+                $kwInput,
+                $urlInput,
+                $isBulkTextarea ? [$representative->id] : null
+            );
+
+            if (! empty($res['error'])) {
+                return redirect()
+                    ->route('admin.schedule.campaign.edit', $campaign->id)
+                    ->with('cus__error', $res['error'])
+                    ->with('edit_schedule_campaign_tab', 'keywords')
+                    ->with('edit_schedule_campaign_keywords_tab', $isBulkTextarea ? 'bulk' : 'batch');
             }
 
-            $pairsToStore = array_values(array_filter(
-                $newPairs,
-                fn ($p) => ($p[0] ?? '') !== '' || ($p[1] ?? '') !== ''
-            ));
-            $newIsJson = count($pairsToStore) > 1;
-
-            if (count($pairsToStore) === 0) {
-                $kwStore = null;
-                $urlStore = null;
-            } elseif (count($pairsToStore) === 1 && !$newIsJson) {
-                $kwStore  = $pairsToStore[0][0];
-                $urlStore = $pairsToStore[0][1];
-            } else {
-                $kwStore  = json_encode(array_column($pairsToStore, 0), JSON_UNESCAPED_UNICODE);
-                $urlStore = json_encode(array_column($pairsToStore, 1), JSON_UNESCAPED_UNICODE);
+            if (! empty($res['changed'])) {
+                $updatedBatches++;
+                $postIdsToUpdateOnRemote = array_merge($postIdsToUpdateOnRemote, $res['post_ids']);
             }
-            $newKeywordType = $newIsJson ? 'json' : 'single';
-            $newUrlType     = $newIsJson ? 'json' : 'single';
-
-            if ($representative->keyword === $kwStore && $representative->url === $urlStore
-                && ($representative->keyword_type ?? 'single') === $newKeywordType
-                && ($representative->url_type ?? 'single') === $newUrlType) {
-                continue;
-            }
-
-            $articleIds = ScheduleCampaignArticle::where('schedule_campaign_id', $campaign->id)
-                ->where('keyword', $representative->keyword)
-                ->where('url', $representative->url)
-                ->pluck('id')
-                ->all();
-
-            if (count($articleIds) === 0) {
-                continue;
-            }
-
-            ScheduleCampaignArticle::whereIn('id', $articleIds)->update([
-                'keyword'      => $kwStore,
-                'url'          => $urlStore,
-                'keyword_type' => $newKeywordType,
-                'url_type'     => $newUrlType,
-            ]);
-            $updatedBatches++;
-
-            $ids = ScheduleCampaignPost::whereIn('schedule_campaign_article_id', $articleIds)
-                ->where('status', 'success')
-                ->whereNotNull('remote_id')
-                ->pluck('id')
-                ->all();
-            $postIdsToUpdateOnRemote = array_merge($postIdsToUpdateOnRemote, $ids);
         }
 
         $postIdsToUpdateOnRemote = array_values(array_unique($postIdsToUpdateOnRemote));
@@ -883,7 +1234,20 @@ class ScheduleCampaignController extends Controller
 
         return redirect()
             ->route('admin.schedule.campaign.edit', $campaign->id)
-            ->with($updatedBatches > 0 ? 'cus__success' : 'cus__error', $msg);
+            ->with($updatedBatches > 0 ? 'cus__success' : 'cus__error', $msg)
+            ->with('edit_schedule_campaign_tab', 'keywords')
+            ->with('edit_schedule_campaign_keywords_tab', $isBulkTextarea ? 'bulk' : 'batch');
+    }
+
+    private function parseManualLinesStrict(string $text, int $expectedCount): ?array
+    {
+        $lines = preg_split('/\r\n|\r|\n/', $text);
+        $lines = array_map(static fn ($line) => trim((string) $line), $lines ?: []);
+        $lines = array_values(array_filter($lines, static fn ($line) => $line !== ''));
+        if (count($lines) !== $expectedCount) {
+            return null;
+        }
+        return $lines;
     }
 
     /**
@@ -901,6 +1265,52 @@ class ScheduleCampaignController extends Controller
         return redirect()
             ->route('admin.schedule.campaign.index')
             ->with('cus__success', 'Campaign deletion queued.');
+    }
+
+    /**
+     * Remove campaign data from this application only. Remote WordPress posts are not deleted.
+     */
+    public function purgeLocalOnly(string $id)
+    {
+        $campaign = ScheduleCampaign::find($id);
+        if (!$campaign) {
+            return back()->with('cus__error', 'Campaign not found');
+        }
+        $this->authorizeCampaignAccess($campaign);
+        PurgeLocalCampaignDataService::purgeScheduleCampaign((int) $campaign->id);
+
+        return redirect()
+            ->route('admin.schedule.campaign.index')
+            ->with(
+                'cus__success',
+                'Campaign removed from this dashboard only. Remote posts were not deleted.'
+            );
+    }
+
+    /**
+     * Remove multiple schedule campaigns from the database only (no remote API calls).
+     */
+    public function bulkPurgeLocal(Request $request)
+    {
+        $ids = $this->validatedBulkCampaignIds($request);
+        if ($ids === []) {
+            return back()->with('cus__error', 'No campaigns selected.');
+        }
+
+        $allowed = $this->campaignIdsOwnedByCurrentAdmin($ids, ScheduleCampaign::class);
+        if ($allowed === []) {
+            return back()->with('cus__error', 'No campaigns found or you do not have permission.');
+        }
+
+        foreach ($allowed as $id) {
+            PurgeLocalCampaignDataService::purgeScheduleCampaign($id);
+        }
+
+        $n = count($allowed);
+
+        return redirect()
+            ->route('admin.schedule.campaign.index')
+            ->with('cus__success', $n . ' campaign(s) removed from this dashboard only. Remote posts were not deleted.');
     }
 
     /**
@@ -971,19 +1381,124 @@ class ScheduleCampaignController extends Controller
             return back()->with('cus__error', 'Remote did not return valid data.');
         }
 
-        $fetchedData = [
-            'post_title'   => (string) ($data['post_title'] ?? $data['title'] ?? $data['title']['rendered'] ?? ''),
-            'post_content' => (string) ($data['post_content'] ?? $data['content'] ?? $data['content']['rendered'] ?? ''),
-        ];
-        if ($fetchedData['post_content'] === '' && isset($data['content']['raw'])) {
-            $fetchedData['post_content'] = (string) $data['content']['raw'];
+        $fetchedData = WordPressApiFetchedPost::normalizeForEditForm($data);
+
+        $keywordPairs = [];
+        $post->load('campaignArticle');
+        $ca = $post->campaignArticle;
+        if ($ca) {
+            if (($ca->keyword_type ?? '') === 'json') {
+                $kwDec  = json_decode($ca->keyword, true);
+                $urlDec = json_decode($ca->url, true);
+                if (is_array($kwDec) && is_array($urlDec)) {
+                    $n = min(count($kwDec), count($urlDec));
+                    for ($i = 0; $i < $n; $i++) {
+                        $keywordPairs[] = [
+                            'keyword' => (string) ($kwDec[$i] ?? ''),
+                            'url'     => (string) ($urlDec[$i] ?? ''),
+                        ];
+                    }
+                }
+            } else {
+                $keywordPairs[] = [
+                    'keyword' => (string) ($ca->keyword ?? ''),
+                    'url'     => (string) ($ca->url ?? ''),
+                ];
+            }
+        }
+        if (count($keywordPairs) === 0) {
+            $keywordPairs[] = ['keyword' => '', 'url' => ''];
         }
 
         return view('admin.campaigns.pbn-post.edit-schedule-campaign-post', [
             'campaignPost' => $post,
             'campaign'    => $post->campaign,
             'fetchedData' => $fetchedData,
+            'keywordPairs' => $keywordPairs,
         ]);
+    }
+
+    /**
+     * Update keyword/URL for one schedule post (single → multiple links, etc.).
+     */
+    public function updatePostKeywords(Request $request, int $postId)
+    {
+        $post = ScheduleCampaignPost::with('campaign')->find($postId);
+        if (! $post || ! $post->campaign) {
+            return back()->with('cus__error', 'Post not found.');
+        }
+
+        $validated = $request->validate([
+            'batch_keyword' => 'required|array|min:1',
+            'batch_url'     => 'required|array|min:1',
+        ]);
+
+        $ca = ScheduleCampaignArticle::where('schedule_campaign_id', $post->schedule_campaign_id)
+            ->whereKey($post->schedule_campaign_article_id)
+            ->first();
+        if (! $ca) {
+            return back()->with('cus__error', 'Campaign article not found.');
+        }
+
+        $kwInput  = $validated['batch_keyword'];
+        $urlInput = $validated['batch_url'];
+        $newKwList  = array_values(array_map(fn ($v) => trim((string) $v), $kwInput));
+        $newUrlList = array_values(array_map(fn ($v) => trim((string) $v), $urlInput));
+        $len        = min(count($newKwList), count($newUrlList));
+        $newPairs   = [];
+        for ($i = 0; $i < $len; $i++) {
+            $newPairs[] = [$newKwList[$i] ?? '', $newUrlList[$i] ?? ''];
+        }
+
+        if ($msg = CampaignKeywordPairValidator::validateEditPairs($newPairs)) {
+            return back()->with('cus__error', $msg)->withInput();
+        }
+
+        $pairsToStore = array_values(array_filter(
+            $newPairs,
+            fn ($p) => trim((string) ($p[0] ?? '')) !== '' && trim((string) ($p[1] ?? '')) !== ''
+        ));
+        $newIsJson = count($pairsToStore) > 1;
+
+        if (count($pairsToStore) === 0) {
+            $kwStore  = null;
+            $urlStore = null;
+        } elseif (count($pairsToStore) === 1 && ! $newIsJson) {
+            $kwStore  = $pairsToStore[0][0];
+            $urlStore = $pairsToStore[0][1];
+        } else {
+            $kwStore  = json_encode(array_column($pairsToStore, 0), JSON_UNESCAPED_UNICODE);
+            $urlStore = json_encode(array_column($pairsToStore, 1), JSON_UNESCAPED_UNICODE);
+        }
+
+        $newKeywordType = $newIsJson ? 'json' : 'single';
+        $newUrlType     = $newIsJson ? 'json' : 'single';
+
+        if ($ca->keyword === $kwStore && $ca->url === $urlStore
+            && ($ca->keyword_type ?? 'single') === $newKeywordType
+            && ($ca->url_type ?? 'single') === $newUrlType) {
+            return back()->with('cus__error', 'No keyword/URL changes were made.');
+        }
+
+        ScheduleCampaignArticle::whereKey($ca->id)->update([
+            'keyword'      => $kwStore,
+            'url'          => $urlStore,
+            'keyword_type' => $newKeywordType,
+            'url_type'     => $newUrlType,
+        ]);
+
+        $queued = $post->status === 'success' && ! empty($post->remote_id);
+        if ($queued) {
+            BulkUpdateScheduleCampaignPostsJob::dispatch([$post->id])->onQueue('schedule_campaign_bulk_updates');
+        }
+
+        $msg = $queued
+            ? 'Keywords/URLs saved. Remote update queued. Run: php artisan queue:work --queue=schedule_campaign_bulk_updates'
+            : 'Keywords/URLs saved. No published post to sync on remote.';
+
+        return redirect()
+            ->route('admin.schedule.campaign.edit.post', $post->id)
+            ->with('cus__success', $msg);
     }
 
     /**

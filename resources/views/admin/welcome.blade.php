@@ -220,6 +220,7 @@
                         ['label' => 'PBN Post Campaigns', 'type' => 'post', 'active' => true],
                         ['label' => 'PBN Sidebar Post Campaigns', 'type' => 'sidebar', 'active' => false],
                         ['label' => 'PBN Dripfeed Campaigns', 'type' => 'dripfeed', 'active' => false],
+                        ['label' => 'PBN Schedule Sticky Campaigns', 'type' => 'schedule_sticky', 'active' => false],
                         ['label' => 'PBN Sticky Post Campaigns', 'type' => 'sticky', 'active' => false],
                     ];
                 @endphp
@@ -623,7 +624,7 @@
                     const type = this.dataset.campaignType;
 
                     console.log(type)
-                    if (type == 'dripfeed') {
+                    if (type == 'dripfeed' || type == 'schedule_sticky') {
                         url = '/admin/campaign/post/schedule/'
                     } else if (type == 'sidebar') {
                         url = '/admin/sidebar/campaign/'

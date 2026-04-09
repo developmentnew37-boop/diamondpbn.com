@@ -934,6 +934,16 @@
 
                     <div id="domain-pagination" class="flex flex-wrap gap-2 mt-3 justify-center">
                     </div>
+                    <div class="w-full flex justify-end !mt-2">
+                        <div class="flex items-center gap-2">
+                            <button type="button" id="autoSelectRandomDomainsBtn"
+                                class="cursor-pointer bg-indigo-600 text-white rounded !px-3 !py-2 text-sm"
+                                style="background-color:#4f46e5 !important;color:#ffffff !important;">
+                                Auto Select Required
+                            </button>
+                            <span id="autoSelectRandomDomainsProgress" class="text-xs text-gray-700"></span>
+                        </div>
+                    </div>
 
                 </div>
 
@@ -1059,6 +1069,16 @@
                     {{-- ✅ PAGINATION GOES HERE --}}
                     <div class="w-full flex justify-center !mt-4">
                         <div id="domain-set-pagination" class="flex flex-wrap gap-2 items-center">
+                        </div>
+                    </div>
+                    <div class="w-full flex justify-end !mt-2">
+                        <div class="flex items-center gap-2">
+                            <button type="button" id="autoSelectSetDomainsBtn"
+                                class="cursor-pointer bg-indigo-600 text-white rounded !px-3 !py-2 text-sm"
+                                style="background-color:#4f46e5 !important;color:#ffffff !important;">
+                                Auto Select Required
+                            </button>
+                            <span id="autoSelectSetDomainsProgress" class="text-xs text-gray-700"></span>
                         </div>
                     </div>
                 </div>
@@ -1199,6 +1219,12 @@
                         class="randomSelBtn cursor-pointer bg-blue-500 text-white  rounded !p-2 text-sm">
                         Random
                     </button>
+                    <button type="button" id="autoSelectArticlesBtn"
+                        class="cursor-pointer bg-indigo-600 text-white rounded !p-2 text-sm"
+                        style="background-color:#4f46e5 !important;color:#ffffff !important;">
+                        Auto Select Required
+                    </button>
+                    <span id="autoSelectArticlesProgress" class="text-xs text-gray-700"></span>
                 </div>
                 <a href="#" id="multiple-articles-select"
                     class="cursor-pointer bg-green-500 text-white rounded !p-3">

@@ -16,9 +16,14 @@ use App\Models\Admin\CampaignPost;
 use App\Models\Admin\Campaign;
 use Illuminate\Support\Facades\DB;
 use App\Jobs\BulkUpdateCampaignPostsJob;
+use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
+use App\Http\Controllers\Admin\Concerns\ValidatesBulkCampaignIds;
 use App\Jobs\DeleteCampaignJob;
 use App\Jobs\PublishCampaignPostJob;
+use App\Services\PurgeLocalCampaignDataService;
+use App\Services\CampaignKeywordPairValidator;
 use App\Services\CampaignPostContentBuilder;
+use App\Support\WordPressApiFetchedPost;
 use App\Models\Admin\Article;
 use App\Models\Admin\ArticleLanguage;
 use Spatie\SimpleExcel\SimpleExcelWriter;
@@ -28,6 +33,9 @@ use Illuminate\Support\Facades\Http;
 
 class campaignController extends Controller
 {
+    use AuthorizesAdminCampaign;
+    use ValidatesBulkCampaignIds;
+
     public function __construct()
     {
         $this->middleware('can.create.campaigns')->except(['report', 'exportReport']);
@@ -276,15 +284,22 @@ class campaignController extends Controller
                     if ($urlStore === '') $urlStore = null;
                 }
 
+                $articleRow = Article::find($articleId);
+                if (! $articleRow) {
+                    throw new \Exception("Article {$articleId} not found.");
+                }
+
                 $ca = CampaignArticle::create([
-                    'campaign_id'  => $campaign->id,
-                    'article_id'   => (int) $articleId,
-                    'keyword'      => $kwStore,
-                    'url'          => $urlStore,
-                    'media'        => $row['media'] ?? null,
-                    'keyword_type' => $kwType,
-                    'url_type'     => $urlType,
-                    'nofollow' => !empty($row['nofollow']),
+                    'campaign_id'              => $campaign->id,
+                    'article_id'               => (int) $articleId,
+                    'article_title_snapshot'   => $articleRow->name,
+                    'article_body_snapshot'    => $articleRow->description,
+                    'keyword'                  => $kwStore,
+                    'url'                      => $urlStore,
+                    'media'                    => $row['media'] ?? null,
+                    'keyword_type'             => $kwType,
+                    'url_type'                 => $urlType,
+                    'nofollow'                 => ! empty($row['nofollow']),
                 ]);
 
                 $campaignArticleIds[$i] = $ca->id;
@@ -363,6 +378,7 @@ class campaignController extends Controller
 
         // Campaign posts query
         $campaignPost = CampaignPost::where('campaign_id', $id)
+            ->with(['campaignDomain.domain', 'campaignArticle.article'])
             ->paginate($limit)
             ->withQueryString();
         // ->orderByDesc('id')
@@ -427,21 +443,23 @@ class campaignController extends Controller
 
 
 
-        // 4️⃣ Detect keyword type (single / json)
-        $keywordType = optional(
-            $posts->first()?->campaignArticle
-        )->keyword_type ?? 'single';
-
-        // 5️⃣ Detect max keyword count (ONLY for json)
+        // 4️⃣ Max keyword/URL pairs across posts (mixed single + multi-link in one campaign)
         $maxKeywordCount = 1;
-
-        if ($keywordType === 'json') {
-            $maxKeywordCount = $posts->map(function ($post) {
-                $ca = $post->campaignArticle;
-                $keywords = json_decode($ca->keyword ?? '[]', true) ?? [];
-                return count($keywords);
-            })->max() ?? 1;
+        foreach ($posts as $post) {
+            $ca = $post->campaignArticle;
+            if (! $ca) {
+                continue;
+            }
+            if (($ca->keyword_type ?? 'single') === 'json') {
+                $n = count(json_decode($ca->keyword ?? '[]', true) ?? []);
+            } else {
+                $n = (($ca->keyword ?? '') !== '' || ($ca->url ?? '') !== '') ? 1 : 0;
+            }
+            $maxKeywordCount = max($maxKeywordCount, $n);
         }
+        $maxKeywordCount = max(1, $maxKeywordCount);
+
+        $keywordType = $maxKeywordCount > 1 ? 'json' : 'single';
 
         return view(
             'admin.campaigns.pbn-post.campaign-report',
@@ -593,48 +611,57 @@ class campaignController extends Controller
         $articles = CampaignArticle::with('campaignPosts')
             ->where('campaign_id', $campaign->id)
             ->get();
-
         $batches = [];
-
+        $hasJsonKeywords = false;
         foreach ($articles as $ca) {
-
             $k = $ca->keyword === null ? '' : (string) $ca->keyword;
             $u = $ca->url === null ? '' : (string) $ca->url;
             $key = $k . "\n" . $u;
+            if (($ca->keyword_type ?? 'single') === 'json') {
+                $hasJsonKeywords = true;
+            }
 
             if (!isset($batches[$key])) {
                 $batches[$key] = [
-                    'keyword' => $k,
-                    'url' => $u,
-                    'keyword_type' => $ca->keyword_type,
-                    'url_type' => $ca->url_type,
-                    'count' => 0,
-                    'campaign_article_ids' => [],
-                    'campaign_post_ids' => [],
+                    'keyword'           => $k,
+                    'url'               => $u,
+                    'keyword_type'      => $ca->keyword_type ?? 'single',
+                    'url_type'          => $ca->url_type ?? 'single',
+                    'count'             => 0,
+                    'article_ids'       => [],
+                    'post_ids'          => [],
                     'representative_id' => $ca->id,
                 ];
             }
-
             $batches[$key]['count']++;
-            $batches[$key]['campaign_article_ids'][] = $ca->id;
-
+            $batches[$key]['article_ids'][] = $ca->id;
             foreach ($ca->campaignPosts as $post) {
-                $batches[$key]['campaign_post_ids'][] = $post->id;
+                $batches[$key]['post_ids'][] = $post->id;
             }
         }
-
-        // remove duplicate post IDs
         foreach ($batches as &$batch) {
-            $batch['campaign_post_ids'] = array_values(
-                array_unique($batch['campaign_post_ids'])
-            );
+            $batch['post_ids'] = array_values(array_unique($batch['post_ids']));
         }
-
+        unset($batch);
         $distinctBatches = array_values($batches);
+
+        $orderedArticleIds = $this->orderedCampaignArticleIdsForCampaign($campaign);
+        $postQuantity = count($orderedArticleIds);
+
+        $multiLevelBoxes = $postQuantity > 0
+            ? $this->buildMultiLevelBoxesForEdit($orderedArticleIds)
+            : [];
+        $preferredKeywordTab = $hasJsonKeywords ? 'multi' : 'batch';
+
+        $initialNofollow = false;
+        if ($postQuantity > 0) {
+            $firstCa = CampaignArticle::find($orderedArticleIds[0]);
+            $initialNofollow = $firstCa && (bool) $firstCa->nofollow;
+        }
 
         return view(
             'admin.campaigns.pbn-post.edit-campaign',
-            compact('campaign', 'distinctBatches')
+            compact('campaign', 'postQuantity', 'multiLevelBoxes', 'initialNofollow', 'distinctBatches', 'preferredKeywordTab')
         );
     }
 
@@ -642,7 +669,7 @@ class campaignController extends Controller
     public function editCampaignPost(string $id)
     {
         //
-        $campaignPost = CampaignPost::find($id);
+        $campaignPost = CampaignPost::with('campaignArticle')->find($id);
         $campaign = Campaign::find($campaignPost->campaign_id);
         // first taking out the domain name so we have to make get request to domain with campaign post id
         $domainName = optional($campaignPost->campaignDomain?->domain)->name;
@@ -654,11 +681,41 @@ class campaignController extends Controller
 
         $response = Http::withoutVerifying()->timeout(40)->get($url);
 
-        $fetchedData = $response->json();
+        $data = $response->json();
+        if (! is_array($data)) {
+            return back()->with('cus__error', 'Remote site did not return valid post data.');
+        }
+        $fetchedData = WordPressApiFetchedPost::normalizeForEditForm($data);
+
+        $keywordPairs = [];
+        $ca = $campaignPost->campaignArticle;
+        if ($ca) {
+            if (($ca->keyword_type ?? '') === 'json') {
+                $kwDec  = json_decode($ca->keyword, true);
+                $urlDec = json_decode($ca->url, true);
+                if (is_array($kwDec) && is_array($urlDec)) {
+                    $n = min(count($kwDec), count($urlDec));
+                    for ($i = 0; $i < $n; $i++) {
+                        $keywordPairs[] = [
+                            'keyword' => (string) ($kwDec[$i] ?? ''),
+                            'url'     => (string) ($urlDec[$i] ?? ''),
+                        ];
+                    }
+                }
+            } else {
+                $keywordPairs[] = [
+                    'keyword' => (string) ($ca->keyword ?? ''),
+                    'url'     => (string) ($ca->url ?? ''),
+                ];
+            }
+        }
+        if (count($keywordPairs) === 0) {
+            $keywordPairs[] = ['keyword' => '', 'url' => ''];
+        }
 
         // dd($fetchData);
 
-        return view('admin.campaigns.pbn-post.edit-campaign-post', compact('campaignPost', 'campaign', 'fetchedData'));
+        return view('admin.campaigns.pbn-post.edit-campaign-post', compact('campaignPost', 'campaign', 'fetchedData', 'keywordPairs'));
     }
     // this is single post page update(submit) function where we fetch data from remote site and then update it in remote site also
 
@@ -820,13 +877,237 @@ class campaignController extends Controller
     }
 
     /**
+     * Apply one keyword/URL batch (bulk edit or single-post edit).
+     * When $onlyArticleIds is set, only those campaign_article rows are updated (single-post / split batch).
+     *
+     * @param  array<int>|null  $onlyArticleIds
+     * @return array{queued: bool, skipped: bool, error?: string}
+     */
+    private function applyCampaignKeywordUrlBatch(
+        Campaign $campaign,
+        CampaignArticle $representative,
+        $kwInput,
+        $urlInput,
+        ?array $onlyArticleIds = null
+    ): array {
+        if (is_array($kwInput) && is_array($urlInput)) {
+            $newKwList  = array_values(array_map(fn ($v) => trim((string) $v), $kwInput));
+            $newUrlList = array_values(array_map(fn ($v) => trim((string) $v), $urlInput));
+            $newPairs   = [];
+            $len        = min(count($newKwList), count($newUrlList));
+            for ($i = 0; $i < $len; $i++) {
+                $newPairs[] = [$newKwList[$i] ?? '', $newUrlList[$i] ?? ''];
+            }
+        } else {
+            $newKw  = trim((string) $kwInput);
+            $newUrl = trim((string) $urlInput);
+            $newPairs = ($newKw !== '' || $newUrl !== '') ? [[$newKw, $newUrl]] : [];
+        }
+
+        if ($msg = CampaignKeywordPairValidator::validateEditPairs($newPairs)) {
+            return ['queued' => false, 'skipped' => false, 'error' => $msg];
+        }
+
+        $oldKeyword = $representative->keyword === null ? '' : (string) $representative->keyword;
+        $oldUrl     = $representative->url === null ? '' : (string) $representative->url;
+        $isJson     = ($representative->keyword_type ?? '') === 'json';
+
+        $oldPairs = [];
+        if ($isJson) {
+            $kwArr  = json_decode($oldKeyword, true);
+            $urlArr = json_decode($oldUrl, true);
+            if (is_array($kwArr) && is_array($urlArr)) {
+                $n = min(count($kwArr), count($urlArr));
+                for ($i = 0; $i < $n; $i++) {
+                    $oldPairs[] = [trim((string) ($kwArr[$i] ?? '')), trim((string) ($urlArr[$i] ?? ''))];
+                }
+            }
+        } else {
+            if ($oldKeyword !== '' || $oldUrl !== '') {
+                $oldPairs[] = [$oldKeyword, $oldUrl];
+            }
+        }
+
+        $pairsToStore = array_values(array_filter(
+            $newPairs,
+            fn ($p) => trim((string) ($p[0] ?? '')) !== '' && trim((string) ($p[1] ?? '')) !== ''
+        ));
+
+        $removePairs  = [];
+        $replacePairs = [];
+        $addPairs     = [];
+
+        // Match exact old/new pairs first (handles middle-row delete without false remove of shifted links).
+        $oldUsed = array_fill(0, count($oldPairs), false);
+        $newUsed = array_fill(0, count($pairsToStore), false);
+        $oldTokenMap = [];
+        foreach ($oldPairs as $oi => $op) {
+            $token = (string) ($op[0] ?? '') . "\n" . (string) ($op[1] ?? '');
+            if (! isset($oldTokenMap[$token])) {
+                $oldTokenMap[$token] = [];
+            }
+            $oldTokenMap[$token][] = $oi;
+        }
+        foreach ($pairsToStore as $ni => $np) {
+            $token = (string) ($np[0] ?? '') . "\n" . (string) ($np[1] ?? '');
+            if (! empty($oldTokenMap[$token])) {
+                $oi = array_shift($oldTokenMap[$token]);
+                if ($oi !== null && isset($oldUsed[$oi]) && ! $oldUsed[$oi]) {
+                    $oldUsed[$oi] = true;
+                    $newUsed[$ni] = true;
+                }
+            }
+        }
+
+        $oldUnmatched = [];
+        foreach ($oldPairs as $oi => $op) {
+            if (! ($oldUsed[$oi] ?? false)) {
+                $oldUnmatched[] = $op;
+            }
+        }
+        $newUnmatched = [];
+        foreach ($pairsToStore as $ni => $np) {
+            if (! ($newUsed[$ni] ?? false)) {
+                $newUnmatched[] = $np;
+            }
+        }
+
+        $replaceCount = min(count($oldUnmatched), count($newUnmatched));
+        for ($i = 0; $i < $replaceCount; $i++) {
+            $replacePairs[] = [
+                $oldUnmatched[$i][0] ?? '',
+                $oldUnmatched[$i][1] ?? '',
+                $newUnmatched[$i][0] ?? '',
+                $newUnmatched[$i][1] ?? '',
+            ];
+        }
+        for ($i = $replaceCount; $i < count($oldUnmatched); $i++) {
+            $removePairs[] = $oldUnmatched[$i];
+        }
+        for ($i = $replaceCount; $i < count($newUnmatched); $i++) {
+            $addPairs[] = $newUnmatched[$i];
+        }
+
+        $hasChanges = count($removePairs) > 0 || count($replacePairs) > 0 || count($addPairs) > 0
+            || count($pairsToStore) !== count($oldPairs);
+        if (! $hasChanges && count($newPairs) === count($oldPairs)) {
+            return ['queued' => false, 'skipped' => true];
+        }
+
+        if ($onlyArticleIds !== null) {
+            $caIds = CampaignArticle::where('campaign_id', $campaign->id)
+                ->whereIn('id', array_map('intval', $onlyArticleIds))
+                ->pluck('id')
+                ->all();
+        } else {
+            $caIds = CampaignArticle::where('campaign_id', $campaign->id)
+                ->where('keyword', $representative->keyword)
+                ->where('url', $representative->url)
+                ->pluck('id')
+                ->all();
+        }
+
+        if (count($caIds) === 0) {
+            return ['queued' => false, 'skipped' => true];
+        }
+
+        $newIsJson    = count($pairsToStore) > 1;
+        if (count($pairsToStore) === 0) {
+            $kwStore  = $newIsJson ? '[]' : '';
+            $urlStore = $newIsJson ? '[]' : '';
+        } elseif (count($pairsToStore) === 1 && ! $newIsJson) {
+            $kwStore  = $pairsToStore[0][0];
+            $urlStore = $pairsToStore[0][1];
+        } else {
+            $kwStore  = json_encode(array_column($pairsToStore, 0));
+            $urlStore = json_encode(array_column($pairsToStore, 1));
+        }
+
+        CampaignArticle::whereIn('id', $caIds)->update([
+            'keyword'      => $kwStore,
+            'url'          => $urlStore,
+            'keyword_type' => $newIsJson ? 'json' : 'single',
+            'url_type'     => $newIsJson ? 'json' : 'single',
+        ]);
+
+        $postIds = CampaignPost::whereIn('campaign_article_id', $caIds)
+            ->where('status', 'success')
+            ->whereNotNull('remote_id')
+            ->pluck('id')
+            ->all();
+
+        $needsRemoteUpdate = count($removePairs) > 0 || count($replacePairs) > 0 || count($addPairs) > 0;
+        if (count($postIds) > 0 && $needsRemoteUpdate) {
+            BulkUpdateCampaignPostsJob::dispatch($postIds, $replacePairs, $removePairs, $addPairs)
+                ->onQueue('bulk_updates');
+            CampaignPost::whereIn('id', $postIds)->update(['content_updated_at' => now()]);
+
+            return ['queued' => true, 'skipped' => false];
+        }
+
+        return ['queued' => false, 'skipped' => false];
+    }
+
+    /**
+     * Update keyword/URL for a single campaign post’s article (convert single → multiple links, etc.).
+     */
+    public function updateCampaignPostKeywords(Request $request, string $id)
+    {
+        $campaignPost = CampaignPost::with('campaign')->find($id);
+        if (! $campaignPost || ! $campaignPost->campaign) {
+            return back()->with('cus__error', 'Campaign post not found.');
+        }
+
+        $validated = $request->validate([
+            'batch_keyword' => 'required|array|min:1',
+            'batch_url'     => 'required|array|min:1',
+        ]);
+
+        $campaign = $campaignPost->campaign;
+        $ca       = CampaignArticle::where('campaign_id', $campaign->id)
+            ->whereKey($campaignPost->campaign_article_id)
+            ->first();
+        if (! $ca) {
+            return back()->with('cus__error', 'Campaign article not found.');
+        }
+
+        $result = $this->applyCampaignKeywordUrlBatch(
+            $campaign,
+            $ca,
+            $validated['batch_keyword'],
+            $validated['batch_url'],
+            [$ca->id]
+        );
+
+        if (! empty($result['error'])) {
+            return back()->with('cus__error', $result['error'])->withInput();
+        }
+
+        if ($result['skipped']) {
+            return back()->with('cus__error', 'No keyword/URL changes were made.');
+        }
+
+        if ($result['queued']) {
+            $campaign->update(['last_bulk_updated_at' => now()]);
+        }
+
+        $msg = $result['queued']
+            ? 'Keywords/URLs saved. Remote update queued. Run: php artisan queue:work --queue=bulk_updates'
+            : 'Keywords/URLs saved. No published post to sync on remote, or no link text changes.';
+
+        return redirect()
+            ->route('admin.campaign.edit.post', $campaignPost->id)
+            ->with('cus__success', $msg);
+    }
+
+    /**
      * Bulk update: update campaign_articles in DB, then queue remote post updates (job per batch).
      * Supports single and json (multiple keyword/URL) batches.
      */
     public function bulkUpdateCampaignPosts(Request $request, string $id)
     {
         $campaign = Campaign::find($id);
-        if (!$campaign) {
+        if (! $campaign) {
             return back()->with('cus__error', 'Campaign not found');
         }
 
@@ -834,7 +1115,7 @@ class campaignController extends Controller
         $batchKeywords     = $request->input('batch_keyword', []);
         $batchUrls         = $request->input('batch_url', []);
 
-        if (!is_array($representativeIds)) {
+        if (! is_array($representativeIds)) {
             return back()->with('cus__error', 'Invalid form data.');
         }
 
@@ -845,114 +1126,22 @@ class campaignController extends Controller
         foreach ($representativeIds as $index => $repId) {
             $repId = (int) $repId;
             $representative = CampaignArticle::where('campaign_id', $campaign->id)->find($repId);
-            if (!$representative) {
+            if (! $representative) {
                 continue;
             }
 
-            // New pairs: support single (batch_keyword[index] string) or json (batch_keyword[index] array)
-            $kwInput = $batchKeywords[$index] ?? null;
+            $kwInput  = $batchKeywords[$index] ?? null;
             $urlInput = $batchUrls[$index] ?? null;
-            if (is_array($kwInput) && is_array($urlInput)) {
-                $newKwList  = array_values(array_map(fn($v) => trim((string) $v), $kwInput));
-                $newUrlList = array_values(array_map(fn($v) => trim((string) $v), $urlInput));
-                $newPairs = [];
-                $len = min(count($newKwList), count($newUrlList));
-                for ($i = 0; $i < $len; $i++) {
-                    $newPairs[] = [$newKwList[$i] ?? '', $newUrlList[$i] ?? ''];
-                }
-            } else {
-                $newKw  = trim((string) $kwInput);
-                $newUrl = trim((string) $urlInput);
-                $newPairs = ($newKw !== '' || $newUrl !== '') ? [[$newKw, $newUrl]] : [];
+
+            $result = $this->applyCampaignKeywordUrlBatch($campaign, $representative, $kwInput, $urlInput, null);
+            if (! empty($result['error'])) {
+                return redirect()
+                    ->route('admin.campaign.edit', $campaign->id)
+                    ->with('cus__error', $result['error'])
+                    ->with('edit_campaign_tab', 'keywords')
+                    ->with('edit_campaign_keywords_tab', 'batch');
             }
-
-            $oldKeyword = $representative->keyword === null ? '' : (string) $representative->keyword;
-            $oldUrl     = $representative->url === null ? '' : (string) $representative->url;
-            $isJson     = ($representative->keyword_type ?? '') === 'json';
-
-            $oldPairs = [];
-            if ($isJson) {
-                $kwArr = json_decode($oldKeyword, true);
-                $urlArr = json_decode($oldUrl, true);
-                if (is_array($kwArr) && is_array($urlArr)) {
-                    $n = min(count($kwArr), count($urlArr));
-                    for ($i = 0; $i < $n; $i++) {
-                        $oldPairs[] = [trim((string) ($kwArr[$i] ?? '')), trim((string) ($urlArr[$i] ?? ''))];
-                    }
-                }
-            } else {
-                if ($oldKeyword !== '' || $oldUrl !== '') {
-                    $oldPairs[] = [$oldKeyword, $oldUrl];
-                }
-            }
-
-            $removePairs = [];
-            $replacePairs = [];
-            $addPairs = [];
-            for ($i = 0; $i < count($oldPairs); $i++) {
-                if ($i >= count($newPairs)) {
-                    $removePairs[] = $oldPairs[$i];
-                } elseif (($newPairs[$i][0] ?? '') === '' && ($newPairs[$i][1] ?? '') === '') {
-                    $removePairs[] = $oldPairs[$i];
-                } elseif (($oldPairs[$i][0] ?? '') !== ($newPairs[$i][0] ?? '') || ($oldPairs[$i][1] ?? '') !== ($newPairs[$i][1] ?? '')) {
-                    $replacePairs[] = [
-                        $oldPairs[$i][0],
-                        $oldPairs[$i][1],
-                        $newPairs[$i][0] ?? '',
-                        $newPairs[$i][1] ?? '',
-                    ];
-                }
-            }
-            for ($i = count($oldPairs); $i < count($newPairs); $i++) {
-                if (($newPairs[$i][0] ?? '') !== '' || ($newPairs[$i][1] ?? '') !== '') {
-                    $addPairs[] = $newPairs[$i];
-                }
-            }
-
-            $hasChanges = count($removePairs) > 0 || count($replacePairs) > 0 || count($addPairs) > 0
-                || count($newPairs) !== count($oldPairs);
-            if (!$hasChanges && count($newPairs) === count($oldPairs)) {
-                continue;
-            }
-
-            $caIds = CampaignArticle::where('campaign_id', $campaign->id)
-                ->where('keyword', $representative->keyword)
-                ->where('url', $representative->url)
-                ->pluck('id')
-                ->all();
-
-            $pairsToStore = array_values(array_filter($newPairs, fn($p) => ($p[0] ?? '') !== '' || ($p[1] ?? '') !== ''));
-            $newIsJson = count($pairsToStore) > 1;
-            if (count($pairsToStore) === 0) {
-                $kwStore  = $newIsJson ? '[]' : '';
-                $urlStore = $newIsJson ? '[]' : '';
-            } elseif (count($pairsToStore) === 1 && !$newIsJson) {
-                $kwStore  = $pairsToStore[0][0];
-                $urlStore = $pairsToStore[0][1];
-            } else {
-                $kwStore  = json_encode(array_column($pairsToStore, 0));
-                $urlStore = json_encode(array_column($pairsToStore, 1));
-            }
-
-            CampaignArticle::whereIn('id', $caIds)->update([
-                'keyword'      => $kwStore,
-                'url'          => $urlStore,
-                'keyword_type' => $newIsJson ? 'json' : 'single',
-                'url_type'     => $newIsJson ? 'json' : 'single',
-            ]);
-
-            $postIds = CampaignPost::whereIn('campaign_article_id', $caIds)
-                ->where('status', 'success')
-                ->whereNotNull('remote_id')
-                ->pluck('id')
-                ->all();
-
-            $needsRemoteUpdate = count($removePairs) > 0 || count($replacePairs) > 0 || count($addPairs) > 0;
-            if (count($postIds) > 0 && $needsRemoteUpdate) {
-                BulkUpdateCampaignPostsJob::dispatch($postIds, $replacePairs, $removePairs, $addPairs)
-                    ->onQueue('bulk_updates');
-                // Show "Updated" immediately for posts in this batch; job will clear on remote failure
-                CampaignPost::whereIn('id', $postIds)->update(['content_updated_at' => now()]);
+            if ($result['queued']) {
                 $queuedBatches++;
             }
         }
@@ -967,11 +1156,250 @@ class campaignController extends Controller
 
         return redirect()
             ->route('admin.campaign.edit', $campaign->id)
-            ->with($queuedBatches > 0 ? 'cus__success' : 'cus__error', $msg);
+            ->with($queuedBatches > 0 ? 'cus__success' : 'cus__error', $msg)
+            ->with('edit_campaign_tab', 'keywords')
+            ->with('edit_campaign_keywords_tab', 'batch');
     }
 
-   
+    /**
+     * Edit campaign: same multi-level keyword/URL model as create (Apply for × boxes → one row per post in domain order).
+     */
+    public function multiLevelUpdateCampaignKeywords(Request $request, string $id)
+    {
+        $campaign = Campaign::find($id);
+        if (! $campaign) {
+            return redirect()
+                ->route('admin.campaign.index')
+                ->with('cus__error', 'Campaign not found');
+        }
 
+        $request->validate([
+            'keywordmethod'      => 'required|in:multiple',
+            'keywordsDataHolder'   => 'required|string',
+        ]);
+
+        $keywords = json_decode((string) $request->keywordsDataHolder, true);
+        if (! is_array($keywords)) {
+            return redirect()
+                ->route('admin.campaign.edit', $campaign->id)
+                ->with('cus__error', 'Invalid keywords JSON.')
+                ->with('edit_campaign_tab', 'keywords')
+                ->with('edit_campaign_keywords_tab', 'multi');
+        }
+
+        $orderedIds = $this->orderedCampaignArticleIdsForCampaign($campaign);
+        if (count($orderedIds) === 0) {
+            return redirect()
+                ->route('admin.campaign.edit', $campaign->id)
+                ->with('cus__error', 'No campaign articles found.')
+                ->with('edit_campaign_tab', 'keywords')
+                ->with('edit_campaign_keywords_tab', 'multi');
+        }
+
+        if (count($keywords) !== count($orderedIds)) {
+            return redirect()
+                ->route('admin.campaign.edit', $campaign->id)
+                ->with(
+                    'cus__error',
+                    'Keyword rows must be exactly '.count($orderedIds).' (your campaign post count).'
+                )
+                ->with('edit_campaign_tab', 'keywords')
+                ->with('edit_campaign_keywords_tab', 'multi');
+        }
+
+        $queuedJobs = 0;
+
+        try {
+            DB::transaction(function () use ($campaign, $keywords, $orderedIds, &$queuedJobs) {
+                foreach ($orderedIds as $i => $articleId) {
+                    $ca = CampaignArticle::where('campaign_id', $campaign->id)->find($articleId);
+                    if (! $ca) {
+                        throw new \RuntimeException('Campaign article missing.');
+                    }
+
+                    $row = $keywords[$i] ?? [];
+
+                    $result = $this->applyCampaignKeywordUrlBatch(
+                        $campaign,
+                        $ca,
+                        $row['keyword'] ?? null,
+                        $row['url'] ?? null,
+                        [$ca->id]
+                    );
+
+                    if (! empty($result['error'])) {
+                        throw new \RuntimeException($result['error']);
+                    }
+
+                    if (! empty($result['queued'])) {
+                        $queuedJobs++;
+                    }
+
+                    $mediaVal = isset($row['media']) ? trim((string) $row['media']) : '';
+                    $mediaVal = $mediaVal === '' ? null : $mediaVal;
+                    $nofollow = ! empty($row['nofollow']);
+
+                    CampaignArticle::where('id', $ca->id)->update([
+                        'media'    => $mediaVal,
+                        'nofollow' => $nofollow,
+                    ]);
+                }
+            });
+        } catch (\RuntimeException $e) {
+            return redirect()
+                ->route('admin.campaign.edit', $campaign->id)
+                ->with('cus__error', $e->getMessage())
+                ->with('edit_campaign_tab', 'keywords')
+                ->with('edit_campaign_keywords_tab', 'multi');
+        }
+
+        if ($queuedJobs > 0) {
+            $campaign->update(['last_bulk_updated_at' => now()]);
+        }
+
+        $msg = $queuedJobs > 0
+            ? "Keywords updated. {$queuedJobs} remote sync job(s) queued. Run: php artisan queue:work --queue=bulk_updates"
+            : 'Keywords and media saved. No remote link changes were needed for published posts, or no published posts yet.';
+
+        return redirect()
+            ->route('admin.campaign.edit', $campaign->id)
+            ->with('cus__success', $msg)
+            ->with('edit_campaign_tab', 'keywords')
+            ->with('edit_campaign_keywords_tab', 'multi');
+    }
+
+    /**
+     * Campaign posts in creation order (domain sort_order), one article id per post.
+     *
+     * @return array<int, int>
+     */
+    private function orderedCampaignArticleIdsForCampaign(Campaign $campaign): array
+    {
+        return CampaignPost::query()
+            ->where('campaign_posts.campaign_id', $campaign->id)
+            ->join('campaign_domains', 'campaign_posts.campaign_domain_id', '=', 'campaign_domains.id')
+            ->orderBy('campaign_domains.sort_order')
+            ->pluck('campaign_posts.campaign_article_id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<int, int>  $orderedArticleIds
+     * @return array<int, array{quantity: int, media: ?string, nofollow: bool, rows: array<int, array{url: string, keyword: string}>}>
+     */
+    private function buildMultiLevelBoxesForEdit(array $orderedArticleIds): array
+    {
+        if (count($orderedArticleIds) === 0) {
+            return [];
+        }
+
+        $articles = CampaignArticle::whereIn('id', $orderedArticleIds)->get()->keyBy('id');
+
+        $boxes = [];
+        $groupSig = null;
+        $groupQty = 0;
+        /** @var array|null $groupPayload */
+        $groupPayload = null;
+
+        $flush = function () use (&$boxes, &$groupSig, &$groupQty, &$groupPayload) {
+            if ($groupSig === null || $groupPayload === null) {
+                return;
+            }
+            $boxes[] = [
+                'quantity' => $groupQty,
+                'media'    => $groupPayload['media'],
+                'nofollow' => $groupPayload['nofollow'],
+                'rows'     => $groupPayload['rows'],
+            ];
+        };
+
+        foreach ($orderedArticleIds as $aid) {
+            $ca = $articles->get($aid);
+            if (! $ca) {
+                continue;
+            }
+
+            $payload = $this->articleRowPayloadForEdit($ca);
+            $sig = $this->signatureForMultiLevelPayload($payload);
+
+            if ($groupSig === null) {
+                $groupSig = $sig;
+                $groupPayload = $payload;
+                $groupQty = 1;
+            } elseif ($groupSig === $sig) {
+                $groupQty++;
+            } else {
+                $flush();
+                $groupSig = $sig;
+                $groupPayload = $payload;
+                $groupQty = 1;
+            }
+        }
+        $flush();
+
+        return $boxes;
+    }
+
+    /**
+     * @return array{media: ?string, nofollow: bool, rows: array<int, array{url: string, keyword: string}>}
+     */
+    private function articleRowPayloadForEdit(CampaignArticle $ca): array
+    {
+        $kw  = $ca->keyword;
+        $url = $ca->url;
+
+        if (($ca->keyword_type ?? '') === 'json') {
+            $kwArr  = json_decode((string) $kw, true);
+            $urlArr = json_decode((string) $url, true);
+            if (! is_array($kwArr)) {
+                $kwArr = [];
+            }
+            if (! is_array($urlArr)) {
+                $urlArr = [];
+            }
+        } else {
+            $kwArr  = [trim((string) $kw)];
+            $urlArr = [trim((string) $url)];
+        }
+
+        $n = min(count($kwArr), count($urlArr));
+        $rows = [];
+        for ($i = 0; $i < $n; $i++) {
+            $rows[] = [
+                'url'     => (string) ($urlArr[$i] ?? ''),
+                'keyword' => (string) ($kwArr[$i] ?? ''),
+            ];
+        }
+        if (count($rows) === 0) {
+            $rows[] = ['url' => '', 'keyword' => ''];
+        }
+
+        $media = $ca->media;
+        $media = $media === null || trim((string) $media) === '' ? null : trim((string) $media);
+
+        return [
+            'media'    => $media,
+            'nofollow' => (bool) $ca->nofollow,
+            'rows'     => $rows,
+        ];
+    }
+
+    /**
+     * @param  array{media: ?string, nofollow: bool, rows: array<int, array{url: string, keyword: string}>}  $payload
+     */
+    private function signatureForMultiLevelPayload(array $payload): string
+    {
+        return json_encode(
+            [
+                'm'    => $payload['media'],
+                'nf'   => $payload['nofollow'],
+                'rows' => $payload['rows'],
+            ],
+            JSON_UNESCAPED_UNICODE
+        );
+    }
 
     /**
      * Update the specified resource in storage.
@@ -1003,7 +1431,9 @@ class campaignController extends Controller
             'campaign_no' => $campaign_no,
         ]);
 
-        return back()->with('cus__success', 'Successfully updated the campaign');
+        return back()
+            ->with('cus__success', 'Successfully updated the campaign')
+            ->with('edit_campaign_tab', 'campaign');
     }
 
     /** Manual retry: allow queued/failed/publishing so user can re-dispatch after jobs killed. Resets attempts and runs from first. */
@@ -1058,5 +1488,51 @@ class campaignController extends Controller
         return redirect()
             ->route('admin.campaign.index')
             ->with('cus__success', 'Campaign deletion queued. Posts will be removed from remote sites and the database in the background. Run the queue worker to process it.');
+    }
+
+    /**
+     * Remove campaign data from this application only. Does not call remote sites; published posts stay live.
+     */
+    public function purgeLocalOnly(string $id)
+    {
+        $campaign = Campaign::find($id);
+        if (!$campaign) {
+            return back()->with('cus__error', 'Campaign not found');
+        }
+        $this->authorizeCampaignAccess($campaign);
+        PurgeLocalCampaignDataService::purgePbnCampaign((int) $campaign->id);
+
+        return redirect()
+            ->route('admin.campaign.index')
+            ->with(
+                'cus__success',
+                'Campaign removed from this dashboard only. Remote posts were not deleted.'
+            );
+    }
+
+    /**
+     * Remove multiple PBN campaigns from the database only (no remote API calls).
+     */
+    public function bulkPurgeLocal(Request $request)
+    {
+        $ids = $this->validatedBulkCampaignIds($request);
+        if ($ids === []) {
+            return back()->with('cus__error', 'No campaigns selected.');
+        }
+
+        $allowed = $this->campaignIdsOwnedByCurrentAdmin($ids, Campaign::class);
+        if ($allowed === []) {
+            return back()->with('cus__error', 'No campaigns found or you do not have permission.');
+        }
+
+        foreach ($allowed as $id) {
+            PurgeLocalCampaignDataService::purgePbnCampaign($id);
+        }
+
+        $n = count($allowed);
+
+        return redirect()
+            ->route('admin.campaign.index')
+            ->with('cus__success', $n . ' campaign(s) removed from this dashboard only. Remote posts were not deleted.');
     }
 }

@@ -42,8 +42,9 @@ return new class extends Migration
                 ->cascadeOnDelete();
 
             $table->foreignId('article_id')
+                ->nullable()
                 ->constrained('articles')
-                ->cascadeOnDelete();
+                ->nullOnDelete();
 
             // 🔑 Keyword & URL data (copied at schedule time)
             $table->text('keyword')->nullable();

@@ -200,10 +200,16 @@
                                     {{ optional($post->campaignDomain?->domain)->name ?? '-' }}
                                 </td>
 
-                                {{-- Article --}}
+                                {{-- Article (library row may be soft-deleted or purged; use snapshot) --}}
+                                @php
+                                    $articleLabel = optional($post->campaignArticle?->article)->name
+                                        ?? $post->campaignArticle?->article_title_snapshot
+                                        ?? $post->remote_title
+                                        ?? '—';
+                                @endphp
                                 <td class="border border-gray-200 font-sans !px-2 !py-3 max-w-[220px] truncate"
-                                    title="{{ optional($post->campaignArticle?->article)->name }}">
-                                    {{ \Illuminate\Support\Str::limit(optional($post->campaignArticle?->article)->name ?? '-', 70) }}
+                                    title="{{ $articleLabel }}">
+                                    {{ \Illuminate\Support\Str::limit($articleLabel, 70) }}
                                 </td>
                                 {{-- Type --}}
                                 <td class="border border-gray-200 font-sans !px-2 !py-3">
@@ -308,8 +314,17 @@
 
                         @empty
                             <tr>
-                                <td colspan="13" class="text-center !py-4 text-gray-500 bg-gray-100 font-sans">
-                                    No campaign posts found...
+                                <td colspan="13" class="text-center !py-4 text-gray-500 bg-gray-100 font-sans align-top">
+                                    <p class="font-medium text-gray-700 mb-2">No campaign posts found.</p>
+                                    @if (($campaign->total_targets ?? 0) > 0 || ($campaign->completed_targets ?? 0) > 0)
+                                        <p class="text-sm text-gray-600 max-w-3xl mx-auto leading-relaxed">
+                                            The campaign row still shows targets, but there are no matching rows in the database for this campaign’s posts (or articles).
+                                            That usually happens after <strong>permanently deleting used articles</strong> when old foreign keys caused related campaign rows to be removed as well.
+                                            This screen cannot be rebuilt from the app alone.
+                                            <strong>Recovery:</strong> restore a MySQL backup or hosting snapshot from <em>before</em> those deletes (or re-import history if you keep exports elsewhere).
+                                            Going forward, run the latest migrations so purging articles no longer removes post history.
+                                        </p>
+                                    @endif
                                 </td>
                             </tr>
                         @endforelse

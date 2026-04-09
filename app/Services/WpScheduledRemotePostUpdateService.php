@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Admin\WpScheduledCampaignPost;
+use App\Support\ExtraKeywordLinksHtmlInserter;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -52,12 +53,14 @@ class WpScheduledRemotePostUpdateService
 
         $pairs = self::getKeywordUrlPairs($ca);
         if (count($pairs) === 0) {
+            $content = ExtraKeywordLinksHtmlInserter::stripBlankTargetAnchors($content);
+
             return [$title, $content];
         }
 
         $nofollow = (bool) ($ca->nofollow ?? false);
         $relAttr = $nofollow ? 'nofollow noopener' : 'noopener';
-        $content = self::replaceAnchorsWithNewPairs($content, $pairs, $relAttr);
+        $content = ExtraKeywordLinksHtmlInserter::replaceBlankAnchorsWithPairs($content, $pairs, $relAttr);
 
         return [$title, $content];
     }
@@ -93,26 +96,5 @@ class WpScheduledRemotePostUpdateService
             }
         }
         return $pairs;
-    }
-
-    /**
-     * Replace every <a ... target="_blank" ...>...</a> in HTML with new anchors from pairs.
-     * First link → first pair, second → second, etc.; extra links use the last pair.
-     */
-    private static function replaceAnchorsWithNewPairs(string $html, array $pairs, string $relAttr): string
-    {
-        if (count($pairs) === 0) {
-            return $html;
-        }
-
-        $pattern = '/<a\s[^>]*target\s*=\s*["\']_blank["\'][^>]*>.*?<\/a>/is';
-        $index = 0;
-        return preg_replace_callback($pattern, function () use ($pairs, &$index, $relAttr) {
-            $pair = $pairs[min($index, count($pairs) - 1)];
-            $index++;
-            $kw = $pair[0];
-            $url = $pair[1];
-            return '<a href="' . e($url) . '" target="_blank" rel="' . $relAttr . '">' . e($kw) . '</a>';
-        }, $html);
     }
 }

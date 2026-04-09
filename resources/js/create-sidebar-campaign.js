@@ -1,15 +1,283 @@
 // ✅ FULL CODE (with patches) — NO LINES REMOVED, ONLY ADDED/UPDATED INLINE
 
-import { initDynamicRadioGroup, initPopup, nestedPop } from "./helper/popup";
-
+import { initDynamicRadioGroup, initPopup, nestedPop } from "./helper/popup.js";
+import { initSelectManager } from "./helper/selectBox.js";
+import { allowOnlyNumbers } from "./helper/utility.js";
 window.addEventListener("DOMContentLoaded", () => {
+
+    // 🔴 RESET selection state on full page reload
+
+    localStorage.removeItem("selectSidebarDomains");
+    localStorage.removeItem("lastSetDomainSet");
+    localStorage.removeItem("selectSidebarSetDomains");
+
     // tabs things which we will handle
     // --- Step manager (drop-in) ---
-    let sidebarCount = 0; // default or minimum
+    let sidebarCount = 10; // default or minimum
     let domainCategory;
     // sumbit button //
     let form = document.getElementById('sidebar-campaign');
-    // **** //
+
+    // ---------------
+
+    async function renderDomains({
+        url = null,
+        domainCategoryId,
+        tableBody,
+        loader,
+        paginationLoader,
+        per_page = 30,
+        isPagination = false
+    }) {
+        try {
+            let apiUrl;
+
+            // 🔴 CRITICAL FIX: Always preserve per_page
+            if (url) {
+                const u = new URL(url, window.location.origin);
+                u.searchParams.set('per_page', per_page);
+                apiUrl = u.toString();
+            } else {
+                apiUrl = `/api/admin/domains/${domainCategoryId}?per_page=${per_page}`;
+            }
+
+            // Show loaders
+            if (isPagination && paginationLoader) {
+                paginationLoader.classList.remove("hidden");
+            }
+            loader?.classList.remove("hidden");
+
+            const res = await fetch(apiUrl, {
+                headers: { Accept: "application/json" }
+            }).then(r => r.json());
+
+            if (!res.status) {
+                alert(res.message || "Failed to load domains");
+                return;
+            }
+
+            const meta = res.data.domains;
+            const domains = meta.data;
+
+            // ✅ Pagination-safe validation
+            if (meta.total < sidebarCount) {
+                alert("Domains quantity must be greater or equal to sidebar Links quantity");
+                return;
+            }
+
+            tableBody.innerHTML = '';
+
+            // Continuous serial number
+            const offset = meta.per_page * (meta.current_page - 1);
+
+            domains.forEach((domain, index) => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-gray-50';
+                tr.innerHTML = `
+                <td class="border !px-2 !py-1 text-center">
+                    <input type="checkbox"
+                        class="sidebar_domains"
+                        value="${domain.id}">
+                </td>
+                <td class="border !px-2 !py-1">${index + 1 + offset}</td>
+                <td class="border !px-2 !py-1">
+                    <label class="cursor-pointer w-full">
+                        ${domain.name}
+                    </label>
+                </td>
+                <td class="border !px-2 !py-1">${domain.da ?? '-'}</td>
+                <td class="border !px-2 !py-1">${domain.tf ?? '-'}</td>
+                <td class="border !px-2 !py-1">${domain.dr ?? '-'}</td>
+                <td class="border !px-2 !py-1">${domain.ss ?? '-'}</td>
+            `;
+                tableBody.appendChild(tr);
+            });
+
+            // ✅ Restore checkbox selections
+            if (window.sideBarRandomDomainSelMgr) {
+                window.sideBarRandomDomainSelMgr.refresh();
+            }
+
+            // Render pagination buttons
+            renderDomainPagination(meta.links, {
+                domainCategoryId,
+                tableBody,
+                loader,
+                paginationLoader,
+                per_page
+            });
+
+        } catch (err) {
+            console.error(err);
+            alert("Something went wrong while loading domains");
+        } finally {
+            loader?.classList.add("hidden");
+            paginationLoader?.classList.add("hidden");
+        }
+    }
+
+
+    function renderDomainPagination(links, context) {
+        const container = document.getElementById("domain-pagination");
+        container.innerHTML = '';
+
+        if (!links || links.length === 0) return;
+
+        links.forEach(link => {
+            if (link.label === '...') {
+                const span = document.createElement('span');
+                span.textContent = '...';
+                span.className = 'px-2 text-gray-500';
+                container.appendChild(span);
+                return;
+            }
+
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.innerHTML = link.label;
+            btn.className = 'page-btn';
+
+            if (link.active) btn.classList.add('page-active');
+            if (!link.url) btn.disabled = true;
+
+            btn.onclick = () => {
+                if (link.url) {
+                    renderDomains({
+                        url: link.url,
+                        ...context,
+                        isPagination: true
+                    });
+                }
+            };
+
+            container.appendChild(btn);
+        });
+    }
+
+    // render domain set 
+
+    async function renderDomainSet({
+        url = null,
+        domainSetId,
+        tableBody,
+        loader,
+        paginationLoader,
+        per_page = 30,
+        isPagination = false
+    }) {
+        try {
+            let apiUrl;
+
+            // 🔴 preserve per_page on pagination clicks
+            if (url) {
+                const u = new URL(url, window.location.origin);
+                u.searchParams.set('per_page', per_page);
+                apiUrl = u.toString();
+            } else {
+                apiUrl = `/api/admin/domain/set/fetch/${domainSetId}?per_page=${per_page}`;
+            }
+
+            if (isPagination && paginationLoader) {
+                paginationLoader.classList.remove('hidden');
+            }
+            loader?.classList.remove('hidden');
+
+            const res = await fetch(apiUrl, {
+                headers: { Accept: 'application/json' }
+            }).then(r => r.json());
+            tableBody.innerHTML = '';
+            if (!res?.status) {
+                alert(res?.message || 'Failed to load domains');
+                return;
+            }
+
+            const meta = res.data.domains;
+            const domains = meta.data;
+
+
+
+            const offset = meta.per_page * (meta.current_page - 1);
+
+            domains.forEach((d, index) => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-gray-50';
+                tr.innerHTML = `
+                <td class="border !px-2 !py-1 text-center">
+                    <input type="checkbox"
+                        class="setdomains"
+                        value="${d.id}">
+                </td>
+                <td class="border !px-2 !py-1">${index + 1 + offset}</td>
+                <td class="border !px-2 !py-1">
+                    <label class="cursor-pointer w-full">${d.name ?? ''}</label>
+                </td>
+                <td class="border !px-2 !py-1">${d.da ?? '-'}</td>
+                <td class="border !px-2 !py-1">${d.tf ?? '-'}</td>
+                <td class="border !px-2 !py-1">${d.dr ?? '-'}</td>
+                <td class="border !px-2 !py-1">${d.ss ?? '-'}</td>
+            `;
+                tableBody.appendChild(tr);
+            });
+
+            // ✅ restore checkbox highlights
+            if (window.domainSetSelectMgr) {
+                window.domainSetSelectMgr.refresh();
+            }
+
+            renderDomainSetPagination(meta.links, {
+                domainSetId,
+                tableBody,
+                loader,
+                paginationLoader,
+                per_page
+            });
+
+        } catch (err) {
+            console.error(err);
+            alert('Something went wrong');
+        } finally {
+            loader?.classList.add('hidden');
+            paginationLoader?.classList.add('hidden');
+        }
+    }
+
+    function renderDomainSetPagination(links, context) {
+        const container = document.getElementById('domain-set-pagination');
+        container.innerHTML = '';
+
+        if (!links || links.length === 0) return;
+
+        links.forEach(link => {
+            if (link.label === '...') {
+                const span = document.createElement('span');
+                span.textContent = '...';
+                span.className = 'px-2 text-gray-500';
+                container.appendChild(span);
+                return;
+            }
+
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.innerHTML = link.label;
+            btn.className = 'page-btn';
+
+            if (link.active) btn.classList.add('page-active');
+            if (!link.url) btn.disabled = true;
+
+            btn.onclick = () => {
+                renderDomainSet({
+                    url: link.url,
+                    ...context,
+                    isPagination: true
+                });
+            };
+
+            container.appendChild(btn);
+        });
+    }
+
+    // ---------------
+
     (function () {
         // Tab buttons and sections
         const tabBtnArr = Array.from(document.getElementsByClassName("tab-switcher") || []);
@@ -115,7 +383,7 @@ window.addEventListener("DOMContentLoaded", () => {
             const campaignId = document.getElementById("campaign-no");
             const selectDomain = document.getElementById("campaign-domain");
             const sideBarQuantity = document.getElementById("sidebar-quantity");
-
+            let postQtyshower = document.querySelector('.dy-post-count');
             if (!campaignId || !selectDomain || !sideBarQuantity)
                 return { ok: false, msg: "Missing fields on step 1" };
 
@@ -129,6 +397,7 @@ window.addEventListener("DOMContentLoaded", () => {
             // ✅ PATCH: This now updates the ONE global sidebarCount (no shadowing)
             sidebarCount = pq;
             domainCategory = selectDomain.value;
+            postQtyshower.textContent=`(${pq})`;
             return { ok: true };
         }
 
@@ -665,45 +934,52 @@ window.addEventListener("DOMContentLoaded", () => {
         tabStyleSwitcher(domainTabBtns, domainSections);
 
     }
-
     if (step__03) {
-
-
 
 
         window.__onEnterStep03 = async function () {
 
             const selected = document.querySelector('input[name="sel_domains"]:checked');
+            let selectDomain = document.getElementById("campaign-domain");
             if (!selected) return;
 
             const showDomainLoader = document.querySelector('.domain-loader-pop');
+            const paginationLoader = document.querySelector('.domain-pagination-loader');
+            const tableBody = document.querySelector('#RandomDomainsTable tbody');
 
             try {
                 showDomainLoader.classList.remove('hidden');
                 setTimeout(() => showDomainLoader.classList.remove('opacity-0'), 200);
 
-                const url = `/api/admin/domains/${domainCategory}`; // ✅ no localhost
-                const api = await fetch(url, { headers: { Accept: "application/json" } });
-                const res = await api.json();
+                // ✅ Load FIRST page of paginated domains
+                await renderDomains({
+                    domainCategoryId: selectDomain.value,
+                    tableBody: tableBody,
+                    loader: showDomainLoader,
+                    paginationLoader: paginationLoader,
+                    per_page: 30,
+                    isPagination: false
+                });
 
-                if (!res.status || !Array.isArray(res.data)) {
-                    alert(res.message || "Failed to fetch domains");
-                    return;
-                }
-                if (res.data.length < sidebarCount) {
-                    alert("Domains quantity should be greater or equal to sidebar quantity in order to run campaign");
-                    return;
-                }
-                // ✅ Build rows
-                const rows = buildDomainRows(res.data);
+                // ✅ INIT domain selection manager ONCE
+                if (!window.sideBarRandomDomainSelMgr) {
 
-                // ✅ Clear & append into DataTable
-                const sidebarRandomDt = window.sidebarRandomDt;
-                sidebarRandomDt.clear();
-                sidebarRandomDt.rows.add(rows).draw(false);
+                    window.sideBarRandomDomainSelMgr = initSelectManager({
+                        checkboxSelector: '.sidebar_domains',
+                        selectAllSelector: '#selectAllSidebarDomains',
+                        countSelector: '#selectedSideBarDomainCount',
+                        randomBtnSelector: '',
+                        inputSelector: '',
+                        localStorageKey: 'selectSidebarDomains',
+                        highlightClass: '!bg-blue-100',
+                        parentSelector: 'tr',
+                        maxQuantityInputSelector: "#sidebar-quantity",
+                        enableRandom: false
+                    });
 
-                // ✅ refresh checkbox manager if you have one
-                if (window.sideBarRandomDomainSelMgr) {
+
+                } else {
+                    // ✅ Restore highlight when re-entering step
                     window.sideBarRandomDomainSelMgr.refresh();
                 }
 
@@ -724,84 +1000,59 @@ window.addEventListener("DOMContentLoaded", () => {
         let fetchDomainSet = document.getElementById('fetch-domains-set');
         let domainSetId = document.getElementById('domain-set'); // there are domain-sets also available in code
 
+        let domainSetMgrInitialized = false;
+        const LAST_DOMAIN_SET_KEY = 'lastSetDomainSet';
+
         fetchDomainSet.addEventListener('click', async (e) => {
             e.preventDefault();
-
-            // ✅ use currentTarget so it works even if you click icon/span inside button
+            e.stopImmediatePropagation();
             const btn = e.currentTarget;
             const loader = btn.querySelector('.loader');
+            const setId = parseInt(domainSetId.value, 10);
+            if (!setId) return;
 
-            const setId = parseInt((domainSetId?.value || '').trim(), 10);
-            if (!Number.isInteger(setId) || setId <= 0) return;
+            const lastSet = localStorage.getItem(LAST_DOMAIN_SET_KEY);
 
-            if (!window.sidebarDomainSetDt) {
-                alert('domainSetDT not initialized');
-                return;
+            // 🔴 new set → clear selection ONCE
+            if (lastSet !== String(setId)) {
+                localStorage.setItem(LAST_DOMAIN_SET_KEY, setId);
+                localStorage.removeItem('selectSidebarSetDomains');
+                if (window.sideBarDomainSetMgr) {
+                    window.sideBarDomainSetMgr.clear();
+                }
             }
 
-            try {
-                loader?.classList.remove('hidden');
+            await renderDomainSet({
+                domainSetId: setId,
+                tableBody: document.querySelector('#domainSetTable tbody'),
+                loader,
+                paginationLoader: document.querySelector('.domain-set-pagination-loader'),
+                per_page: 30,
+                isPagination: false
+            });
 
-                const api = await fetch(`/api/admin/domain/set/fetch/${setId}`, {
-                    method: 'GET',
-                    headers: { Accept: 'application/json' }
+            // ✅ init ONCE
+            if (!domainSetMgrInitialized) {
+                window.sideBarDomainSetMgr = initSelectManager({
+                    checkboxSelector: '.setdomains',
+                    selectAllSelector: '#selectAllSidebarSetDomains',
+                    countSelector: '#selectedSideBarSetDomainCount',
+                    randomBtnSelector: '',
+                    inputSelector: '',
+                    localStorageKey: 'selectSidebarSetDomains',
+                    highlightClass: '!bg-blue-100',
+                    parentSelector: 'tr',
+                    maxQuantityInputSelector: "#sidebar-quantity",
+                    enableRandom: false
                 });
 
-                const response = await api.json().catch(() => null);
-
-                if (!response || response.status !== true || !Array.isArray(response.data)) {
-                    alert(response?.message || 'Failed to fetch domains');
-                    return;
-                }
-
-                // ✅ build rows for DataTable
-                const rows = response.data.map((d, index) => {
-                    const cbId = `sel-set-domain-check-box-${index + 1}`;
-                    const checkboxCol = `
-                                         <input type="checkbox"
-                                           name="bulk_domain_select[]"
-                                           id="${cbId}"
-                                           class="setdomains"
-                                           value="${d.id}">
-                                       `;
-
-                    const snoCol = index + 1;
-
-                    const domainCol = `
-                                    <label for="${cbId}" class="cursor-pointer w-full">
-                                      ${d.name ?? ''}
-                                    </label>
-                                  `;
-
-                    return [
-                        checkboxCol,
-                        snoCol,
-                        domainCol,
-                        d.da ?? '-',
-                        d.tf ?? '-',
-                        d.dr ?? '-',
-                        d.ss ?? '-'
-                    ];
-                });
-
-                // ✅ put into datatable
-                const dt = window.sidebarDomainSetDt;
-                dt.clear();
-                dt.rows.add(rows).draw(false);
-
-                // ✅ if you have selection manager for setdomains, refresh it
-                if (window.sideBarDomainSetMgr) {
-                    window.sideBarDomainSetMgr.refresh();
-                }
-                // we left on domain set
-
-            } catch (err) {
-                console.error(err);
-                alert('Something went wrong');
-            } finally {
-                loader?.classList.add('hidden');
+                domainSetMgrInitialized = true;
+            } else {
+                window.sideBarDomainSetMgr.refresh();
             }
         });
+
+
 
         // ********* manual domains script here ********* //
 
@@ -822,7 +1073,6 @@ window.addEventListener("DOMContentLoaded", () => {
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
-            e.preventDefault();
 
             const selectedRadio = document.querySelector('input[name="sel_domains"]:checked'); // 
             const campaignDomainHolder = document.getElementById('campaigns_domains_holder');
@@ -833,13 +1083,11 @@ window.addEventListener("DOMContentLoaded", () => {
             }
 
             const selectedDomainMethod = selectedRadio.value;
-            console.log("selected method", selectedDomainMethod);
             /* -----------------------------
                RANDOM / SET DOMAINS
             ------------------------------*/
             if (selectedDomainMethod === '0') {
                 const domains = localStorage.getItem('selectSidebarDomains');
-                console.log(domains)
                 if (!domains) {
                     alert('No domains found in local storage.');
                     return;
@@ -854,7 +1102,6 @@ window.addEventListener("DOMContentLoaded", () => {
 
             } else if (selectedDomainMethod === '1') {
                 const domains = localStorage.getItem('selectSidebarSetDomains');
-                console.log(domains)
                 if (!domains) {
                     alert('No domain set found in local storage.');
                     return;
@@ -902,7 +1149,6 @@ window.addEventListener("DOMContentLoaded", () => {
                     });
 
                     const res = await response.json();
-                    console.log(res)
 
                     if (!res.status) {
                         alert(res.message || 'Domain validation failed.');
@@ -921,15 +1167,6 @@ window.addEventListener("DOMContentLoaded", () => {
                 }
             }
 
-            // console.log('// ********** All camppaign data here ************** //');
-
-            // console.log("campaigns_id", document.getElementById('campaign-no').value);
-            // console.log("campaigns_id", document.getElementById('campaign-domain').value);
-            // console.log("sidebarcount", sidebarCount);
-            // console.log("keywords data holder", document.getElementById('keywordsDataHolder').value);
-            // console.log("campaigns value", campaignDomainHolder.value);
-            // console.log('// ************************ //');
-            // submit the form programmatically
             e.target.submit();
         })
 

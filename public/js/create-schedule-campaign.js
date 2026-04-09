@@ -43,8 +43,129 @@ window.addEventListener("DOMContentLoaded", () => {
         if (!isNaN(v) && v > 0) {
             postCount = v;
             postQtyshower.textContent = `(${v})`;
+            trimStoredSelection("selectArticles", v);
+            trimStoredSelection("selectDomains", v);
+            trimStoredSelection("selectSetDomains", v);
+            if (window.articleSelectMgr && typeof window.articleSelectMgr.refresh === "function") {
+                window.articleSelectMgr.refresh();
+            }
+            if (window.domainSelectMgr && typeof window.domainSelectMgr.refresh === "function") {
+                window.domainSelectMgr.refresh();
+            }
+            if (window.domainSetSelectMgr && typeof window.domainSetSelectMgr.refresh === "function") {
+                window.domainSetSelectMgr.refresh();
+            }
         }
         return postCount;
+    }
+
+    function autoSelectByQuantity({
+        checkboxSelector,
+        localStorageKey,
+        qty,
+        manager = null
+    }) {
+        const limit = Math.max(0, parseInt(qty || 0, 10));
+        if (limit <= 0) return;
+        const existing = (() => {
+            try {
+                const raw = JSON.parse(localStorage.getItem(localStorageKey) || "[]");
+                return Array.isArray(raw)
+                    ? [...new Set(raw.map((v) => String(v)).filter(Boolean))]
+                    : [];
+            } catch (_) {
+                return [];
+            }
+        })();
+        const pageIds = Array.from(document.querySelectorAll(checkboxSelector))
+            .map((cb) => String(cb.value))
+            .filter(Boolean);
+        const selected = [...existing];
+        if (selected.length < limit) {
+            for (const id of pageIds) {
+                if (selected.length >= limit) break;
+                if (!selected.includes(id)) selected.push(id);
+            }
+        }
+        localStorage.setItem(localStorageKey, JSON.stringify(selected.slice(0, limit)));
+        if (manager && typeof manager.refresh === "function") manager.refresh();
+    }
+
+    function trimStoredSelection(localStorageKey, qty) {
+        const limit = Math.max(0, parseInt(qty || 0, 10));
+        try {
+            const raw = JSON.parse(localStorage.getItem(localStorageKey) || "[]");
+            const ids = Array.isArray(raw) ? [...new Set(raw.map((v) => String(v)).filter(Boolean))] : [];
+            localStorage.setItem(localStorageKey, JSON.stringify(ids.slice(0, limit)));
+        } catch (_) {
+            localStorage.setItem(localStorageKey, JSON.stringify([]));
+        }
+    }
+
+    function getStoredSelectionCount(localStorageKey) {
+        try {
+            const raw = JSON.parse(localStorage.getItem(localStorageKey) || "[]");
+            return Array.isArray(raw) ? raw.length : 0;
+        } catch (_) {
+            return 0;
+        }
+    }
+
+    function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+    function getCurrentPageSignature(containerSelector, checkboxSelector) {
+        const container = document.querySelector(containerSelector);
+        const active = container?.querySelector(".page-active")?.textContent?.trim() || "";
+        const firstId = document.querySelector(checkboxSelector)?.value || "";
+        return `${active}::${firstId}`;
+    }
+    async function waitForPageMutation(containerSelector, checkboxSelector, previousSignature, timeoutMs = 5000) {
+        const startedAt = Date.now();
+        while ((Date.now() - startedAt) < timeoutMs) {
+            const container = document.querySelector(containerSelector);
+            const active = container?.querySelector(".page-active")?.textContent?.trim() || "";
+            const firstId = document.querySelector(checkboxSelector)?.value || "";
+            if (`${active}::${firstId}` !== previousSignature) return true;
+            await sleep(120);
+        }
+        return false;
+    }
+    function getNextPaginationButton(containerSelector) {
+        const container = document.querySelector(containerSelector);
+        if (!container) return null;
+        const buttons = Array.from(container.querySelectorAll("button.page-btn, button"));
+        if (!buttons.length) return null;
+        const activeIndex = buttons.findIndex((btn) => btn.classList.contains("page-active"));
+        if (activeIndex >= 0) {
+            for (let i = activeIndex + 1; i < buttons.length; i++) {
+                if (!buttons[i].disabled) return buttons[i];
+            }
+        }
+        return buttons.find((btn) => !btn.disabled && ((btn.textContent || "").trim().toLowerCase().includes("next") || (btn.textContent || "").trim() === "»")) || null;
+    }
+    async function autoSelectAcrossPages({ localStorageKey, checkboxSelector, containerSelector, progressSelector, manager }) {
+        syncPostCountFromInput();
+        const progressEl = document.querySelector(progressSelector);
+        const updateProgress = () => {
+            const selected = getStoredSelectionCount(localStorageKey);
+            if (progressEl) progressEl.textContent = `${selected}/${postCount} selected`;
+            return selected;
+        };
+        let selectedCount = updateProgress();
+        let guard = 0;
+        while (selectedCount < postCount && guard < 300) {
+            guard += 1;
+            autoSelectByQuantity({ checkboxSelector, localStorageKey, qty: postCount, manager });
+            selectedCount = updateProgress();
+            if (selectedCount >= postCount) break;
+            const before = getCurrentPageSignature(containerSelector, checkboxSelector);
+            const nextBtn = getNextPaginationButton(containerSelector);
+            if (!nextBtn) break;
+            nextBtn.click();
+            await waitForPageMutation(containerSelector, checkboxSelector, before, 6000);
+            await sleep(120);
+            selectedCount = updateProgress();
+        }
+        return { done: selectedCount >= postCount, selectedCount };
     }
 
     // ✅ PATCH: if user changes post quantity later, update postCount immediately
@@ -68,7 +189,8 @@ window.addEventListener("DOMContentLoaded", () => {
         openPopup,
         per_page,
         paginationLoader,
-        isPagination = false
+        isPagination = false,
+        autoSelect = false
     }) {
         try {
             const apiUrl = url ?? `/api/admin/set/articles/${id}?per_page=${per_page}`;
@@ -142,6 +264,14 @@ window.addEventListener("DOMContentLoaded", () => {
             if (window.articleSelectMgr) {
                 window.articleSelectMgr.refresh();
             }
+            if (autoSelect) {
+                autoSelectByQuantity({
+                    checkboxSelector: ".articles",
+                    localStorageKey: "selectArticles",
+                    qty: postCount,
+                    manager: window.articleSelectMgr
+                });
+            }
 
             // ✅ IMPORTANT
             renderPagination(result.data.articles.links, {
@@ -150,7 +280,8 @@ window.addEventListener("DOMContentLoaded", () => {
                 articleTableBody,
                 openPopup,
                 per_page,
-                paginationLoader
+                paginationLoader,
+                autoSelect
             });
 
 
@@ -223,9 +354,10 @@ window.addEventListener("DOMContentLoaded", () => {
         articleTableBody,
         loader,
         paginationLoader,
-        per_page = 30,
+        per_page = 100,
         isPagination = false,
-        postCount
+        postCount,
+        autoSelect = false
     }) {
         try {
             if (isPagination && paginationLoader) {
@@ -299,6 +431,14 @@ window.addEventListener("DOMContentLoaded", () => {
             if (window.articleSelectMgr) {
                 window.articleSelectMgr.refresh();
             }
+            if (autoSelect) {
+                autoSelectByQuantity({
+                    checkboxSelector: ".articles",
+                    localStorageKey: "selectArticles",
+                    qty: postCount,
+                    manager: window.articleSelectMgr
+                });
+            }
 
             // 🔹 Render pagination
             renderSearchPagination(meta.links, {
@@ -306,7 +446,8 @@ window.addEventListener("DOMContentLoaded", () => {
                 articleTableBody,
                 loader,
                 paginationLoader,
-                per_page
+                per_page,
+                autoSelect
             });
 
         } catch (err) {
@@ -371,7 +512,8 @@ window.addEventListener("DOMContentLoaded", () => {
         per_page = 100,
         isPagination = false,
         postCount,
-        openPopup
+        openPopup,
+        autoSelect = false
     }) {
         try {
             if (isPagination && paginationLoader) {
@@ -458,6 +600,14 @@ window.addEventListener("DOMContentLoaded", () => {
             if (window.articleSelectMgr) {
                 window.articleSelectMgr.refresh();
             }
+            if (autoSelect) {
+                autoSelectByQuantity({
+                    checkboxSelector: ".articles",
+                    localStorageKey: "selectArticles",
+                    qty: postCount,
+                    manager: window.articleSelectMgr
+                });
+            }
 
             // Render pagination if there are multiple pages
             if (result.data?.meta?.last_page > 1) {
@@ -468,7 +618,8 @@ window.addEventListener("DOMContentLoaded", () => {
                     paginationLoader,
                     per_page,
                     postCount,
-                    openPopup
+                    openPopup,
+                    autoSelect
                 });
             }
 
@@ -659,8 +810,9 @@ window.addEventListener("DOMContentLoaded", () => {
         tableBody,
         loader,
         paginationLoader,
-        per_page = 30,
-        isPagination = false
+        per_page = 100,
+        isPagination = false,
+        autoSelect = false
     }) {
         try {
             let apiUrl;
@@ -730,6 +882,14 @@ window.addEventListener("DOMContentLoaded", () => {
             if (window.domainSelectMgr) {
                 window.domainSelectMgr.refresh();
             }
+            if (autoSelect) {
+                autoSelectByQuantity({
+                    checkboxSelector: ".domains",
+                    localStorageKey: "selectDomains",
+                    qty: postCount,
+                    manager: window.domainSelectMgr
+                });
+            }
 
             // Render pagination buttons
             renderDomainPagination(meta.links, {
@@ -737,7 +897,8 @@ window.addEventListener("DOMContentLoaded", () => {
                 tableBody,
                 loader,
                 paginationLoader,
-                per_page
+                per_page,
+                autoSelect
             });
 
         } catch (err) {
@@ -795,8 +956,9 @@ window.addEventListener("DOMContentLoaded", () => {
         tableBody,
         loader,
         paginationLoader,
-        per_page = 30,
-        isPagination = false
+        per_page = 100,
+        isPagination = false,
+        autoSelect = false
     }) {
         try {
             let apiUrl;
@@ -856,13 +1018,22 @@ window.addEventListener("DOMContentLoaded", () => {
             if (window.domainSetSelectMgr) {
                 window.domainSetSelectMgr.refresh();
             }
+            if (autoSelect) {
+                autoSelectByQuantity({
+                    checkboxSelector: ".setdomains",
+                    localStorageKey: "selectSetDomains",
+                    qty: postCount,
+                    manager: window.domainSetSelectMgr
+                });
+            }
 
             renderDomainSetPagination(meta.links, {
                 domainSetId,
                 tableBody,
                 loader,
                 paginationLoader,
-                per_page
+                per_page,
+                autoSelect
             });
 
         } catch (err) {
@@ -1346,7 +1517,7 @@ window.addEventListener("DOMContentLoaded", () => {
                     if (loader) loader.classList.remove("hidden");
 
                     let currentPage = 1;
-                    let per_page = 30;
+                    let per_page = 100;
                     let paginationLoader = document.querySelector('.pagination-loader');
                     let isPagination = false;
                     // ✅ WAIT for DOM to render
@@ -1358,7 +1529,8 @@ window.addEventListener("DOMContentLoaded", () => {
                         openPopup,
                         per_page,
                         paginationLoader,
-                        isPagination
+                        isPagination,
+                        autoSelect: true
                     });
 
                     // ✅ INIT ONCE
@@ -1438,8 +1610,9 @@ window.addEventListener("DOMContentLoaded", () => {
                             articleTableBody: articleTableBody,
                             loader: searchLoader,
                             paginationLoader: document.querySelector('.pagination-loader'),
-                            per_page: 30,
-                            postCount
+                            per_page: 100,
+                            postCount,
+                            autoSelect: true
                         });
 
                         // 🔹 Open popup after data is rendered
@@ -1589,7 +1762,8 @@ window.addEventListener("DOMContentLoaded", () => {
                             paginationLoader: document.querySelector('.pagination-loader'),
                             per_page: 100,
                             postCount: postCount,
-                            openPopup: openPopup
+                            openPopup: openPopup,
+                            autoSelect: true
                         });
 
                         if (result.success) {
@@ -1620,6 +1794,36 @@ window.addEventListener("DOMContentLoaded", () => {
             // ============================================
             // END LANGUAGE ARTICLES HANDLER
             // ============================================
+
+            const autoSelectArticlesBtn = document.getElementById("autoSelectArticlesBtn");
+            const autoSelectArticlesProgress = document.getElementById("autoSelectArticlesProgress");
+            if (autoSelectArticlesBtn) {
+                autoSelectArticlesBtn.addEventListener("click", async (e) => {
+                    e.preventDefault();
+                    syncPostCountFromInput();
+                    if (!document.querySelector(".articles")) {
+                        alert("Load articles first, then click Auto Select Required.");
+                        return;
+                    }
+                    autoSelectArticlesBtn.disabled = true;
+                    if (autoSelectArticlesProgress) autoSelectArticlesProgress.textContent = "Auto selecting...";
+                    try {
+                        const result = await autoSelectAcrossPages({
+                            localStorageKey: "selectArticles",
+                            checkboxSelector: ".articles",
+                            containerSelector: "#pagination-container",
+                            progressSelector: "#autoSelectArticlesProgress",
+                            manager: window.articleSelectMgr
+                        });
+                        if (!result.done) alert(`Only ${result.selectedCount}/${postCount} articles are available.`);
+                    } catch (err) {
+                        console.error(err);
+                        alert("Auto select failed for articles.");
+                    } finally {
+                        autoSelectArticlesBtn.disabled = false;
+                    }
+                });
+            }
 
 
 
@@ -1732,6 +1936,43 @@ window.addEventListener("DOMContentLoaded", () => {
                 }
             });
             if (totalBoxCount) totalBoxCount.textContent = boxes.length;
+            updateNormalKeywordProgress();
+        }
+
+        function parseQtyLines(text) {
+            return String(text || "")
+                .split("\n")
+                .map((v) => parseInt(v.trim(), 10))
+                .filter((n) => Number.isFinite(n) && n > 0)
+                .reduce((a, b) => a + b, 0);
+        }
+
+        function ensureOverallProgressNode() {
+            const host = document.querySelector(".add-more-window.keyword-tab-sec > div");
+            if (!host) return null;
+            let node = document.getElementById("overall-keyword-progress");
+            if (node) return node;
+            node = document.createElement("p");
+            node.id = "overall-keyword-progress";
+            node.className = "!px-3 !py-2 rounded border-2 border-blue-300 bg-blue-50 text-blue-800 font-semibold text-sm shadow-sm";
+            host.appendChild(node);
+            return node;
+        }
+
+        function updateNormalKeywordProgress() {
+            syncPostCountFromInput();
+            const boxes = [...document.querySelectorAll(".keyword-url-box")];
+            let usedQty = 0;
+            boxes.forEach((box) => {
+                const target = parseInt(box.querySelector(".client-url-quantity")?.value || "0", 10) || 0;
+                const assigned = parseQtyLines(box.querySelector(".keywords-quantity-area")?.value || "");
+                usedQty += Math.max(target, assigned ? target : 0);
+            });
+            const overallNode = ensureOverallProgressNode();
+            if (overallNode) {
+                const remainingAll = Math.max(postCount - usedQty, 0);
+                overallNode.textContent = `Quantity used ${usedQty}/${postCount} | Remaining ${remainingAll}`;
+            }
         }
 
         // ======= utility function to check wether input value is greater than postcount
@@ -1761,6 +2002,7 @@ window.addEventListener("DOMContentLoaded", () => {
                         val = maxAllowed;
                     }
                     updateKeywordQuantity(this, val);
+                    updateNormalKeywordProgress();
                 });
             });
         }
@@ -1807,6 +2049,7 @@ window.addEventListener("DOMContentLoaded", () => {
                     if (boxContent) {
                         boxContent.value = keyArr.join("\n"); // each number on a new line
                     }
+                    updateNormalKeywordProgress();
                 });
             });
         }
@@ -1842,6 +2085,7 @@ window.addEventListener("DOMContentLoaded", () => {
                         }
                     }
                     kQuantityArea.value = keyQuantityArr.join("\n"); // each number on a new line
+                    updateNormalKeywordProgress();
                     return;
                 }
             }
@@ -1849,6 +2093,7 @@ window.addEventListener("DOMContentLoaded", () => {
                 ".keywords-quantity-area"
             );
             if (keywordQuantityArea) keywordQuantityArea.value = val;
+            updateNormalKeywordProgress();
         }
 
         // === Delete handler ===
@@ -1859,6 +2104,7 @@ window.addEventListener("DOMContentLoaded", () => {
                 e.target.closest(".keyword-url-box").remove();
                 updateBoxCount();
                 updateBorders();
+                updateNormalKeywordProgress();
                 // redistributeQuantities();
             }
         });
@@ -1937,6 +2183,7 @@ window.addEventListener("DOMContentLoaded", () => {
         // select keywords area
         let keywordsArea = document.getElementsByClassName("keywords-area");
         keywordNumDistribute(keywordsArea);
+        updateNormalKeywordProgress();
 
         // (rest of your step__03 code remains unchanged below...)
         // NOTE: your remaining code continues to use `postCount`,
@@ -1965,6 +2212,29 @@ window.addEventListener("DOMContentLoaded", () => {
         let multiUrlKeywordContainer = document.getElementById('multi-level-keyword-url-container');
         let multiUrlKeywordWrap = document.getElementById('multi-key-url-box-parent');
         let multiBoxCount = document.querySelector('.multi-total-box-count');
+
+        function ensureMultiOverallProgressNode() {
+            const host = document.querySelector(".add-more-multi-window > div");
+            if (!host) return null;
+            let node = document.getElementById("overall-multi-keyword-progress");
+            if (node) return node;
+            node = document.createElement("p");
+            node.id = "overall-multi-keyword-progress";
+            node.className = "!px-3 !py-2 rounded border-2 border-blue-300 bg-blue-50 text-blue-800 font-semibold text-sm shadow-sm";
+            host.appendChild(node);
+            return node;
+        }
+
+        function updateMultiKeywordProgress() {
+            syncPostCountFromInput();
+            const qtyInputs = Array.from(document.querySelectorAll(".multi-keyword-url-box-quantity"));
+            const usedQty = qtyInputs.reduce((sum, inp) => sum + (parseInt(inp.value || "0", 10) || 0), 0);
+            const remainingAll = Math.max(postCount - usedQty, 0);
+            const overallNode = ensureMultiOverallProgressNode();
+            if (overallNode) {
+                overallNode.textContent = `Quantity used ${usedQty}/${postCount} | Remaining ${remainingAll}`;
+            }
+        }
 
         multiUrlKeywordWrap.addEventListener('click', (e) => {
             if (
@@ -2011,6 +2281,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
                 // ---------- Auto-scroll to newly added row ----------
                 div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                updateMultiKeywordProgress();
 
                 // ---------- Initialize Sortable (if not already) ----------
                 if (!fieldsAttachParent.sortableInitialized) {
@@ -2079,6 +2350,7 @@ window.addEventListener("DOMContentLoaded", () => {
                 Array.from(multiBoxCountSpan).forEach((itm, indx) => {
                     itm.textContent = `${String(indx + 1).padStart(2, '0')}`
                 })
+                updateMultiKeywordProgress();
 
             }
 
@@ -2118,6 +2390,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
                     if (current.value < 0) current.value = 0;
                 }
+                updateMultiKeywordProgress();
             },
             true
         );
@@ -2216,8 +2489,10 @@ window.addEventListener("DOMContentLoaded", () => {
                 multiUrlKeywordWrap.append(div);
 
                 div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                updateMultiKeywordProgress();
             }
         })
+        updateMultiKeywordProgress();
 
 
         let addKeywordBtn = document.getElementById("add-keywords-links");
@@ -2529,8 +2804,9 @@ window.addEventListener("DOMContentLoaded", () => {
                     tableBody: tableBody,
                     loader: showDomainLoader,
                     paginationLoader: paginationLoader,
-                    per_page: 30,
-                    isPagination: false
+                    per_page: 100,
+                    isPagination: false,
+                    autoSelect: true
                 });
 
                 // ✅ INIT domain selection manager ONCE
@@ -2591,8 +2867,9 @@ window.addEventListener("DOMContentLoaded", () => {
                 tableBody: document.querySelector('#domainSetTable tbody'),
                 loader,
                 paginationLoader: document.querySelector('.domain-set-pagination-loader'),
-                per_page: 30,
-                isPagination: false
+                per_page: 100,
+                isPagination: false,
+                autoSelect: true
             });
 
             // ✅ init ONCE
@@ -2693,6 +2970,66 @@ window.addEventListener("DOMContentLoaded", () => {
         // });
 
         // ********* fetching ends here ********* //
+
+        const autoSelectRandomDomainsBtn = document.getElementById('autoSelectRandomDomainsBtn');
+        if (autoSelectRandomDomainsBtn) {
+            autoSelectRandomDomainsBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                syncPostCountFromInput();
+                if (!document.querySelector('.domains')) {
+                    alert('Load random domains first, then click Auto Select Required.');
+                    return;
+                }
+                autoSelectRandomDomainsBtn.disabled = true;
+                const progressEl = document.getElementById('autoSelectRandomDomainsProgress');
+                if (progressEl) progressEl.textContent = 'Auto selecting...';
+                try {
+                    const result = await autoSelectAcrossPages({
+                        localStorageKey: 'selectDomains',
+                        checkboxSelector: '.domains',
+                        containerSelector: '#domain-pagination',
+                        progressSelector: '#autoSelectRandomDomainsProgress',
+                        manager: window.domainSelectMgr
+                    });
+                    if (!result.done) alert(`Only ${result.selectedCount}/${postCount} domains are available.`);
+                } catch (err) {
+                    console.error(err);
+                    alert('Auto select failed for random domains.');
+                } finally {
+                    autoSelectRandomDomainsBtn.disabled = false;
+                }
+            });
+        }
+
+        const autoSelectSetDomainsBtn = document.getElementById('autoSelectSetDomainsBtn');
+        if (autoSelectSetDomainsBtn) {
+            autoSelectSetDomainsBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                syncPostCountFromInput();
+                if (!document.querySelector('.setdomains')) {
+                    alert('Load domain set first, then click Auto Select Required.');
+                    return;
+                }
+                autoSelectSetDomainsBtn.disabled = true;
+                const progressEl = document.getElementById('autoSelectSetDomainsProgress');
+                if (progressEl) progressEl.textContent = 'Auto selecting...';
+                try {
+                    const result = await autoSelectAcrossPages({
+                        localStorageKey: 'selectSetDomains',
+                        checkboxSelector: '.setdomains',
+                        containerSelector: '#domain-set-pagination',
+                        progressSelector: '#autoSelectSetDomainsProgress',
+                        manager: window.domainSetSelectMgr
+                    });
+                    if (!result.done) alert(`Only ${result.selectedCount}/${postCount} domains are available in this set.`);
+                } catch (err) {
+                    console.error(err);
+                    alert('Auto select failed for domain set.');
+                } finally {
+                    autoSelectSetDomainsBtn.disabled = false;
+                }
+            });
+        }
 
 
 

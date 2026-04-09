@@ -274,7 +274,14 @@ export function initSelectManager(options) {
     }
 
     function applySavedSelections() {
-        // reconcileSelectedWithDOM();
+        try {
+            const raw = JSON.parse(localStorage.getItem(localStorageKey) || "[]");
+            selected = Array.isArray(raw)
+                ? [...new Set(raw.map((v) => String(v)).filter(Boolean))]
+                : [];
+        } catch (_) {
+            selected = [];
+        }
         const checkboxes = getCheckboxes();
         checkboxes.forEach(cb => {
             // const isSelected = selected.includes(cb.value);
@@ -321,6 +328,15 @@ export function initSelectManager(options) {
 
     // ✅ Select all handler
     const onSelectAllChange = function () {
+        try {
+            const raw = JSON.parse(localStorage.getItem(localStorageKey) || "[]");
+            selected = Array.isArray(raw)
+                ? [...new Set(raw.map((v) => String(v)).filter(Boolean))]
+                : [];
+        } catch (_) {
+            selected = [];
+        }
+
         const checkboxes = getCheckboxes();
         const maxQty = getMaxQty();
 
@@ -349,39 +365,38 @@ export function initSelectManager(options) {
         }
 
 
-        const limit = maxQty ? Math.min(maxQty, checkboxes.length) : checkboxes.length;
-        // selected = [];
-        let count = 0;
+        const currentPageIds = checkboxes.map(cb => String(cb.value));
+        const selectedOutsidePage = selected.filter(v => !currentPageIds.includes(v));
+        const selectedOnPage = selected.filter(v => currentPageIds.includes(v));
 
-        // checkboxes.forEach(cb => {
-        //     if (count < limit) {
-        //         cb.checked = true;
-        //         highlight(cb, true);
-        //         selected.push(cb.value);
-        //         count++;
-        //     } else {
-        //         cb.checked = false;
-        //         highlight(cb, false);
-        //     }
-        // });
+        // Remaining slots considering other pages first
+        const remaining = maxQty
+            ? Math.max(0, maxQty - selectedOutsidePage.length)
+            : checkboxes.length;
+
+        const allowOnPage = maxQty ? Math.min(remaining, checkboxes.length) : checkboxes.length;
+        let kept = 0;
 
         checkboxes.forEach(cb => {
-            if (count < limit) {
+            const value = String(cb.value);
+            const wasOnPageSelected = selectedOnPage.includes(value);
+            if (kept < allowOnPage) {
                 cb.checked = true;
                 highlight(cb, true);
-
-                if (!selected.includes(String(cb.value))) {
-                    selected.push(String(cb.value));
-                }
-
-                count++;
+                if (!selected.includes(value)) selected.push(value);
+                kept++;
             } else {
                 cb.checked = false;
                 highlight(cb, false);
-                selected = selected.filter(v => v !== String(cb.value));
+                if (wasOnPageSelected) {
+                    selected = selected.filter(v => v !== value);
+                }
             }
         });
 
+        if (maxQty && selectedOutsidePage.length + checkboxes.length > maxQty) {
+            alert(`Cannot select all on this page. Max allowed is ${maxQty}.`);
+        }
 
         save();
     };

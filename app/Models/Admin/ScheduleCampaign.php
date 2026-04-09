@@ -17,6 +17,7 @@ class ScheduleCampaign extends Model
         'domain_category_id',
         'article_category_id',
         'total_targets',
+        'is_sticky_campaign',
         'schedule_from_date',
         'schedule_to_date',
         'status',
@@ -27,6 +28,7 @@ class ScheduleCampaign extends Model
     ];
 
     protected $casts = [
+        'is_sticky_campaign' => 'boolean',
         'schedule_from_date' => 'date',
         'schedule_to_date'   => 'date',
         'started_at'         => 'datetime',

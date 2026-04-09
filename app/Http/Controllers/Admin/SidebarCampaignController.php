@@ -14,7 +14,10 @@ use App\Models\Admin\SidebarCampaignLink;
 use App\Models\Admin\SidebarCampaignTask;
 use Illuminate\Support\Facades\DB;
 use App\Jobs\BulkUpdateSidebarBlogrollJob;
+use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
+use App\Http\Controllers\Admin\Concerns\ValidatesBulkCampaignIds;
 use App\Jobs\DeleteSidebarCampaignJob;
+use App\Services\PurgeLocalCampaignDataService;
 use App\Jobs\PublishSidebarBlogrollJob;
 use App\Services\BlogrollApiService;
 use Spatie\SimpleExcel\SimpleExcelWriter;
@@ -22,6 +25,9 @@ use Illuminate\Support\Str;
 
 class SidebarCampaignController extends Controller
 {
+    use AuthorizesAdminCampaign;
+    use ValidatesBulkCampaignIds;
+
     public function __construct()
     {
         $this->middleware('can.create.campaigns')->except(['report', 'exportReport']);
@@ -47,21 +53,34 @@ class SidebarCampaignController extends Controller
         }
 
         $limit = 20;
+        $search = trim((string) $request->input('search', ''));
 
         // ✅ Sidebar campaigns base query
         $query = SidebarCampaign::query()
-            ->with([
-                'domains', // sidebar_campaign_domains
-                'links',   // sidebar_campaign_links
-                'tasks',   // sidebar_campaign_tasks
+            ->select([
+                'id',
+                'campaign_no',
+                'domain_category_id',
+                'admin_id',
+                'total_targets',
+                'completed_targets',
+                'failed_targets',
+                'last_bulk_updated_at',
+                'created_at',
+                'report_token',
+            ])
+            ->with(['domainCategory:id,name'])
+            ->withCount([
+                'domains',
+                'links',
             ]);
 
         // 🔍 Search by campaign_no
-        if ($request->filled('search')) {
+        if ($search !== '') {
             $query->where(
                 'campaign_no',
                 'LIKE',
-                '%' . trim($request->search) . '%'
+                '%' . $search . '%'
             );
         }
         $admin = Auth::guard('admin')->user();
@@ -71,8 +90,8 @@ class SidebarCampaignController extends Controller
         // ✅ Paginate
         $campaigns = $query
             ->orderByDesc('id')
-            ->paginate($limit)
-            ->appends($request->all());
+            ->simplePaginate($limit)
+            ->appends(['search' => $search]);
 
         // ✅ Offset for serial numbers
         $offset = ($campaigns->currentPage() - 1) * $limit;
@@ -319,17 +338,30 @@ class SidebarCampaignController extends Controller
 
     public function show(Request $request, string $id)
     {
-        // ✅ Fetch campaign
-        $campaign = SidebarCampaign::with([
-            'domains.domain',
-            'links',
-        ])->findOrFail($id);
+        // ✅ Fetch only fields needed by this page
+        $campaign = SidebarCampaign::query()
+            ->select(['id', 'campaign_no', 'last_bulk_updated_at'])
+            ->findOrFail($id);
 
         // Pagination
         $limit = 100;
 
         // ✅ Fetch sidebar tasks (this is equivalent to CampaignPost)
         $campaignTasks = SidebarCampaignTask::query()
+            ->select([
+                'id',
+                'sidebar_campaign_id',
+                'sidebar_campaign_domain_id',
+                'sidebar_campaign_link_id',
+                'status',
+                'remote_id',
+                'remote_url',
+                'attempt_count',
+                'last_error',
+                'next_retry_at',
+                'content_updated_at',
+                'created_at',
+            ])
             ->with([
                 'domainRow.domain',   // SidebarCampaignDomain → Domain
                 'linkRow',            // SidebarCampaignLink
@@ -339,12 +371,18 @@ class SidebarCampaignController extends Controller
             ->paginate($limit)
             ->withQueryString();
 
+        $hasPublishedLinks = SidebarCampaignTask::query()
+            ->where('sidebar_campaign_id', $campaign->id)
+            ->where('status', 'success')
+            ->whereNotNull('remote_id')
+            ->exists();
+
         // Offset
         $offset = ($campaignTasks->currentPage() - 1) * $limit;
 
         return view(
             'admin.campaigns.pbn-sidebar.view-campaign',
-            compact('campaign', 'campaignTasks', 'offset')
+            compact('campaign', 'campaignTasks', 'offset', 'hasPublishedLinks')
         );
     }
 
@@ -372,10 +410,20 @@ class SidebarCampaignController extends Controller
             : 0;
 
         // 3️⃣ Fetch sidebar tasks (report-style, no pagination)
-        $tasks = SidebarCampaignTask::with([
-            'domainRow.domain',
-            'linkRow',
-        ])
+        $tasks = SidebarCampaignTask::query()
+            ->select([
+                'id',
+                'sidebar_campaign_id',
+                'sidebar_campaign_domain_id',
+                'sidebar_campaign_link_id',
+                'status',
+                'created_at',
+            ])
+            ->with([
+                'domainRow:id,sidebar_campaign_id,domain_id',
+                'domainRow.domain:id,name',
+                'linkRow:id,sidebar_campaign_id,target_url,anchor_keyword,nofollow',
+            ])
             ->where('sidebar_campaign_id', $campaign->id)
             ->orderByDesc('id')
             ->get();
@@ -472,20 +520,15 @@ class SidebarCampaignController extends Controller
             ->firstOrFail();
 
         // 📦 Fetch sidebar tasks
-        $tasks = SidebarCampaignTask::with([
-            'domainRow.domain',
-            'linkRow',
-        ])
-            ->where('sidebar_campaign_id', $campaign->id)
-            ->orderBy('id')
-            ->get();
+        $baseTaskQuery = SidebarCampaignTask::query()
+            ->where('sidebar_campaign_id', $campaign->id);
 
         /* =========================================================
        1️⃣ DETECT IF NOFOLLOW EXISTS
        ========================================================= */
-        $hasNofollow = $tasks->contains(function ($task) {
-            return (bool) ($task->linkRow?->nofollow ?? false);
-        });
+        $hasNofollow = (clone $baseTaskQuery)
+            ->whereHas('linkRow', fn ($q) => $q->where('nofollow', true))
+            ->exists();
 
         /* =========================================================
        2️⃣ BUILD HEADERS (DYNAMIC)
@@ -515,30 +558,41 @@ class SidebarCampaignController extends Controller
        4️⃣ FILL ROWS
        ========================================================= */
         $sno = 1;
+        (clone $baseTaskQuery)
+            ->select([
+                'id',
+                'sidebar_campaign_id',
+                'sidebar_campaign_domain_id',
+                'sidebar_campaign_link_id',
+                'status',
+                'created_at',
+            ])
+            ->with([
+                'domainRow:id,sidebar_campaign_id,domain_id',
+                'domainRow.domain:id,name',
+                'linkRow:id,sidebar_campaign_id,target_url,anchor_keyword,nofollow',
+            ])
+            ->orderBy('id')
+            ->chunkById(500, function ($tasks) use (&$sno, $hasNofollow, $writer) {
+                foreach ($tasks as $task) {
+                    $row = [
+                        'S.No'    => $sno++,
+                        'Domain'  => optional($task->domainRow?->domain)->name ?? '-',
+                        'Keyword' => $task->linkRow?->anchor_keyword ?? '-',
+                        'URL'     => $task->linkRow?->target_url ?? '-',
+                    ];
 
-        foreach ($tasks as $task) {
+                    if ($hasNofollow) {
+                        $row['Nofollow'] = ($task->linkRow?->nofollow ?? false)
+                            ? 'No Follow'
+                            : 'Follow';
+                    }
 
-            $row = [
-                'S.No'       => $sno++,
-                'Domain'     => optional($task->domainRow?->domain)->name ?? '-',
-                'Keyword'     => $task->linkRow?->anchor_keyword ?? '-',
-                'URL' => $task->linkRow?->target_url ?? '-',
-            ];
-
-            if ($hasNofollow) {
-                $row['Nofollow'] = ($task->linkRow?->nofollow ?? false)
-                    ? 'No Follow'
-                    : 'Follow';
-            }
-
-            $row['Status'] = $task->status === 'success'
-                ? 'Live'
-                : 'Not Live';
-
-            $row['Date'] = optional($task->created_at)->format('d M Y');
-
-            $writer->addRow($row);
-        }
+                    $row['Status'] = $task->status === 'success' ? 'Live' : 'Not Live';
+                    $row['Date'] = optional($task->created_at)->format('d M Y');
+                    $writer->addRow($row);
+                }
+            }, 'id');
 
         return $writer->toBrowser();
     }
@@ -706,12 +760,59 @@ class SidebarCampaignController extends Controller
     }
 
     /**
+     * Remove campaign data from this application only. Remote blogroll entries are not deleted.
+     */
+    public function purgeLocalOnly(string $id)
+    {
+        $campaign = SidebarCampaign::find($id);
+        if (!$campaign) {
+            return back()->with('cus__error', 'Campaign not found');
+        }
+        $this->authorizeCampaignAccess($campaign);
+        PurgeLocalCampaignDataService::purgeSidebarCampaign((int) $campaign->id);
+
+        return redirect()
+            ->route('admin.sidebar.campaign.index')
+            ->with(
+                'cus__success',
+                'Campaign removed from this dashboard only. Remote blogroll links were not deleted.'
+            );
+    }
+
+    /**
+     * Remove multiple sidebar campaigns from the database only (no remote API calls).
+     */
+    public function bulkPurgeLocal(Request $request)
+    {
+        $ids = $this->validatedBulkCampaignIds($request);
+        if ($ids === []) {
+            return back()->with('cus__error', 'No campaigns selected.');
+        }
+
+        $allowed = $this->campaignIdsOwnedByCurrentAdmin($ids, SidebarCampaign::class);
+        if ($allowed === []) {
+            return back()->with('cus__error', 'No campaigns found or you do not have permission.');
+        }
+
+        foreach ($allowed as $id) {
+            PurgeLocalCampaignDataService::purgeSidebarCampaign($id);
+        }
+
+        $n = count($allowed);
+
+        return redirect()
+            ->route('admin.sidebar.campaign.index')
+            ->with('cus__success', $n . ' campaign(s) removed from this dashboard only. Remote blogroll links were not deleted.');
+    }
+
+    /**
      * Show the form for editing the specified resource (bulk edit links by batch).
      * Batches = distinct (keyword, url): updating a batch updates all remote sites that have that same keyword+url.
      */
     public function edit(string $id)
     {
         $campaign = SidebarCampaign::with(['links', 'domains'])->findOrFail($id);
+        $this->authorizeCampaignAccess($campaign);
 
         $links = SidebarCampaignLink::where('sidebar_campaign_id', $campaign->id)->get();
 
@@ -724,28 +825,47 @@ class SidebarCampaignController extends Controller
             if (!isset($batches[$key])) {
                 $batches[$key] = [
                     'representative_link_id' => $link->id,
-                    'keyword'               => $k,
-                    'url'                   => $u,
-                    'link_ids'              => [],
+                    'keyword'                => $k,
+                    'url'                    => $u,
+                    'link_ids'               => [],
                 ];
             }
             $batches[$key]['link_ids'][] = $link->id;
         }
 
-        // Count tasks (published on remote) per batch; only show batches that have at least one
+        $publishedCountsByLinkId = SidebarCampaignTask::query()
+            ->where('sidebar_campaign_id', $campaign->id)
+            ->whereNotNull('remote_id')
+            ->where('status', 'success')
+            ->selectRaw('sidebar_campaign_link_id, COUNT(*) as c')
+            ->groupBy('sidebar_campaign_link_id')
+            ->pluck('c', 'sidebar_campaign_link_id');
+
         foreach ($batches as &$batch) {
-            $batch['count'] = SidebarCampaignTask::where('sidebar_campaign_id', $campaign->id)
-                ->whereIn('sidebar_campaign_link_id', $batch['link_ids'])
-                ->whereNotNull('remote_id')
-                ->where('status', 'success')
-                ->count();
+            $batch['count'] = array_sum(array_map(
+                fn ($linkId) => (int) ($publishedCountsByLinkId[$linkId] ?? 0),
+                $batch['link_ids']
+            ));
             unset($batch['link_ids']);
         }
         unset($batch);
 
-        $distinctBatches = array_values(array_filter($batches, fn($b) => $b['count'] > 0));
+        $distinctBatches = array_values(array_filter($batches, fn ($b) => $b['count'] > 0));
+        $allLinksForBulk = SidebarCampaignLink::where('sidebar_campaign_id', $campaign->id)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get(['id', 'anchor_keyword', 'target_url'])
+            ->map(fn ($link) => [
+                'link_id' => (int) $link->id,
+                'keyword' => trim((string) ($link->anchor_keyword ?? '')),
+                'url' => trim((string) ($link->target_url ?? '')),
+            ])
+            ->all();
 
-        return view('admin.campaigns.pbn-sidebar.edit-sidebar-campaign', compact('campaign', 'distinctBatches'));
+        return view(
+            'admin.campaigns.pbn-sidebar.edit-sidebar-campaign',
+            compact('campaign', 'distinctBatches', 'allLinksForBulk')
+        );
     }
 
     /**
@@ -755,18 +875,70 @@ class SidebarCampaignController extends Controller
     public function update(Request $request, string $id)
     {
         $campaign = SidebarCampaign::findOrFail($id);
+        if ($request->input('edit_kw_tab') === 'campaign') {
+            $validated = $request->validate([
+                'campaign_no' => 'required|string|max:191',
+            ]);
+            $raw = trim((string) $validated['campaign_no']);
+            if ($raw === '') {
+                return back()->with('cus__error', 'Campaign title is required.')
+                    ->with('edit_sidebar_campaign_tab', 'campaign');
+            }
+
+            $base = Str::slug($raw);
+            if ($base === '') {
+                $base = 'campaign-' . now()->timestamp;
+            }
+            $slug = $base;
+            $counter = 1;
+            while (
+                SidebarCampaign::where('campaign_no', $slug)
+                    ->where('id', '!=', $campaign->id)
+                    ->exists()
+            ) {
+                $slug = "{$base}-{$counter}";
+                $counter++;
+            }
+
+            $campaign->update(['campaign_no' => $slug]);
+
+            return redirect()
+                ->route('admin.sidebar.campaign.edit', $campaign->id)
+                ->with('cus__success', 'Campaign title updated.')
+                ->with('edit_sidebar_campaign_tab', 'campaign');
+        }
 
         $representativeLinkIds = $request->input('batch_representative_link_id', []);
-        $batchKeywords         = $request->input('batch_keyword', []);
-        $batchUrls             = $request->input('batch_url', []);
 
         if (!is_array($representativeLinkIds)) {
             $representativeLinkIds = [];
         }
-        $batchKeywords = is_array($batchKeywords) ? array_values($batchKeywords) : [];
-        $batchUrls     = is_array($batchUrls) ? array_values($batchUrls) : [];
 
-        $updates = [];
+        $isBulkTextarea = $request->exists('bulk_urls') && $request->exists('bulk_keywords');
+        if ($isBulkTextarea) {
+            $expected = count($representativeLinkIds);
+            $batchUrls = $this->parseManualLinesStrict((string) $request->input('bulk_urls', ''), $expected);
+            $batchKeywords = $this->parseManualLinesStrict((string) $request->input('bulk_keywords', ''), $expected);
+            if ($batchUrls === null || $batchKeywords === null) {
+                return redirect()
+                    ->route('admin.sidebar.campaign.edit', $campaign->id)
+                    ->with('cus__error', 'Bulk URLs and Bulk Keywords must each have exactly ' . $expected . ' non-empty lines.')
+                    ->withInput($request->only(['bulk_urls', 'bulk_keywords']))
+                    ->with(
+                        'edit_sidebar_campaign_tab',
+                        in_array($request->input('edit_kw_tab'), ['normal', 'bulk'], true)
+                            ? $request->input('edit_kw_tab')
+                            : 'bulk'
+                    );
+            }
+        } else {
+            $batchKeywords = $request->input('batch_keyword', []);
+            $batchUrls = $request->input('batch_url', []);
+            $batchKeywords = is_array($batchKeywords) ? array_values($batchKeywords) : [];
+            $batchUrls = is_array($batchUrls) ? array_values($batchUrls) : [];
+        }
+
+        $updates       = [];
         $queuedBatches = 0;
 
         foreach ($representativeLinkIds as $index => $repLinkId) {
@@ -776,8 +948,8 @@ class SidebarCampaignController extends Controller
                 continue;
             }
 
-            $newKeyword = trim((string) ($batchKeywords[$index] ?? ''));
-            $newUrl     = trim((string) ($batchUrls[$index] ?? ''));
+            $newKeyword = Str::limit(trim((string) ($batchKeywords[$index] ?? '')), 500, '');
+            $newUrl     = Str::limit(trim((string) ($batchUrls[$index] ?? '')), 500, '');
 
             if ($newKeyword === '' || $newUrl === '') {
                 continue;
@@ -790,14 +962,14 @@ class SidebarCampaignController extends Controller
                 continue;
             }
 
-            // All link IDs that have this same (keyword, url)
-            $linkIds = SidebarCampaignLink::where('sidebar_campaign_id', $campaign->id)
-                ->where('anchor_keyword', $representative->anchor_keyword)
-                ->where('target_url', $representative->target_url)
-                ->pluck('id')
-                ->all();
+            $linkIds = $isBulkTextarea
+                ? [$representative->id]
+                : SidebarCampaignLink::where('sidebar_campaign_id', $campaign->id)
+                    ->where('anchor_keyword', $representative->anchor_keyword)
+                    ->where('target_url', $representative->target_url)
+                    ->pluck('id')
+                    ->all();
 
-            // All tasks (published on remote) that use any of these links
             $tasks = SidebarCampaignTask::with(['domainRow.domain', 'linkRow'])
                 ->where('sidebar_campaign_id', $campaign->id)
                 ->whereIn('sidebar_campaign_link_id', $linkIds)
@@ -829,7 +1001,14 @@ class SidebarCampaignController extends Controller
         if (count($updates) === 0) {
             return redirect()
                 ->route('admin.sidebar.campaign.edit', $campaign->id)
-                ->with('cus__error', 'No changes to apply or no valid batches (keyword and URL required).');
+                ->with('cus__error', 'No changes to apply or no valid batches (keyword and URL required).')
+                ->with(
+                    'edit_sidebar_campaign_tab',
+                    in_array($request->input('edit_kw_tab'), ['normal', 'bulk'], true)
+                        ? $request->input('edit_kw_tab')
+                        : 'normal'
+                )
+                ->withInput($request->only(['bulk_urls', 'bulk_keywords']));
         }
 
         $campaign->update(['last_bulk_updated_at' => now()]);
@@ -918,5 +1097,16 @@ class SidebarCampaignController extends Controller
         }
 
         return back()->with('cus__success', 'Selected links deleted from remote and database.');
+    }
+
+    private function parseManualLinesStrict(string $text, int $expectedCount): ?array
+    {
+        $lines = preg_split('/\r\n|\r|\n/', $text);
+        $lines = array_map(static fn ($line) => trim((string) $line), $lines ?: []);
+        $lines = array_values(array_filter($lines, static fn ($line) => $line !== ''));
+        if (count($lines) !== $expectedCount) {
+            return null;
+        }
+        return $lines;
     }
 }

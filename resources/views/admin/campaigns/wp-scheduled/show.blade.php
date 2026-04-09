@@ -35,6 +35,14 @@
                         Delete campaign
                     </button>
                 </form>
+                <form action="{{ route('admin.wp.schedule.campaign.purge.local', $campaign->id) }}" method="POST" class="inline"
+                    onsubmit="return confirm('Remove this campaign from the dashboard only? Remote WordPress posts stay. You will not be able to edit this campaign here anymore.');">
+                    @csrf
+                    <button type="submit" class="inline-flex items-center gap-1.5 !px-3 !py-2 rounded bg-orange-600 text-white text-sm hover:bg-orange-700" title="Remove from dashboard only">
+                        <span class="material-symbols-outlined !text-base">database</span>
+                        Remove locally
+                    </button>
+                </form>
                 @if($campaign->posts()->where('status', 'queued')->exists())
                     <form action="{{ route('admin.wp.schedule.campaign.run', $campaign->id) }}" method="POST" class="inline">
                         @csrf
@@ -110,7 +118,7 @@
                         <tr class="hover:bg-gray-50">
                             <td class="border !px-2 !py-2">{{ $p->scheduled_date?->format('d M Y') }}</td>
                             <td class="border !px-2 !py-2">{{ $p->campaignDomain->domain->name ?? '-' }}</td>
-                            <td class="border !px-2 !py-2">{{ Str::limit($p->campaignArticle->article->name ?? '-', 40) }}</td>
+                            <td class="border !px-2 !py-2">{{ Str::limit(optional($p->campaignArticle?->article)->name ?? $p->campaignArticle?->article_title_snapshot ?? $p->remote_title ?? '—', 40) }}</td>
                             <td class="border !px-2 !py-2">{{ ucfirst($p->status) }}</td>
                             <td class="border !px-2 !py-2">{{ $p->display_status }}</td>
                             <td class="border !px-2 !py-2">{{ $p->remote_status ?? '-' }}</td>

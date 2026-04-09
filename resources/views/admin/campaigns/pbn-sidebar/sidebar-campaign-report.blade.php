@@ -92,13 +92,15 @@
 
 
 
-                            <td class="border !px-2 !py-3">
-                                {{ $keyword }}
-                            </td>
+                            @php
+                                $kwCell = \App\Support\ReportDisplay::keyword($keyword !== '-' ? $keyword : null);
+                                $urlCell = \App\Support\ReportDisplay::url($url !== '-' ? $url : null);
+                            @endphp
+                            <td class="border !px-2 !py-3 max-w-[12rem] align-top"
+                                @if ($kwCell['title'] !== '') title="{{ $kwCell['title'] }}" @endif>{{ $kwCell['display'] }}</td>
 
-                            <td class="border !px-2 !py-3 break-all">
-                                {{ $url }}
-                            </td>
+                            <td class="border !px-2 !py-3 max-w-[18rem] align-top"
+                                @if ($urlCell['title'] !== '') title="{{ $urlCell['title'] }}" @endif>{{ $urlCell['display'] }}</td>
 
                             <td class="border !px-2 !py-3 text-center">
                                 <span class="!px-2 !py-1 rounded text-xs font-semibold {{ $statusClass }}">

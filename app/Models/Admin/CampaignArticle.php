@@ -12,6 +12,8 @@ class CampaignArticle extends Model
     protected $fillable = [
         'campaign_id',
         'article_id',
+        'article_title_snapshot',
+        'article_body_snapshot',
         'keyword',
         'url',
         'keyword_type',

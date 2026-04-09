@@ -212,6 +212,13 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
 
     Route::post('/article/delete', [ArticleController::class, 'delete'])->name('articles.delete');
 
+    /* Soft-deleted articles: list + permanent remove (must be before resource /article/{article}) */
+    Route::get('/article/trashed', [ArticleController::class, 'trashedIndex'])->name('article.trashed.index');
+    Route::delete('/article/trashed/{id}', [ArticleController::class, 'forceDestroy'])->name('article.trashed.destroy');
+    Route::post('/article/trashed/force-delete', [ArticleController::class, 'forceDestroyBulk'])->name('article.trashed.force-delete');
+    Route::post('/article/trashed/queue-purge-all-used', [ArticleController::class, 'queuePurgeAllTrashedUsed'])->name('article.trashed.queue-purge-all-used');
+    Route::post('/article/trashed/queue-purge-by-quantity', [ArticleController::class, 'queuePurgeTrashedUsedByQuantity'])->name('article.trashed.queue-purge-by-quantity');
+
     Route::resource('/article', ArticleController::class);
 
     /* article set thing */ /* adding s in it we will optimized it further */
@@ -249,6 +256,14 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
 
     Route::post('/campaign/bulk/update/{id}', [campaignController::class, 'bulkUpdateCampaignPosts'])->name('campaign.bulk.update');
 
+    Route::post('/campaign/multi-keywords/{id}', [campaignController::class, 'multiLevelUpdateCampaignKeywords'])->name('campaign.multi.keywords.update');
+
+    Route::post('/campaign/update-post-keywords/{id}', [campaignController::class, 'updateCampaignPostKeywords'])->name('campaign.update.post.keywords');
+
+    Route::post('/campaign/{id}/purge-local', [campaignController::class, 'purgeLocalOnly'])->name('campaign.purge.local');
+
+    Route::post('/campaign/bulk-purge-local', [campaignController::class, 'bulkPurgeLocal'])->name('campaign.bulk.purge.local');
+
     Route::resource('/campaign', campaignController::class);
     /* sidebar campaign */
     Route::get('/sidebar/campaign/retry-task/{id}', [SidebarCampaignController::class, 'retryTask'])->name('sidebar.campaign.retry.task');
@@ -256,6 +271,10 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     Route::post('/sidebar/campaign/update-task/{id}', [SidebarCampaignController::class, 'updateSidebarTask'])->name('sidebar.campaign.update.task');
     Route::get('/sidebar/campaign/delete-task/{id}', [SidebarCampaignController::class, 'deleteSidebarTask'])->name('sidebar.campaign.delete.task');
     Route::post('/sidebar/campaign/{id}/bulk-delete-tasks', [SidebarCampaignController::class, 'bulkDeleteTasks'])->name('sidebar.campaign.bulk.delete.tasks');
+
+    Route::post('/sidebar/campaign/{id}/purge-local', [SidebarCampaignController::class, 'purgeLocalOnly'])->name('sidebar.campaign.purge.local');
+
+    Route::post('/sidebar/campaign/bulk-purge-local', [SidebarCampaignController::class, 'bulkPurgeLocal'])->name('sidebar.campaign.bulk.purge.local');
 
     Route::resource('/sidebar/campaign', SidebarCampaignController::class)->names('sidebar.campaign');
 
@@ -267,14 +286,29 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     Route::post('/hidden/link/campaign/{id}/bulk-delete-tasks', [HiddenLinkCampaignController::class, 'bulkDeleteTasks'])->name('hidden.link.campaign.bulk.delete.tasks');
     Route::post('/hidden/link/campaign/bulk-delete', [HiddenLinkCampaignController::class, 'bulkDeleteCampaigns'])->name('hidden.link.campaign.bulk.delete');
 
+    Route::post('/hidden/link/campaign/bulk-purge-local', [HiddenLinkCampaignController::class, 'bulkPurgeLocalCampaigns'])->name('hidden.link.campaign.bulk.purge.local');
+
+    Route::post('/hidden/link/campaign/{id}/purge-local', [HiddenLinkCampaignController::class, 'purgeLocalOnly'])->name('hidden.link.campaign.purge.local');
+
     Route::resource('/hidden/link/campaign', HiddenLinkCampaignController::class)->names('hidden.link.campaign');
+
+    /* Schedule sticky post (same as schedule post + is_sticky on API; stored on schedule_campaigns.is_sticky_campaign) */
+    Route::get('/campaign/post/schedule-sticky', [ScheduleCampaignController::class, 'indexSticky'])->name('schedule.sticky.campaign.index');
+    Route::get('/campaign/post/schedule-sticky/create', [ScheduleCampaignController::class, 'createSticky'])->name('schedule.sticky.campaign.create');
 
     /* Schedule campaign */
     Route::post('/campaign/post/schedule/bulk/update/{id}', [ScheduleCampaignController::class, 'bulkUpdate'])->name('schedule.campaign.bulk.update');
+    Route::post('/campaign/post/schedule/multi-keywords/{id}', [ScheduleCampaignController::class, 'multiLevelUpdateScheduleKeywords'])->name('schedule.campaign.multi.keywords.update');
     Route::get('/campaign/post/schedule/edit-post/{postId}', [ScheduleCampaignController::class, 'editPost'])->name('schedule.campaign.edit.post');
     Route::post('/campaign/post/schedule/update-post/{postId}', [ScheduleCampaignController::class, 'updatePost'])->name('schedule.campaign.update.post');
+    Route::post('/campaign/post/schedule/update-post-keywords/{postId}', [ScheduleCampaignController::class, 'updatePostKeywords'])->name('schedule.campaign.update.post.keywords');
     Route::post('/campaign/post/schedule/retry-post/{postId}', [ScheduleCampaignController::class, 'retryPost'])->name('schedule.campaign.retry.post');
     Route::post('/campaign/post/schedule/delete-post/{postId}', [ScheduleCampaignController::class, 'deletePost'])->name('schedule.campaign.delete.post');
+
+    Route::post('/campaign/post/schedule/{id}/purge-local', [ScheduleCampaignController::class, 'purgeLocalOnly'])->name('schedule.campaign.purge.local');
+
+    Route::post('/campaign/post/schedule/bulk-purge-local', [ScheduleCampaignController::class, 'bulkPurgeLocal'])->name('schedule.campaign.bulk.purge.local');
+
     Route::resource('/campaign/post/schedule', ScheduleCampaignController::class)->names('schedule.campaign');
 
     /* WordPress-native scheduled campaign (posts scheduled on remote WP) */
@@ -286,6 +320,12 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     Route::post('/campaign/post/wp-schedule/updatepost/{postId}', [WpScheduledCampaignController::class, 'updatePost'])->name('wp.schedule.campaign.update.post');
     Route::post('/campaign/post/wp-schedule/deletepost/{postId}', [WpScheduledCampaignController::class, 'deletePost'])->name('wp.schedule.campaign.delete.post');
     Route::post('/campaign/post/wp-schedule/bulk/update/{id}', [WpScheduledCampaignController::class, 'bulkUpdate'])->name('wp.schedule.campaign.bulk.update');
+    Route::post('/campaign/post/wp-schedule/multi-keywords/{id}', [WpScheduledCampaignController::class, 'multiLevelUpdateWpScheduleKeywords'])->name('wp.schedule.campaign.multi.keywords.update');
+
+    Route::post('/campaign/post/wp-schedule/{id}/purge-local', [WpScheduledCampaignController::class, 'purgeLocalOnly'])->name('wp.schedule.campaign.purge.local');
+
+    Route::post('/campaign/post/wp-schedule/bulk-purge-local', [WpScheduledCampaignController::class, 'bulkPurgeLocal'])->name('wp.schedule.campaign.bulk.purge.local');
+
     Route::resource('/campaign/post/wp-schedule', WpScheduledCampaignController::class)->names('wp.schedule.campaign');
 
     /* Schedule Sidebar campaign */
@@ -294,6 +334,11 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     Route::post('/campaign/sidebar/schedule/update-task/{id}', [ScheduleSidebarCampaignController::class, 'updateTask'])->name('schedule.sidebar.campaign.update.task');
     Route::post('/campaign/sidebar/schedule/retry-task/{id}', [ScheduleSidebarCampaignController::class, 'retryTask'])->name('schedule.sidebar.campaign.retry.task');
     Route::post('/campaign/sidebar/schedule/delete-task/{id}', [ScheduleSidebarCampaignController::class, 'deleteTask'])->name('schedule.sidebar.campaign.delete.task');
+
+    Route::post('/campaign/sidebar/schedule/{id}/purge-local', [ScheduleSidebarCampaignController::class, 'purgeLocalOnly'])->name('schedule.sidebar.campaign.purge.local');
+
+    Route::post('/campaign/sidebar/schedule/bulk-purge-local', [ScheduleSidebarCampaignController::class, 'bulkPurgeLocal'])->name('schedule.sidebar.campaign.bulk.purge.local');
+
     Route::resource('/campaign/sidebar/schedule', ScheduleSidebarCampaignController::class)->names('schedule.sidebar.campaign');
 
     /* sticky Sidebar campaign */

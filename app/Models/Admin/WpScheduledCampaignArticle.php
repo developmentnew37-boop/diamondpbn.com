@@ -11,6 +11,8 @@ class WpScheduledCampaignArticle extends Model
     protected $fillable = [
         'wp_scheduled_campaign_id',
         'article_id',
+        'article_title_snapshot',
+        'article_body_snapshot',
         'keyword',
         'url',
         'keyword_type',

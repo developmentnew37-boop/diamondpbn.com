@@ -23,4 +23,12 @@ class ScheduleSidebarCampaignLink extends Model
             'schedule_sidebar_campaign_id'
         );
     }
+
+    public function tasks()
+    {
+        return $this->hasMany(
+            ScheduleSidebarCampaignTask::class,
+            'schedule_sidebar_campaign_link_id'
+        );
+    }
 }

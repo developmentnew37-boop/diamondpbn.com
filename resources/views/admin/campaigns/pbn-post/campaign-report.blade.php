@@ -124,12 +124,15 @@
                             // Campaign article
                             $ca = $post->campaignArticle;
 
-                            if ($keywordType === 'json') {
+                            if ($ca && ($ca->keyword_type ?? 'single') === 'json') {
                                 $keywords = json_decode($ca->keyword ?? '[]', true) ?? [];
                                 $urls = json_decode($ca->url ?? '[]', true) ?? [];
+                            } elseif ($ca) {
+                                $keywords = [trim((string) ($ca->keyword ?? ''))];
+                                $urls = [trim((string) ($ca->url ?? ''))];
                             } else {
-                                $keywords = [$ca->keyword ?? '-'];
-                                $urls = [$ca->url ?? '-'];
+                                $keywords = [];
+                                $urls = [];
                             }
                         @endphp
 
@@ -150,13 +153,12 @@
                                 {{ $domain }}
                             </td>
 
-                            {{-- Remote URL --}}
-                            <td class="border !px-2 !py-3">
-                                @if ($post->remote_url)
-                                    <a href="{{ $post->remote_url }}" target="_blank"
-                                        class="text-blue-600 hover:underline break-all">
-                                        {{ $post->remote_url }}
-                                    </a>
+                            @php $postUrl = \App\Support\ReportDisplay::externalLink($post->remote_url); @endphp
+                            <td class="border !px-2 !py-3 max-w-[18rem] align-top">
+                                @if ($postUrl['href'] !== '')
+                                    <a href="{{ $postUrl['href'] }}" target="_blank" rel="noopener"
+                                        class="text-blue-600 hover:underline"
+                                        title="{{ $postUrl['title'] }}">{{ $postUrl['display'] }}</a>
                                 @else
                                     -
                                 @endif
@@ -165,20 +167,24 @@
                             {{-- Dynamic Keyword / URL columns --}}
                             @if ($keywordType === 'json')
                                 @for ($i = 0; $i < $maxKeywordCount; $i++)
-                                    <td class="border !px-2 !py-3">
-                                        {{ $keywords[$i] ?? '-' }}
-                                    </td>
-                                    <td class="border !px-2 !py-3 break-all">
-                                        {{ $urls[$i] ?? '-' }}
-                                    </td>
+                                    @php
+                                        $kwCell = \App\Support\ReportDisplay::keyword($keywords[$i] ?? null);
+                                        $urlCell = \App\Support\ReportDisplay::url($urls[$i] ?? null);
+                                    @endphp
+                                    <td class="border !px-2 !py-3 max-w-[12rem] align-top"
+                                        @if ($kwCell['title'] !== '') title="{{ $kwCell['title'] }}" @endif>{{ $kwCell['display'] }}</td>
+                                    <td class="border !px-2 !py-3 max-w-[18rem] align-top"
+                                        @if ($urlCell['title'] !== '') title="{{ $urlCell['title'] }}" @endif>{{ $urlCell['display'] }}</td>
                                 @endfor
                             @else
-                                <td class="border !px-2 !py-3">
-                                    {{ $keywords[0] ?? '-' }}
-                                </td>
-                                <td class="border !px-2 !py-3 break-all">
-                                    {{ $urls[0] ?? '-' }}
-                                </td>
+                                @php
+                                    $kwCell = \App\Support\ReportDisplay::keyword($keywords[0] ?? null);
+                                    $urlCell = \App\Support\ReportDisplay::url($urls[0] ?? null);
+                                @endphp
+                                <td class="border !px-2 !py-3 max-w-[12rem] align-top"
+                                    @if ($kwCell['title'] !== '') title="{{ $kwCell['title'] }}" @endif>{{ $kwCell['display'] }}</td>
+                                <td class="border !px-2 !py-3 max-w-[18rem] align-top"
+                                    @if ($urlCell['title'] !== '') title="{{ $urlCell['title'] }}" @endif>{{ $urlCell['display'] }}</td>
                             @endif
 
                             {{-- sticky thing --}}

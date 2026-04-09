@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Admin\Concerns\ValidatesBulkCampaignIds;
 use App\Http\Controllers\Controller;
 use App\Models\Admin\Article;
 use App\Models\Admin\ArticleCategory;
@@ -17,6 +18,7 @@ use App\Models\Admin\WpScheduledCampaignPost;
 use App\Jobs\PublishWpScheduledPostJob;
 use App\Jobs\SyncWpScheduledPostStatusJob;
 use App\Jobs\DeleteWpScheduledCampaignJob;
+use App\Services\PurgeLocalCampaignDataService;
 use App\Jobs\BulkUpdateWpScheduledPostsJob;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -26,9 +28,13 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Spatie\SimpleExcel\SimpleExcelWriter;
+use App\Support\WordPressApiFetchedPost;
+use App\Services\EditCampaignMultiLevelKeywordState;
 
 class WpScheduledCampaignController extends Controller
 {
+    use ValidatesBulkCampaignIds;
+
     /** Minutes to add to "now" for today/past posts so WordPress does not mark "Missed schedule" (WP cron runs on visit). */
     private const SCHEDULE_BUFFER_MINUTES = 120; // 2 hours
 
@@ -229,9 +235,16 @@ class WpScheduledCampaignController extends Controller
                     $urlType = 'single';
                 }
 
+                $articleRow = Article::find($articleId);
+                if (! $articleRow) {
+                    throw new \Exception("Article {$articleId} not found.");
+                }
+
                 $sca = WpScheduledCampaignArticle::create([
                     'wp_scheduled_campaign_id' => $campaign->id,
                     'article_id'               => $articleId,
+                    'article_title_snapshot'   => $articleRow->name,
+                    'article_body_snapshot'    => $articleRow->description,
                     'keyword'                  => $kwStore,
                     'url'                      => $urlStore,
                     'keyword_type'            => $kwType,
@@ -356,7 +369,25 @@ class WpScheduledCampaignController extends Controller
 
         $distinctBatches = array_values($batches);
 
-        return view('admin.campaigns.wp-scheduled.edit', compact('campaign', 'distinctBatches'));
+        $orderedArticleIds = $this->orderedWpScheduledCampaignArticleIds($campaign);
+        $postQuantity = count($orderedArticleIds);
+        $multiLevelBoxes = $postQuantity > 0
+            ? EditCampaignMultiLevelKeywordState::buildBoxes(
+                $orderedArticleIds,
+                fn (int $id) => WpScheduledCampaignArticle::where('wp_scheduled_campaign_id', $campaign->id)->find($id),
+                fn ($ca) => EditCampaignMultiLevelKeywordState::payloadFromKeywordColumns($ca)
+            )
+            : [];
+        $initialNofollow = false;
+        if ($postQuantity > 0) {
+            $firstCa = WpScheduledCampaignArticle::find($orderedArticleIds[0]);
+            $initialNofollow = $firstCa && (bool) $firstCa->nofollow;
+        }
+
+        return view(
+            'admin.campaigns.wp-scheduled.edit',
+            compact('campaign', 'distinctBatches', 'postQuantity', 'multiLevelBoxes', 'initialNofollow')
+        );
     }
 
     /**
@@ -380,7 +411,213 @@ class WpScheduledCampaignController extends Controller
             'campaign_no' => $campaignNo,
         ]);
 
-        return back()->with('cus__success', 'Successfully updated the campaign');
+        return back()
+            ->with('cus__success', 'Successfully updated the campaign')
+            ->with('edit_wp_schedule_campaign_tab', 'campaign');
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function orderedWpScheduledCampaignArticleIds(WpScheduledCampaign $campaign): array
+    {
+        return WpScheduledCampaignPost::query()
+            ->where('wp_scheduled_campaign_id', $campaign->id)
+            ->orderBy('scheduled_at')
+            ->orderBy('id')
+            ->pluck('wp_scheduled_campaign_article_id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<int>|null  $onlyArticleIds
+     * @return array{changed: bool, post_ids: array<int>}
+     */
+    private function applyWpScheduledCampaignKeywordBatch(
+        WpScheduledCampaign $campaign,
+        WpScheduledCampaignArticle $representative,
+        $kwInput,
+        $urlInput,
+        ?array $onlyArticleIds = null
+    ): array {
+        if (is_array($kwInput) && is_array($urlInput)) {
+            $newKwList  = array_values(array_map(fn ($v) => trim((string) $v), $kwInput));
+            $newUrlList = array_values(array_map(fn ($v) => trim((string) $v), $urlInput));
+            $len = min(count($newKwList), count($newUrlList));
+            $newPairs = [];
+            for ($i = 0; $i < $len; $i++) {
+                $newPairs[] = [$newKwList[$i] ?? '', $newUrlList[$i] ?? ''];
+            }
+        } else {
+            $newKw  = trim((string) $kwInput);
+            $newUrl = trim((string) $urlInput);
+            $newPairs = ($newKw !== '' || $newUrl !== '') ? [[$newKw, $newUrl]] : [];
+        }
+
+        $pairsToStore = array_values(array_filter(
+            $newPairs,
+            fn ($p) => ($p[0] ?? '') !== '' || ($p[1] ?? '') !== ''
+        ));
+
+        $newIsJson = count($pairsToStore) > 1;
+
+        if (count($pairsToStore) === 0) {
+            $kwStore  = null;
+            $urlStore = null;
+        } elseif (count($pairsToStore) === 1 && ! $newIsJson) {
+            $kwStore  = $pairsToStore[0][0];
+            $urlStore = $pairsToStore[0][1];
+        } else {
+            $kwStore  = json_encode(array_column($pairsToStore, 0), JSON_UNESCAPED_UNICODE);
+            $urlStore = json_encode(array_column($pairsToStore, 1), JSON_UNESCAPED_UNICODE);
+        }
+
+        $newKeywordType = $newIsJson ? 'json' : 'single';
+        $newUrlType     = $newIsJson ? 'json' : 'single';
+
+        if (
+            $representative->keyword === $kwStore &&
+            $representative->url === $urlStore &&
+            ($representative->keyword_type ?? 'single') === $newKeywordType &&
+            ($representative->url_type ?? 'single') === $newUrlType
+        ) {
+            return ['changed' => false, 'post_ids' => []];
+        }
+
+        if ($onlyArticleIds !== null) {
+            $articleIds = WpScheduledCampaignArticle::where('wp_scheduled_campaign_id', $campaign->id)
+                ->whereIn('id', array_map('intval', $onlyArticleIds))
+                ->pluck('id')
+                ->values()
+                ->all();
+        } else {
+            $articleIds = WpScheduledCampaignArticle::where('wp_scheduled_campaign_id', $campaign->id)
+                ->where('keyword', $representative->keyword)
+                ->where('url', $representative->url)
+                ->pluck('id')
+                ->all();
+        }
+
+        if (count($articleIds) === 0) {
+            return ['changed' => false, 'post_ids' => []];
+        }
+
+        WpScheduledCampaignArticle::whereIn('id', $articleIds)->update([
+            'keyword'      => $kwStore,
+            'url'          => $urlStore,
+            'keyword_type' => $newKeywordType,
+            'url_type'     => $newUrlType,
+        ]);
+
+        $ids = WpScheduledCampaignPost::whereIn('wp_scheduled_campaign_article_id', $articleIds)
+            ->where('status', 'success')
+            ->whereNotNull('remote_id')
+            ->pluck('id')
+            ->all();
+
+        return ['changed' => true, 'post_ids' => $ids];
+    }
+
+    /**
+     * Multi-level keywords: one JSON row per WP scheduled post (creation order).
+     */
+    public function multiLevelUpdateWpScheduleKeywords(Request $request, string $id)
+    {
+        $campaign = WpScheduledCampaign::find($id);
+        if (! $campaign) {
+            return redirect()
+                ->route('admin.wp.schedule.campaign.index')
+                ->with('cus__error', 'Campaign not found');
+        }
+        $this->authorizeCampaign($campaign);
+
+        $request->validate([
+            'keywordmethod'      => 'required|in:multiple',
+            'keywordsDataHolder' => 'required|string',
+        ]);
+
+        $keywords = json_decode((string) $request->keywordsDataHolder, true);
+        if (! is_array($keywords)) {
+            return redirect()
+                ->route('admin.wp.schedule.campaign.edit', $campaign->id)
+                ->with('cus__error', 'Invalid keywords JSON.')
+                ->with('edit_wp_schedule_campaign_tab', 'multi');
+        }
+
+        $orderedIds = $this->orderedWpScheduledCampaignArticleIds($campaign);
+        if (count($orderedIds) === 0) {
+            return redirect()
+                ->route('admin.wp.schedule.campaign.edit', $campaign->id)
+                ->with('cus__error', 'No campaign articles found.')
+                ->with('edit_wp_schedule_campaign_tab', 'multi');
+        }
+
+        if (count($keywords) !== count($orderedIds)) {
+            return redirect()
+                ->route('admin.wp.schedule.campaign.edit', $campaign->id)
+                ->with(
+                    'cus__error',
+                    'Keyword rows must be exactly '.count($orderedIds).' (your campaign post count).'
+                )
+                ->with('edit_wp_schedule_campaign_tab', 'multi');
+        }
+
+        $postIdsToUpdateOnRemote = [];
+
+        try {
+            DB::transaction(function () use ($campaign, $keywords, $orderedIds, &$postIdsToUpdateOnRemote) {
+                foreach ($orderedIds as $i => $articleId) {
+                    $ca = WpScheduledCampaignArticle::where('wp_scheduled_campaign_id', $campaign->id)->find($articleId);
+                    if (! $ca) {
+                        throw new \RuntimeException('Campaign article missing.');
+                    }
+
+                    $row = $keywords[$i] ?? [];
+                    $res = $this->applyWpScheduledCampaignKeywordBatch(
+                        $campaign,
+                        $ca,
+                        $row['keyword'] ?? null,
+                        $row['url'] ?? null,
+                        [$ca->id]
+                    );
+
+                    if (! empty($res['changed'])) {
+                        $postIdsToUpdateOnRemote = array_merge($postIdsToUpdateOnRemote, $res['post_ids']);
+                    }
+
+                    $mediaVal = isset($row['media']) ? trim((string) $row['media']) : '';
+                    $mediaVal = $mediaVal === '' ? null : $mediaVal;
+                    $nofollow = ! empty($row['nofollow']);
+
+                    WpScheduledCampaignArticle::where('id', $ca->id)->update([
+                        'media'    => $mediaVal,
+                        'nofollow' => $nofollow,
+                    ]);
+                }
+            });
+        } catch (\RuntimeException $e) {
+            return redirect()
+                ->route('admin.wp.schedule.campaign.edit', $campaign->id)
+                ->with('cus__error', $e->getMessage())
+                ->with('edit_wp_schedule_campaign_tab', 'multi');
+        }
+
+        $postIdsToUpdateOnRemote = array_values(array_unique($postIdsToUpdateOnRemote));
+
+        if (count($postIdsToUpdateOnRemote) > 0) {
+            BulkUpdateWpScheduledPostsJob::dispatch($postIdsToUpdateOnRemote)->onQueue('wp_scheduled_campaign_bulk_updates');
+        }
+
+        $msg = count($postIdsToUpdateOnRemote) > 0
+            ? 'Keywords updated. '.count($postIdsToUpdateOnRemote).' post(s) queued to update on remote.'
+            : 'Keywords and media saved. No published posts to update on remote; future sends use new data.';
+
+        return redirect()
+            ->route('admin.wp.schedule.campaign.edit', $campaign->id)
+            ->with('cus__success', $msg)
+            ->with('edit_wp_schedule_campaign_tab', 'multi');
     }
 
     /**
@@ -419,80 +656,12 @@ class WpScheduledCampaignController extends Controller
             $kwInput  = $batchKeywords[$index] ?? null;
             $urlInput = $batchUrls[$index] ?? null;
 
-            // Build list of new (keyword, url) pairs from submitted inputs
-            if (is_array($kwInput) && is_array($urlInput)) {
-                $newKwList  = array_values(array_map(fn ($v) => trim((string) $v), $kwInput));
-                $newUrlList = array_values(array_map(fn ($v) => trim((string) $v), $urlInput));
-                $len = min(count($newKwList), count($newUrlList));
-                $newPairs = [];
-                for ($i = 0; $i < $len; $i++) {
-                    $newPairs[] = [$newKwList[$i] ?? '', $newUrlList[$i] ?? ''];
-                }
-            } else {
-                $newKw  = trim((string) $kwInput);
-                $newUrl = trim((string) $urlInput);
-                $newPairs = ($newKw !== '' || $newUrl !== '') ? [[$newKw, $newUrl]] : [];
+            $res = $this->applyWpScheduledCampaignKeywordBatch($campaign, $representative, $kwInput, $urlInput, null);
+
+            if (! empty($res['changed'])) {
+                $updatedBatches++;
+                $postIdsToUpdateOnRemote = array_merge($postIdsToUpdateOnRemote, $res['post_ids']);
             }
-
-            // Normalise storage
-            $pairsToStore = array_values(array_filter(
-                $newPairs,
-                fn ($p) => ($p[0] ?? '') !== '' || ($p[1] ?? '') !== ''
-            ));
-
-            $newIsJson = count($pairsToStore) > 1;
-
-            if (count($pairsToStore) === 0) {
-                $kwStore  = null;
-                $urlStore = null;
-            } elseif (count($pairsToStore) === 1 && !$newIsJson) {
-                $kwStore  = $pairsToStore[0][0];
-                $urlStore = $pairsToStore[0][1];
-            } else {
-                $kwStore  = json_encode(array_column($pairsToStore, 0), JSON_UNESCAPED_UNICODE);
-                $urlStore = json_encode(array_column($pairsToStore, 1), JSON_UNESCAPED_UNICODE);
-            }
-
-            $newKeywordType = $newIsJson ? 'json' : 'single';
-            $newUrlType     = $newIsJson ? 'json' : 'single';
-
-            // Skip if nothing changed
-            if (
-                $representative->keyword === $kwStore &&
-                $representative->url === $urlStore &&
-                ($representative->keyword_type ?? 'single') === $newKeywordType &&
-                ($representative->url_type ?? 'single') === $newUrlType
-            ) {
-                continue;
-            }
-
-            // Find all articles in this campaign that share the representative's original pair
-            $articleIds = WpScheduledCampaignArticle::where('wp_scheduled_campaign_id', $campaign->id)
-                ->where('keyword', $representative->keyword)
-                ->where('url', $representative->url)
-                ->pluck('id')
-                ->all();
-
-            if (count($articleIds) === 0) {
-                continue;
-            }
-
-            WpScheduledCampaignArticle::whereIn('id', $articleIds)->update([
-                'keyword'      => $kwStore,
-                'url'          => $urlStore,
-                'keyword_type' => $newKeywordType,
-                'url_type'     => $newUrlType,
-            ]);
-
-            $updatedBatches++;
-
-            // Collect post IDs that are already on WordPress so we can push updated content
-            $ids = WpScheduledCampaignPost::whereIn('wp_scheduled_campaign_article_id', $articleIds)
-                ->where('status', 'success')
-                ->whereNotNull('remote_id')
-                ->pluck('id')
-                ->all();
-            $postIdsToUpdateOnRemote = array_merge($postIdsToUpdateOnRemote, $ids);
         }
 
         $postIdsToUpdateOnRemote = array_values(array_unique($postIdsToUpdateOnRemote));
@@ -511,7 +680,8 @@ class WpScheduledCampaignController extends Controller
 
         return redirect()
             ->route('admin.wp.schedule.campaign.edit', $campaign->id)
-            ->with($updatedBatches > 0 ? 'cus__success' : 'cus__error', $msg);
+            ->with($updatedBatches > 0 ? 'cus__success' : 'cus__error', $msg)
+            ->with('edit_wp_schedule_campaign_tab', 'batch');
     }
 
     public function show(string $id)
@@ -694,7 +864,11 @@ class WpScheduledCampaignController extends Controller
             return back()->with('cus__error', 'Failed to fetch post content from remote site.');
         }
 
-        $fetchedData = $response->json();
+        $data = $response->json();
+        if (! is_array($data)) {
+            return back()->with('cus__error', 'Remote site did not return valid post data.');
+        }
+        $fetchedData = WordPressApiFetchedPost::normalizeForEditForm($data);
 
         return view('admin.campaigns.wp-scheduled.edit-post', [
             'campaignPost' => $post,
@@ -936,5 +1110,51 @@ class WpScheduledCampaignController extends Controller
         return redirect()
             ->route('admin.wp.schedule.campaign.index')
             ->with('cus__success', 'WP Scheduled campaign deletion queued.');
+    }
+
+    /**
+     * Remove campaign data from this application only. Remote WordPress posts are not deleted.
+     */
+    public function purgeLocalOnly(string $id)
+    {
+        $campaign = WpScheduledCampaign::find($id);
+        if (!$campaign) {
+            return back()->with('cus__error', 'Campaign not found');
+        }
+        $this->authorizeCampaign($campaign);
+        PurgeLocalCampaignDataService::purgeWpScheduledCampaign((int) $campaign->id);
+
+        return redirect()
+            ->route('admin.wp.schedule.campaign.index')
+            ->with(
+                'cus__success',
+                'Campaign removed from this dashboard only. Remote posts were not deleted.'
+            );
+    }
+
+    /**
+     * Remove multiple WP Scheduled campaigns from the database only (no remote API calls).
+     */
+    public function bulkPurgeLocal(Request $request)
+    {
+        $ids = $this->validatedBulkCampaignIds($request);
+        if ($ids === []) {
+            return back()->with('cus__error', 'No campaigns selected.');
+        }
+
+        $allowed = $this->campaignIdsOwnedByCurrentAdmin($ids, WpScheduledCampaign::class);
+        if ($allowed === []) {
+            return back()->with('cus__error', 'No campaigns found or you do not have permission.');
+        }
+
+        foreach ($allowed as $id) {
+            PurgeLocalCampaignDataService::purgeWpScheduledCampaign($id);
+        }
+
+        $n = count($allowed);
+
+        return redirect()
+            ->route('admin.wp.schedule.campaign.index')
+            ->with('cus__success', $n . ' campaign(s) removed from this dashboard only. Remote posts were not deleted.');
     }
 }

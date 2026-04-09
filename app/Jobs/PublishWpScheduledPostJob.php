@@ -14,6 +14,7 @@ use Illuminate\Support\Str;
 use Carbon\Carbon;
 use App\Models\Admin\Article;
 use App\Models\Admin\WpScheduledCampaign;
+use App\Models\Admin\WpScheduledCampaignArticle;
 use App\Models\Admin\WpScheduledCampaignPost;
 use App\Services\WpScheduledPostContentBuilder;
 
@@ -64,7 +65,7 @@ class PublishWpScheduledPostJob implements ShouldQueue
             [$title, $content] = WpScheduledPostContentBuilder::build($post);
             $remote = $this->postToWordPress($post, $title, $content);
 
-            DB::transaction(function () use ($post, $remote) {
+            DB::transaction(function () use ($post, $remote, $title) {
                 $fresh = WpScheduledCampaignPost::lockForUpdate()->find($post->id);
                 if (!$fresh || $fresh->lock_token !== $post->lock_token) return;
 
@@ -74,7 +75,7 @@ class PublishWpScheduledPostJob implements ShouldQueue
                 $fresh->remote_status = $json['status'] ?? null;
                 $fresh->remote_scheduled_at = $post->scheduled_at;
                 $fresh->http_status = $remote['http_status'];
-                $fresh->remote_title = $post->campaignArticle->article->name ?? null;
+                $fresh->remote_title = $title;
                 // Use slug URL from API: remote_url (as in Postman) may already be slug; else link/permalink/url; if only ?p=ID then resolve permalink
                 $url = $json['remote_url'] ?? $json['link'] ?? $json['permalink'] ?? $json['url'] ?? null;
                 if ($url && str_contains($url, '?p=') && !empty($json['post_id'])) {
@@ -94,7 +95,17 @@ class PublishWpScheduledPostJob implements ShouldQueue
 
                 if ($fresh->status === 'success') {
                     WpScheduledCampaign::whereKey($fresh->wp_scheduled_campaign_id)->increment('completed_targets');
-                    Article::find($fresh->campaignArticle->article_id)?->delete();
+                    $ca = WpScheduledCampaignArticle::lockForUpdate()->find($fresh->wp_scheduled_campaign_article_id);
+                    if ($ca && $ca->article_id) {
+                        $art = Article::find($ca->article_id);
+                        if ($art) {
+                            $ca->update([
+                                'article_title_snapshot' => $art->name,
+                                'article_body_snapshot'  => $art->description,
+                            ]);
+                            $art->delete();
+                        }
+                    }
                 } else {
                     WpScheduledCampaign::whereKey($fresh->wp_scheduled_campaign_id)->increment('failed_targets');
                 }

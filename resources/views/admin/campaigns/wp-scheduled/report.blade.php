@@ -76,19 +76,26 @@
                             <td class="border !px-2 !py-3 text-center">{{ $index + 1 }}</td>
                             <td class="border !px-2 !py-3">{{ $post->scheduled_date?->format('d M Y') ?? '-' }}</td>
                             <td class="border !px-2 !py-3">{{ optional($post->campaignDomain?->domain)->name ?? '-' }}</td>
-                            <td class="border !px-2 !py-3 max-w-[200px] truncate" title="{{ optional($post->campaignArticle?->article)->name }}">
-                                {{ \Illuminate\Support\Str::limit(optional($post->campaignArticle?->article)->name ?? '-', 50) }}
+                            @php
+                                $wpArticleLabel = optional($post->campaignArticle?->article)->name
+                                    ?? $post->campaignArticle?->article_title_snapshot
+                                    ?? $post->remote_title
+                                    ?? '—';
+                            @endphp
+                            <td class="border !px-2 !py-3 max-w-[200px] truncate" title="{{ $wpArticleLabel }}">
+                                {{ \Illuminate\Support\Str::limit($wpArticleLabel, 50) }}
                             </td>
                             <td class="border !px-2 !py-3 text-center">{{ ucfirst($post->status) }}</td>
                             <td class="border !px-2 !py-3 text-center">
                                 <span class="!px-2 !py-1 rounded text-xs font-semibold {{ $statusClass }}">{{ $disp }}</span>
                             </td>
                             <td class="border !px-2 !py-3 text-center">{{ $post->remote_status ?? '-' }}</td>
-                            <td class="border !px-2 !py-3 break-all">
-                                @if ($post->remote_url)
-                                    <a href="{{ $post->remote_url }}" target="_blank" class="text-blue-600 hover:underline">
-                                        {{ \Illuminate\Support\Str::limit($post->remote_url, 50) }}
-                                    </a>
+                            @php $remote = \App\Support\ReportDisplay::externalLink($post->remote_url); @endphp
+                            <td class="border !px-2 !py-3 max-w-[18rem] align-top">
+                                @if ($remote['href'] !== '')
+                                    <a href="{{ $remote['href'] }}" target="_blank" rel="noopener"
+                                        class="text-blue-600 hover:underline"
+                                        title="{{ $remote['title'] }}">{{ $remote['display'] }}</a>
                                 @else
                                     -
                                 @endif

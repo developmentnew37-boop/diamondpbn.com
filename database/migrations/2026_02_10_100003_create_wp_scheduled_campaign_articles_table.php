@@ -13,7 +13,10 @@ return new class extends Migration
             $table->foreignId('wp_scheduled_campaign_id')
                 ->constrained('wp_scheduled_campaigns')
                 ->cascadeOnDelete();
-            $table->foreignId('article_id')->constrained('articles')->cascadeOnDelete();
+            $table->foreignId('article_id')
+                ->nullable()
+                ->constrained('articles')
+                ->nullOnDelete();
             $table->text('keyword')->nullable();
             $table->text('url')->nullable();
             $table->enum('keyword_type', ['single', 'json'])->default('single');

@@ -20,10 +20,13 @@
                     </div>
                 </div>
             </div>
-            <div class="w-1/2 flex flex-wrap justify-end items-center">
-                {{-- {{ route('admin.article.opt') }} --}}
+            <div class="w-1/2 flex flex-wrap justify-end items-center gap-2">
+                <a href="{{ route('admin.article.trashed.index') }}"
+                    class="flex !p-2 !py-3 text-sm font-normal justify-center duration-300 bg-gray-700 hover:bg-gray-600 text-white rounded">
+                    Deleted used articles
+                </a>
                 <a href="{{ route('admin.articles.opt') }}"
-                    class="flex !p-2 !py-3 text-[16px] font-normal w-1/5 justify-center duration:300 bg-black hover:bg-[var(--primary-color)] text-white rounded ">+
+                    class="flex !p-2 !py-3 text-[16px] font-normal min-w-[140px] justify-center duration-300 bg-black hover:bg-[var(--primary-color)] text-white rounded">+
                     Add Article</a>
             </div>
         </div>

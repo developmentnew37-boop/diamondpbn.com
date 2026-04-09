@@ -3,7 +3,6 @@
 import { initDynamicRadioGroup, initPopup, nestedPop } from "./helper/popup.js";
 import { initSelectManager } from "./helper/selectBox.js";
 import { allowOnlyNumbers } from "./helper/utility.js";
-
 window.addEventListener("DOMContentLoaded", () => {
 
     // 🔴 RESET selection state on full page reload
@@ -19,6 +18,85 @@ window.addEventListener("DOMContentLoaded", () => {
     // sumbit button //
     let form = document.getElementById('sidebar-campaign');
 
+    function autoSelectByQuantity({ checkboxSelector, localStorageKey, qty, manager = null }) {
+        const limit = Math.max(0, parseInt(qty || 0, 10));
+        if (limit <= 0) return;
+        const existing = (() => {
+            try {
+                const raw = JSON.parse(localStorage.getItem(localStorageKey) || "[]");
+                return Array.isArray(raw) ? [...new Set(raw.map((v) => String(v)).filter(Boolean))] : [];
+            } catch (_) { return []; }
+        })();
+        const pageIds = Array.from(document.querySelectorAll(checkboxSelector)).map((cb) => String(cb.value)).filter(Boolean);
+        const selected = [...existing];
+        if (selected.length < limit) {
+            for (const id of pageIds) {
+                if (selected.length >= limit) break;
+                if (!selected.includes(id)) selected.push(id);
+            }
+        }
+        localStorage.setItem(localStorageKey, JSON.stringify(selected.slice(0, limit)));
+        if (manager && typeof manager.refresh === "function") manager.refresh();
+    }
+    function getStoredSelectionCount(localStorageKey) {
+        try {
+            const raw = JSON.parse(localStorage.getItem(localStorageKey) || "[]");
+            return Array.isArray(raw) ? raw.length : 0;
+        } catch (_) { return 0; }
+    }
+    function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+    function getCurrentPageSignature(containerSelector, checkboxSelector) {
+        const container = document.querySelector(containerSelector);
+        const active = container?.querySelector(".page-active")?.textContent?.trim() || "";
+        const firstId = document.querySelector(checkboxSelector)?.value || "";
+        return `${active}::${firstId}`;
+    }
+    async function waitForPageMutation(containerSelector, checkboxSelector, previousSignature, timeoutMs = 5000) {
+        const startedAt = Date.now();
+        while ((Date.now() - startedAt) < timeoutMs) {
+            const container = document.querySelector(containerSelector);
+            const active = container?.querySelector(".page-active")?.textContent?.trim() || "";
+            const firstId = document.querySelector(checkboxSelector)?.value || "";
+            if (`${active}::${firstId}` !== previousSignature) return true;
+            await sleep(120);
+        }
+        return false;
+    }
+    function getNextPaginationButton(containerSelector) {
+        const container = document.querySelector(containerSelector);
+        if (!container) return null;
+        const buttons = Array.from(container.querySelectorAll("button.page-btn, button"));
+        const activeIndex = buttons.findIndex((btn) => btn.classList.contains("page-active"));
+        if (activeIndex >= 0) {
+            for (let i = activeIndex + 1; i < buttons.length; i++) if (!buttons[i].disabled) return buttons[i];
+        }
+        return buttons.find((btn) => !btn.disabled && ((btn.textContent || "").trim().toLowerCase().includes("next") || (btn.textContent || "").trim() === "»")) || null;
+    }
+    async function autoSelectAcrossPages({ localStorageKey, checkboxSelector, containerSelector, progressSelector, manager }) {
+        const progressEl = document.querySelector(progressSelector);
+        const updateProgress = () => {
+            const selected = getStoredSelectionCount(localStorageKey);
+            if (progressEl) progressEl.textContent = `${selected}/${sidebarCount} selected`;
+            return selected;
+        };
+        let selectedCount = updateProgress();
+        let guard = 0;
+        while (selectedCount < sidebarCount && guard < 300) {
+            guard += 1;
+            autoSelectByQuantity({ checkboxSelector, localStorageKey, qty: sidebarCount, manager });
+            selectedCount = updateProgress();
+            if (selectedCount >= sidebarCount) break;
+            const before = getCurrentPageSignature(containerSelector, checkboxSelector);
+            const nextBtn = getNextPaginationButton(containerSelector);
+            if (!nextBtn) break;
+            nextBtn.click();
+            await waitForPageMutation(containerSelector, checkboxSelector, before, 6000);
+            await sleep(120);
+            selectedCount = updateProgress();
+        }
+        return { done: selectedCount >= sidebarCount, selectedCount };
+    }
+
     // ---------------
 
     async function renderDomains({
@@ -27,8 +105,9 @@ window.addEventListener("DOMContentLoaded", () => {
         tableBody,
         loader,
         paginationLoader,
-        per_page = 30,
-        isPagination = false
+        per_page = 100,
+        isPagination = false,
+        autoSelect = false
     }) {
         try {
             let apiUrl;
@@ -98,6 +177,14 @@ window.addEventListener("DOMContentLoaded", () => {
             if (window.sideBarRandomDomainSelMgr) {
                 window.sideBarRandomDomainSelMgr.refresh();
             }
+            if (autoSelect) {
+                autoSelectByQuantity({
+                    checkboxSelector: ".sidebar_domains",
+                    localStorageKey: "selectSidebarDomains",
+                    qty: sidebarCount,
+                    manager: window.sideBarRandomDomainSelMgr
+                });
+            }
 
             // Render pagination buttons
             renderDomainPagination(meta.links, {
@@ -105,7 +192,8 @@ window.addEventListener("DOMContentLoaded", () => {
                 tableBody,
                 loader,
                 paginationLoader,
-                per_page
+                per_page,
+                autoSelect
             });
 
         } catch (err) {
@@ -163,8 +251,9 @@ window.addEventListener("DOMContentLoaded", () => {
         tableBody,
         loader,
         paginationLoader,
-        per_page = 30,
-        isPagination = false
+        per_page = 100,
+        isPagination = false,
+        autoSelect = false
     }) {
         try {
             let apiUrl;
@@ -224,13 +313,22 @@ window.addEventListener("DOMContentLoaded", () => {
             if (window.domainSetSelectMgr) {
                 window.domainSetSelectMgr.refresh();
             }
+            if (autoSelect) {
+                autoSelectByQuantity({
+                    checkboxSelector: ".setdomains",
+                    localStorageKey: "selectSidebarSetDomains",
+                    qty: sidebarCount,
+                    manager: window.sideBarDomainSetMgr
+                });
+            }
 
             renderDomainSetPagination(meta.links, {
                 domainSetId,
                 tableBody,
                 loader,
                 paginationLoader,
-                per_page
+                per_page,
+                autoSelect
             });
 
         } catch (err) {
@@ -597,6 +695,38 @@ window.addEventListener("DOMContentLoaded", () => {
                 if (boxCounter) boxCounter.textContent = String(i + 1).padStart(2, "0");
             });
             if (totalBoxCount) totalBoxCount.textContent = boxes.length;
+            updateKeywordProgress();
+        }
+
+        function parseQtyLines(text) {
+            return String(text || "")
+                .split("\n")
+                .map((v) => parseInt(v.trim(), 10))
+                .filter((n) => Number.isFinite(n) && n > 0)
+                .reduce((a, b) => a + b, 0);
+        }
+        function ensureOverallProgressNode() {
+            const host = document.querySelector(".add-more-window.keyword-tab-sec > div");
+            if (!host) return null;
+            let node = document.getElementById("overall-sidebar-keyword-progress");
+            if (node) return node;
+            node = document.createElement("p");
+            node.id = "overall-sidebar-keyword-progress";
+            node.className = "!px-3 !py-2 rounded border-2 border-blue-300 bg-blue-50 text-blue-800 font-semibold text-sm shadow-sm";
+            host.appendChild(node);
+            return node;
+        }
+        function updateKeywordProgress() {
+            const count = getSidebarCount();
+            const boxes = [...document.querySelectorAll(".keyword-url-box")];
+            let usedQty = 0;
+            boxes.forEach((box) => {
+                const target = parseInt(box.querySelector(".client-url-quantity")?.value || "0", 10) || 0;
+                const assigned = parseQtyLines(box.querySelector(".keywords-quantity-area")?.value || "");
+                usedQty += Math.max(target, assigned ? target : 0);
+            });
+            const node = ensureOverallProgressNode();
+            if (node) node.textContent = `Quantity used ${usedQty}/${count} | Remaining ${Math.max(count - usedQty, 0)}`;
         }
 
         // ✅ PATCH: do NOT pass sidebarCount into listeners (it freezes at 10). Read fresh count inside.
@@ -620,6 +750,7 @@ window.addEventListener("DOMContentLoaded", () => {
                         val = maxAllowed;
                     }
                     updateKeywordQuantity(this, val);
+                    updateKeywordProgress();
                 });
             });
         }
@@ -658,6 +789,7 @@ window.addEventListener("DOMContentLoaded", () => {
                         .closest(".keyword-url-box")
                         .querySelector(".keywords-quantity-area");
                     if (boxContent) boxContent.value = keyArr.join("\n");
+                    updateKeywordProgress();
                 });
             });
         }
@@ -689,12 +821,14 @@ window.addEventListener("DOMContentLoaded", () => {
                         }
                     }
                     kQuantityArea.value = keyQuantityArr.join("\n");
+                    updateKeywordProgress();
                     return;
                 }
             }
 
             const keywordQuantityArea = parentBox.querySelector(".keywords-quantity-area");
             if (keywordQuantityArea) keywordQuantityArea.value = val;
+            updateKeywordProgress();
         }
 
         // === Delete handler ===
@@ -705,6 +839,7 @@ window.addEventListener("DOMContentLoaded", () => {
                 e.target.closest(".keyword-url-box").remove();
                 updateBoxCount();
                 updateBorders();
+                updateKeywordProgress();
             }
         });
 
@@ -775,6 +910,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
         let keywordsArea = document.getElementsByClassName("keywords-area");
         keywordNumDistribute(keywordsArea);
+        updateKeywordProgress();
 
         // xxxxxxxxxxxxxxxxxxxxxxx bulk input data  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
         let bulkInput = document.getElementsByClassName("bulk-input");
@@ -935,7 +1071,6 @@ window.addEventListener("DOMContentLoaded", () => {
         tabStyleSwitcher(domainTabBtns, domainSections);
 
     }
-
     if (step__03) {
 
 
@@ -959,8 +1094,9 @@ window.addEventListener("DOMContentLoaded", () => {
                     tableBody: tableBody,
                     loader: showDomainLoader,
                     paginationLoader: paginationLoader,
-                    per_page: 30,
-                    isPagination: false
+                    per_page: 100,
+                    isPagination: false,
+                    autoSelect: true
                 });
 
                 // ✅ INIT domain selection manager ONCE
@@ -1029,8 +1165,9 @@ window.addEventListener("DOMContentLoaded", () => {
                 tableBody: document.querySelector('#domainSetTable tbody'),
                 loader,
                 paginationLoader: document.querySelector('.domain-set-pagination-loader'),
-                per_page: 30,
-                isPagination: false
+                per_page: 100,
+                isPagination: false,
+                autoSelect: true
             });
 
             // ✅ init ONCE
@@ -1054,6 +1191,58 @@ window.addEventListener("DOMContentLoaded", () => {
             }
         });
 
+        const autoSelectSidebarDomainsBtn = document.getElementById('autoSelectSidebarDomainsBtn');
+        if (autoSelectSidebarDomainsBtn) {
+            autoSelectSidebarDomainsBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                if (!document.querySelector('.sidebar_domains')) {
+                    alert('Load random domains first, then click Auto Select Required.');
+                    return;
+                }
+                autoSelectSidebarDomainsBtn.disabled = true;
+                const progressEl = document.getElementById('autoSelectSidebarDomainsProgress');
+                if (progressEl) progressEl.textContent = 'Auto selecting...';
+                try {
+                    const result = await autoSelectAcrossPages({
+                        localStorageKey: 'selectSidebarDomains',
+                        checkboxSelector: '.sidebar_domains',
+                        containerSelector: '#domain-pagination',
+                        progressSelector: '#autoSelectSidebarDomainsProgress',
+                        manager: window.sideBarRandomDomainSelMgr
+                    });
+                    if (!result.done) alert(`Only ${result.selectedCount}/${sidebarCount} domains are available.`);
+                } finally {
+                    autoSelectSidebarDomainsBtn.disabled = false;
+                }
+            });
+        }
+
+        const autoSelectSidebarSetDomainsBtn = document.getElementById('autoSelectSidebarSetDomainsBtn');
+        if (autoSelectSidebarSetDomainsBtn) {
+            autoSelectSidebarSetDomainsBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                if (!document.querySelector('.setdomains')) {
+                    alert('Load domain set first, then click Auto Select Required.');
+                    return;
+                }
+                autoSelectSidebarSetDomainsBtn.disabled = true;
+                const progressEl = document.getElementById('autoSelectSidebarSetDomainsProgress');
+                if (progressEl) progressEl.textContent = 'Auto selecting...';
+                try {
+                    const result = await autoSelectAcrossPages({
+                        localStorageKey: 'selectSidebarSetDomains',
+                        checkboxSelector: '.setdomains',
+                        containerSelector: '#domain-set-pagination',
+                        progressSelector: '#autoSelectSidebarSetDomainsProgress',
+                        manager: window.sideBarDomainSetMgr
+                    });
+                    if (!result.done) alert(`Only ${result.selectedCount}/${sidebarCount} domains are available in this set.`);
+                } finally {
+                    autoSelectSidebarSetDomainsBtn.disabled = false;
+                }
+            });
+        }
+
 
 
         // ********* manual domains script here ********* //
@@ -1075,7 +1264,6 @@ window.addEventListener("DOMContentLoaded", () => {
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
-            e.preventDefault();
 
             const selectedRadio = document.querySelector('input[name="sel_domains"]:checked'); // 
             const campaignDomainHolder = document.getElementById('campaigns_domains_holder');
@@ -1086,13 +1274,11 @@ window.addEventListener("DOMContentLoaded", () => {
             }
 
             const selectedDomainMethod = selectedRadio.value;
-            console.log("selected method", selectedDomainMethod);
             /* -----------------------------
                RANDOM / SET DOMAINS
             ------------------------------*/
             if (selectedDomainMethod === '0') {
                 const domains = localStorage.getItem('selectSidebarDomains');
-                console.log(domains)
                 if (!domains) {
                     alert('No domains found in local storage.');
                     return;
@@ -1107,7 +1293,6 @@ window.addEventListener("DOMContentLoaded", () => {
 
             } else if (selectedDomainMethod === '1') {
                 const domains = localStorage.getItem('selectSidebarSetDomains');
-                console.log(domains)
                 if (!domains) {
                     alert('No domain set found in local storage.');
                     return;
@@ -1155,7 +1340,6 @@ window.addEventListener("DOMContentLoaded", () => {
                     });
 
                     const res = await response.json();
-                    console.log(res)
 
                     if (!res.status) {
                         alert(res.message || 'Domain validation failed.');

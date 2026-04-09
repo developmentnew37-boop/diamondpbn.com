@@ -35,6 +35,13 @@
                     Delete campaign
                 </button>
             </form>
+            <form action="{{ route('admin.schedule.campaign.purge.local', $campaign->id) }}" method="post" class="inline"
+                  onsubmit="return confirm('Remove this campaign from the dashboard only? Remote posts stay published. You will not be able to edit this campaign here anymore.');">
+                @csrf
+                <button type="submit" class="inline-flex items-center gap-2 !px-3 !py-2 rounded bg-orange-600 text-white hover:bg-orange-700 text-sm">
+                    Remove locally
+                </button>
+            </form>
             <a href="javascript:void(0)" onclick="history.back()"
                class="inline-flex items-center gap-2 !px-3 !py-2 rounded bg-gray-200 hover:bg-gray-300 text-sm">
                 <span class="material-symbols-outlined">arrow_back</span>
@@ -140,8 +147,14 @@
                     </td>
 
                     <td class="!px-2 !py-2 border border-gray-300 max-w-[220px] truncate"
-                        title="{{ optional($post->campaignArticle?->article)->name }}">
-                        {{ \Illuminate\Support\Str::limit(optional($post->campaignArticle?->article)->name ?? '-', 70) }}
+                        @php
+                            $schedArticleLabel = optional($post->campaignArticle?->article)->name
+                                ?? $post->campaignArticle?->article_title_snapshot
+                                ?? $post->remote_title
+                                ?? '—';
+                        @endphp
+                        title="{{ $schedArticleLabel }}">
+                        {{ \Illuminate\Support\Str::limit($schedArticleLabel, 70) }}
                     </td>
 
                     <td class="!px-2 !py-2 border border-gray-300">

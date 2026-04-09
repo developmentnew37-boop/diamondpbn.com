@@ -84,7 +84,7 @@ class PublishCampaignPostJob implements ShouldQueue
             $remote = $this->postToWordPress($post, $title, $content);
 
             // ✅ STEP 4: Mark success
-            DB::transaction(function () use ($post, $remote) {
+            DB::transaction(function () use ($post, $remote, $title) {
 
                 // Lock campaign post
                 $fresh = CampaignPost::lockForUpdate()->find($post->id);
@@ -92,11 +92,11 @@ class PublishCampaignPostJob implements ShouldQueue
                     return;
                 }
 
-                // Update post status
+                // Update post status (title matches published payload; safe if article row is later removed)
                 $fresh->update([
                     'status'        => 'success',
                     'remote_id'     => $remote['post_id'] ?? null,
-                    'remote_title'  => $post->campaignArticle->article->name,
+                    'remote_title'  => $title,
                     'remote_url'    => $remote['remote_url'] ?? null,
                     'published_at'  => now(),
                     'last_error'    => null,
@@ -126,8 +126,18 @@ class PublishCampaignPostJob implements ShouldQueue
                 // 💾 Save once
                 $campaign->save();
 
-                // 🗑️ Remove article
-                Article::find($fresh->campaignArticle->article_id)?->delete();
+                // Keep copy on campaign_articles, then soft-delete library article (permanent purge won't cascade-delete this row)
+                $ca = CampaignArticle::lockForUpdate()->find($fresh->campaign_article_id);
+                if ($ca && $ca->article_id) {
+                    $art = Article::find($ca->article_id);
+                    if ($art) {
+                        $ca->update([
+                            'article_title_snapshot' => $art->name,
+                            'article_body_snapshot'  => $art->description,
+                        ]);
+                        $art->delete();
+                    }
+                }
             });
         } catch (Throwable $e) {
 

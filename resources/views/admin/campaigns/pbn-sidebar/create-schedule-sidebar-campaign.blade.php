@@ -512,6 +512,16 @@
                     </table>
                     <div id="domain-pagination" class="flex flex-wrap gap-2 mt-3 justify-center">
                     </div>
+                    <div class="w-full flex justify-end !mt-2">
+                        <div class="flex items-center gap-2">
+                            <button type="button" id="autoSelectScheduleSidebarDomainsBtn"
+                                class="cursor-pointer bg-indigo-600 text-white rounded !px-3 !py-2 text-sm"
+                                style="background-color:#4f46e5 !important;color:#ffffff !important;">
+                                Auto Select Required
+                            </button>
+                            <span id="autoSelectScheduleSidebarDomainsProgress" class="text-xs text-gray-700"></span>
+                        </div>
+                    </div>
                 </div>
 
             </div>
@@ -634,6 +644,16 @@
 
                     <div class="w-full flex justify-center !mt-4">
                         <div id="domain-set-pagination" class="flex flex-wrap gap-2 items-center">
+                        </div>
+                    </div>
+                    <div class="w-full flex justify-end !mt-2">
+                        <div class="flex items-center gap-2">
+                            <button type="button" id="autoSelectScheduleSidebarSetDomainsBtn"
+                                class="cursor-pointer bg-indigo-600 text-white rounded !px-3 !py-2 text-sm"
+                                style="background-color:#4f46e5 !important;color:#ffffff !important;">
+                                Auto Select Required
+                            </button>
+                            <span id="autoSelectScheduleSidebarSetDomainsProgress" class="text-xs text-gray-700"></span>
                         </div>
                     </div>
                 </div>

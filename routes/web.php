@@ -3,9 +3,9 @@
 use Illuminate\Support\Facades\Route;
 require __DIR__.'/admin.php';
 
-Route::get('/',function(){
-    return view('welcome');
-});
+Route::get('/', function () {
+    return view('home');
+})->name('home');
 
 // Route::get('/', function () {
 //     return view('welcome');

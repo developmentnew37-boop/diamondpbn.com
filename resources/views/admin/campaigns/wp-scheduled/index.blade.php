@@ -48,11 +48,22 @@
         <h2 class="text-xl capitalize !mb-4 bg-[var(--primary-color)] text-white w-fit !p-2 rounded">
             WordPress Scheduled Campaigns
         </h2>
+        <form id="wp-sched-bulk-purge-local-form" action="{{ route('admin.wp.schedule.campaign.bulk.purge.local') }}" method="POST" class="hidden">@csrf</form>
+        <div class="w-full flex flex-wrap items-center gap-2 !mb-2">
+            <button type="button" id="wp-sched-bulk-purge-local-btn"
+                class="!px-3 !py-2 rounded bg-orange-600 text-white text-sm hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                Bulk remove locally only
+            </button>
+            <span class="text-sm text-gray-500">Select rows with checkboxes; remote WordPress posts are not changed.</span>
+        </div>
 
         <div class="overflow-x-auto w-full">
             <table class="display w-full border border-gray-200 border-collapse text-sm whitespace-nowrap">
                 <thead>
                     <tr class="bg-gray-800 text-white">
+                        <th class="border border-gray-200 !px-2 !py-3 text-center w-10">
+                            <input type="checkbox" id="wp-sched-select-all" class="scale-125" title="Select all">
+                        </th>
                         <th class="border border-gray-200 !px-2 !py-3 text-left">S.No</th>
                         <th class="border border-gray-200 !px-2 !py-3 text-left">Campaign No</th>
                         <th class="border border-gray-200 !px-2 !py-3 text-left">From → To</th>
@@ -74,6 +85,9 @@
                             $progress = $total > 0 ? round(($completed / $total) * 100, 1) : 0;
                         @endphp
                         <tr class="hover:bg-gray-50">
+                            <td class="border !px-2 !py-2 text-center">
+                                <input type="checkbox" class="wp-sched-campaign-cb campaign-bulk-cb" name="campaign_ids[]" value="{{ $campaign->id }}">
+                            </td>
                             <td class="border !px-2 !py-2">{{ $index + 1 + $offset }}</td>
                             <td class="border !px-2 !py-2">{{ $campaign->campaign_no }}</td>
                             <td class="border !px-2 !py-2">{{ $campaign->schedule_from_date?->format('d M Y') }} → {{ $campaign->schedule_to_date?->format('d M Y') }}</td>
@@ -124,12 +138,19 @@
                                             <span class="material-symbols-outlined !text-sm">delete</span>
                                         </button>
                                     </form>
+                                    <form action="{{ route('admin.wp.schedule.campaign.purge.local', $campaign->id) }}" method="POST" class="inline"
+                                        onsubmit="return confirm('Remove this campaign from the dashboard only? Remote WordPress posts stay. You will not be able to edit this campaign here anymore.');">
+                                        @csrf
+                                        <button type="submit" class="flex items-center justify-center rounded w-7 h-7 bg-orange-500 hover:bg-orange-600 border-0 cursor-pointer text-white p-0" title="Dashboard only — does not delete remote posts">
+                                            <span class="material-symbols-outlined !text-sm">database</span>
+                                        </button>
+                                    </form>
                                 </div>
                             </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="9" class="text-center !py-6 text-gray-500">No WP scheduled campaigns yet.</td>
+                            <td colspan="10" class="text-center !py-6 text-gray-500">No WP scheduled campaigns yet.</td>
                         </tr>
                     @endforelse
                 </tbody>
@@ -141,4 +162,36 @@
 
 @push('scripts')
     <script src="{{ asset('js/copy.js') }}"></script>
+    <script>
+        (function () {
+            var form = document.getElementById('wp-sched-bulk-purge-local-form');
+            var btn = document.getElementById('wp-sched-bulk-purge-local-btn');
+            var selectAll = document.getElementById('wp-sched-select-all');
+            var boxes = document.querySelectorAll('.wp-sched-campaign-cb');
+            if (!form || !btn) return;
+            btn.addEventListener('click', function () {
+                var ids = Array.prototype.slice.call(document.querySelectorAll('.wp-sched-campaign-cb:checked')).map(function (cb) { return cb.value; });
+                if (ids.length === 0) { alert('Please select at least one campaign.'); return; }
+                if (!confirm('Remove ' + ids.length + ' campaign(s) from this dashboard only? Remote WordPress posts will NOT be deleted.')) return;
+                Array.prototype.slice.call(form.querySelectorAll('input[name="campaign_ids[]"]')).forEach(function (n) { n.remove(); });
+                ids.forEach(function (id) {
+                    var inp = document.createElement('input');
+                    inp.type = 'hidden';
+                    inp.name = 'campaign_ids[]';
+                    inp.value = id;
+                    form.appendChild(inp);
+                });
+                form.submit();
+            });
+            function sync() { btn.disabled = document.querySelectorAll('.wp-sched-campaign-cb:checked').length === 0; }
+            boxes.forEach(function (cb) { cb.addEventListener('change', sync); });
+            if (selectAll) {
+                selectAll.addEventListener('change', function () {
+                    boxes.forEach(function (cb) { cb.checked = selectAll.checked; });
+                    sync();
+                });
+            }
+            sync();
+        })();
+    </script>
 @endpush

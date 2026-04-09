@@ -18,9 +18,11 @@ return new class extends Migration
                 ->constrained('campaigns')
                 ->cascadeOnDelete();
 
+            // nullOnDelete: permanently deleting a library article must not remove campaign history
             $table->foreignId('article_id')
+                ->nullable()
                 ->constrained('articles')
-                ->cascadeOnDelete();
+                ->nullOnDelete();
 
             // store raw string OR json string (array)
             $table->text('keyword')->nullable();

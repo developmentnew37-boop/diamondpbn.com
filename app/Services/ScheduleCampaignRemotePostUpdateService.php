@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Admin\ScheduleCampaignPost;
+use App\Support\ExtraKeywordLinksHtmlInserter;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -53,12 +54,30 @@ class ScheduleCampaignRemotePostUpdateService
 
         $pairs = self::getKeywordUrlPairs($ca);
         if (count($pairs) === 0) {
+            // All keywords removed in admin: strip the same _blank links we manage on publish,
+            // so live posts do not keep old client links.
+            $content = ExtraKeywordLinksHtmlInserter::stripBlankTargetAnchors($content);
+
             return [$title, $content];
         }
 
         $nofollow = (bool) ($ca->nofollow ?? false);
         $relAttr = $nofollow ? 'nofollow noopener' : 'noopener';
-        $content = self::replaceAnchorsWithNewPairs($content, $pairs, $relAttr);
+
+        $pattern = '/<a\s[^>]*target\s*=\s*["\']_blank["\'][^>]*>.*?<\/a>/is';
+        preg_match_all($pattern, $content, $anchorMatches);
+        $anchorCount = count($anchorMatches[0] ?? []);
+
+        $content = ExtraKeywordLinksHtmlInserter::replaceBlankAnchorsWithPairs($content, $pairs, $relAttr);
+
+        // Adding pairs in admin without a matching anchor on remote (e.g. 1 link → 2): append the rest.
+        if (count($pairs) > $anchorCount) {
+            $content = ExtraKeywordLinksHtmlInserter::insertBetweenParagraphs(
+                $content,
+                array_slice($pairs, $anchorCount),
+                $relAttr
+            );
+        }
 
         return [$title, $content];
     }
@@ -94,19 +113,5 @@ class ScheduleCampaignRemotePostUpdateService
             }
         }
         return $pairs;
-    }
-
-    private static function replaceAnchorsWithNewPairs(string $html, array $pairs, string $relAttr): string
-    {
-        if (count($pairs) === 0) {
-            return $html;
-        }
-        $pattern = '/<a\s[^>]*target\s*=\s*["\']_blank["\'][^>]*>.*?<\/a>/is';
-        $index = 0;
-        return preg_replace_callback($pattern, function () use ($pairs, &$index, $relAttr) {
-            $pair = $pairs[min($index, count($pairs) - 1)];
-            $index++;
-            return '<a href="' . e($pair[1]) . '" target="_blank" rel="' . $relAttr . '">' . e($pair[0]) . '</a>';
-        }, $html);
     }
 }

@@ -16,13 +16,19 @@ use App\Models\Admin\HiddenLinksCampaign;
 use App\Jobs\PublishHiddenLinksJob;
 use App\Jobs\BulkUpdateHiddenLinksJob;
 use App\Jobs\BulkDeleteHiddenLinksJob;
+use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
+use App\Http\Controllers\Admin\Concerns\ValidatesBulkCampaignIds;
 use App\Jobs\BulkDeleteHiddenLinkCampaignsJob;
+use App\Services\PurgeLocalCampaignDataService;
 use App\Services\HiddenLinksApiService;
 use Spatie\SimpleExcel\SimpleExcelWriter;
 use Illuminate\Support\Str;
 
 class HiddenLinkCampaignController extends Controller
 {
+    use AuthorizesAdminCampaign;
+    use ValidatesBulkCampaignIds;
+
     public function __construct()
     {
         $this->middleware('can.create.campaigns')->except(['report', 'exportReport']);
@@ -477,6 +483,7 @@ class HiddenLinkCampaignController extends Controller
     public function edit(string $id)
     {
         $campaign = HiddenLinksCampaign::with(['links', 'domains'])->findOrFail($id);
+        $this->authorizeCampaignAccess($campaign);
 
         $links = HiddenLinksCampaignLinks::where('hidden_links_campaigns_id', $campaign->id)->get();
         $batches = [];
@@ -505,8 +512,20 @@ class HiddenLinkCampaignController extends Controller
         }
         unset($batch);
         $distinctBatches = array_values($batches);
+        $allLinksForBulk = HiddenLinksCampaignLinks::where('hidden_links_campaigns_id', $campaign->id)
+            ->orderBy('id')
+            ->get(['id', 'anchor_keyword', 'target_url'])
+            ->map(fn ($link) => [
+                'link_id' => (int) $link->id,
+                'keyword' => trim((string) ($link->anchor_keyword ?? '')),
+                'url' => trim((string) ($link->target_url ?? '')),
+            ])
+            ->all();
 
-        return view('admin.campaigns.pbn-hidden-links.edit-campaign', compact('campaign', 'distinctBatches'));
+        return view(
+            'admin.campaigns.pbn-hidden-links.edit-campaign',
+            compact('campaign', 'distinctBatches', 'allLinksForBulk')
+        );
     }
 
     /**
@@ -515,16 +534,66 @@ class HiddenLinkCampaignController extends Controller
     public function update(Request $request, string $id)
     {
         $campaign = HiddenLinksCampaign::findOrFail($id);
+        if ($request->input('edit_kw_tab') === 'campaign') {
+            $validated = $request->validate([
+                'campaign_no' => 'required|string|max:191',
+            ]);
+            $raw = trim((string) $validated['campaign_no']);
+            if ($raw === '') {
+                return back()->with('cus__error', 'Campaign title is required.')
+                    ->with('edit_hidden_link_campaign_tab', 'campaign');
+            }
+
+            $base = Str::slug($raw);
+            if ($base === '') {
+                $base = 'campaign-' . now()->timestamp;
+            }
+            $slug = $base;
+            $counter = 1;
+            while (
+                HiddenLinksCampaign::where('campaign_no', $slug)
+                    ->where('id', '!=', $campaign->id)
+                    ->exists()
+            ) {
+                $slug = "{$base}-{$counter}";
+                $counter++;
+            }
+
+            $campaign->update(['campaign_no' => $slug]);
+
+            return redirect()
+                ->route('admin.hidden.link.campaign.edit', $campaign->id)
+                ->with('cus__success', 'Campaign title updated.')
+                ->with('edit_hidden_link_campaign_tab', 'campaign');
+        }
 
         $representativeLinkIds = $request->input('batch_representative_link_id', []);
-        $batchKeywords         = $request->input('batch_keyword', []);
-        $batchUrls             = $request->input('batch_url', []);
-
         if (!is_array($representativeLinkIds)) {
             $representativeLinkIds = [];
         }
-        $batchKeywords = is_array($batchKeywords) ? array_values($batchKeywords) : [];
-        $batchUrls     = is_array($batchUrls) ? array_values($batchUrls) : [];
+        $isBulkTextarea = $request->exists('bulk_urls') && $request->exists('bulk_keywords');
+        if ($isBulkTextarea) {
+            $expected = count($representativeLinkIds);
+            $batchUrls = $this->parseManualLinesStrict((string) $request->input('bulk_urls', ''), $expected);
+            $batchKeywords = $this->parseManualLinesStrict((string) $request->input('bulk_keywords', ''), $expected);
+            if ($batchUrls === null || $batchKeywords === null) {
+                return redirect()
+                    ->route('admin.hidden.link.campaign.edit', $campaign->id)
+                    ->with('cus__error', 'Bulk URLs and Bulk Keywords must each have exactly ' . $expected . ' non-empty lines.')
+                    ->withInput($request->only(['bulk_urls', 'bulk_keywords']))
+                    ->with(
+                        'edit_hidden_link_campaign_tab',
+                        in_array($request->input('edit_kw_tab'), ['normal', 'bulk'], true)
+                            ? $request->input('edit_kw_tab')
+                            : 'bulk'
+                    );
+            }
+        } else {
+            $batchKeywords = $request->input('batch_keyword', []);
+            $batchUrls = $request->input('batch_url', []);
+            $batchKeywords = is_array($batchKeywords) ? array_values($batchKeywords) : [];
+            $batchUrls = is_array($batchUrls) ? array_values($batchUrls) : [];
+        }
 
         $updates = [];
         $queuedBatches = 0;
@@ -550,11 +619,13 @@ class HiddenLinkCampaignController extends Controller
                 continue;
             }
 
-            $linkIds = HiddenLinksCampaignLinks::where('hidden_links_campaigns_id', $campaign->id)
-                ->where('anchor_keyword', $representative->anchor_keyword)
-                ->where('target_url', $representative->target_url)
-                ->pluck('id')
-                ->all();
+            $linkIds = $isBulkTextarea
+                ? [$representative->id]
+                : HiddenLinksCampaignLinks::where('hidden_links_campaigns_id', $campaign->id)
+                    ->where('anchor_keyword', $representative->anchor_keyword)
+                    ->where('target_url', $representative->target_url)
+                    ->pluck('id')
+                    ->all();
 
             $tasks = HiddenLinksCampaignTasks::with(['domainRow.domain', 'linkRow'])
                 ->where('hidden_links_campaigns_id', $campaign->id)
@@ -581,7 +652,13 @@ class HiddenLinkCampaignController extends Controller
         if ($queuedBatches === 0) {
             return redirect()
                 ->route('admin.hidden.link.campaign.edit', $campaign->id)
-                ->with('cus__error', 'No changes to apply (keyword and URL required per batch).');
+                ->with('cus__error', 'No changes to apply (keyword and URL required per batch).')
+                ->with(
+                    'edit_hidden_link_campaign_tab',
+                    in_array($request->input('edit_kw_tab'), ['normal', 'bulk'], true)
+                        ? $request->input('edit_kw_tab')
+                        : 'normal'
+                );
         }
 
         $campaign->update(['last_bulk_updated_at' => now()]);
@@ -642,6 +719,17 @@ class HiddenLinkCampaignController extends Controller
         PublishHiddenLinksJob::dispatch($task->id)->onQueue('hidden_links_campaigns');
 
         return back()->with('cus__success', 'Task queued for retry.');
+    }
+
+    private function parseManualLinesStrict(string $text, int $expectedCount): ?array
+    {
+        $lines = preg_split('/\r\n|\r|\n/', $text);
+        $lines = array_map(static fn ($line) => trim((string) $line), $lines ?: []);
+        $lines = array_values(array_filter($lines, static fn ($line) => $line !== ''));
+        if (count($lines) !== $expectedCount) {
+            return null;
+        }
+        return $lines;
     }
 
     /**
@@ -767,6 +855,32 @@ class HiddenLinkCampaignController extends Controller
     }
 
     /**
+     * Remove selected campaigns from the database only. Does not call remote APIs (distinct from {@see bulkDeleteCampaigns}).
+     */
+    public function bulkPurgeLocalCampaigns(Request $request)
+    {
+        $ids = $this->validatedBulkCampaignIds($request);
+        if ($ids === []) {
+            return redirect()->route('admin.hidden.link.campaign.index')->with('cus__error', 'No campaigns selected.');
+        }
+
+        $allowed = $this->campaignIdsOwnedByCurrentAdmin($ids, HiddenLinksCampaign::class);
+        if ($allowed === []) {
+            return redirect()->route('admin.hidden.link.campaign.index')->with('cus__error', 'No campaigns found or you do not have permission.');
+        }
+
+        foreach ($allowed as $id) {
+            PurgeLocalCampaignDataService::purgeHiddenLinksCampaign($id);
+        }
+
+        $n = count($allowed);
+
+        return redirect()
+            ->route('admin.hidden.link.campaign.index')
+            ->with('cus__success', $n . ' campaign(s) removed from this dashboard only. Remote hidden links were not deleted.');
+    }
+
+    /**
      * Show form to edit single task (keyword/link). Increased timeout in service (120s).
      */
     public function editTask(string $id)
@@ -830,5 +944,25 @@ class HiddenLinkCampaignController extends Controller
     public function destroy(string $id)
     {
         //
+    }
+
+    /**
+     * Remove campaign data from this application only. Remote hidden links are not deleted.
+     */
+    public function purgeLocalOnly(string $id)
+    {
+        $campaign = HiddenLinksCampaign::find($id);
+        if (!$campaign) {
+            return back()->with('cus__error', 'Campaign not found');
+        }
+        $this->authorizeCampaignAccess($campaign);
+        PurgeLocalCampaignDataService::purgeHiddenLinksCampaign((int) $campaign->id);
+
+        return redirect()
+            ->route('admin.hidden.link.campaign.index')
+            ->with(
+                'cus__success',
+                'Campaign removed from this dashboard only. Remote hidden links were not deleted.'
+            );
     }
 }

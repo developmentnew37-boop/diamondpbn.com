@@ -65,6 +65,43 @@
         </div>
     @endif
 
+    {{-- Keyword / URL: single or multiple rows (convert single link → multiple links) --}}
+    <div class="w-full content-card !p-4 !mb-4 flex flex-col gap-3">
+        <h2 class="text-lg font-medium bg-gray-800 text-white w-fit !px-3 !py-2 rounded">
+            Keywords &amp; URLs (this post)
+        </h2>
+        <p class="text-sm text-gray-600 max-w-3xl">
+            Started with one link? Use <strong>+ Add row</strong> to add more keyword/URL pairs for this post only.
+            Saving updates the database and queues a remote content sync for published posts (same as campaign bulk edit).
+            <strong>At least one</strong> complete keyword + URL pair is required.
+        </p>
+        <form action="{{ route('admin.campaign.update.post.keywords', $campaignPost->id) }}" method="POST" id="single-post-keyword-form" class="w-full flex flex-col gap-3">
+            @csrf
+            <div class="flex flex-col gap-3 batch-rows" data-batch-index="0">
+                @foreach ($keywordPairs as $pair)
+                    <div class="flex flex-wrap gap-2 items-center batch-row">
+                        <input type="text" name="batch_keyword[]" value="{{ $pair['keyword'] }}"
+                            class="flex-1 min-w-[120px] rounded !p-2 text-sm border border-gray-300 focus:border-[var(--primary-color)]"
+                            placeholder="Keyword" autocomplete="off">
+                        <input type="text" name="batch_url[]" value="{{ $pair['url'] }}"
+                            class="flex-1 min-w-[180px] rounded !p-2 text-sm border border-gray-300 focus:border-[var(--primary-color)]"
+                            placeholder="https://..." autocomplete="off">
+                        <button type="button"
+                            class="remove-pair-btn !px-2 !py-2 rounded bg-red-100 text-red-700 hover:bg-red-200 text-sm shrink-0">Remove</button>
+                    </div>
+                @endforeach
+            </div>
+            <div class="flex flex-wrap gap-2 items-center">
+                <button type="button"
+                    class="add-pair-btn !px-3 !py-1.5 rounded bg-gray-200 hover:bg-gray-300 text-sm">+ Add row</button>
+                <button type="submit"
+                    class="!px-4 !py-2 rounded-lg bg-[var(--primary-color)] text-white text-sm hover:opacity-90">
+                    Save keywords &amp; URLs
+                </button>
+            </div>
+        </form>
+    </div>
+
     {{-- {{ route('admin.article.update', $article->id) }} --}}
     <form action="{{ route('admin.campaign.update.post',$campaignPost->id) }}" method="POST" class="w-full flex flex-col gap-2 content-card items-start">
         @csrf
@@ -126,6 +163,30 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            var kwForm = document.getElementById('single-post-keyword-form');
+            if (kwForm) {
+                kwForm.querySelectorAll('.remove-pair-btn').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        var row = this.closest('.batch-row');
+                        var block = this.closest('.batch-rows');
+                        if (block && block.querySelectorAll('.batch-row').length > 1) row.remove();
+                    });
+                });
+                var addBtn = kwForm.querySelector('.add-pair-btn');
+                var batchRows = kwForm.querySelector('.batch-rows');
+                if (addBtn && batchRows) {
+                    addBtn.addEventListener('click', function() {
+                        var firstRow = batchRows.querySelector('.batch-row');
+                        if (!firstRow) return;
+                        var newRow = firstRow.cloneNode(true);
+                        newRow.querySelectorAll('input').forEach(function(inp) { inp.value = ''; });
+                        batchRows.appendChild(newRow);
+                        newRow.querySelector('.remove-pair-btn').addEventListener('click', function() {
+                            if (batchRows.querySelectorAll('.batch-row').length > 1) newRow.remove();
+                        });
+                    });
+                }
+            }
 
             setTimeout(() => {
                 console.log(document.querySelector('.ck-content'))

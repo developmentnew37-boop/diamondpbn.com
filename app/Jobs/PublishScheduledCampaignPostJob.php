@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use App\Models\Admin\ScheduleCampaign;
+use App\Models\Admin\ScheduleCampaignArticle;
 use App\Models\Admin\ScheduleCampaignPost;
 use App\Models\Admin\Article;
 use Illuminate\Support\Facades\Log;
@@ -91,7 +92,7 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
                 $remote = $this->postToWordPress($post, $title, $content);
 
                 // ✅ STEP 4: Mark success or fail with clear reason
-                DB::transaction(function () use ($post, $remote) {
+                DB::transaction(function () use ($post, $remote, $title) {
 
                     $fresh = ScheduleCampaignPost::lockForUpdate()->find($post->id);
                     if (!$fresh || $fresh->lock_token !== $post->lock_token) return;
@@ -105,7 +106,7 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
                     $fresh->remote_id    = $json['post_id'] ?? null;
                     $fresh->remote_status = $remoteStatus;
                     $fresh->http_status  = $remote['http_status'];
-                    $fresh->remote_title = $post->campaignArticle->article->name ?? null;
+                    $fresh->remote_title = $title;
                     // No schedule in payload → API returns slug permalink
                     $fresh->remote_url = $json['remote_url'] ?? $json['link'] ?? $json['permalink'] ?? $json['url'] ?? null;
 
@@ -130,9 +131,19 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
                             ->increment('failed_targets');
                     }
 
-                    // Article::whereKey($fresh->campaignArticle->article_id)
-                    //     ->update(['status' => 1]);
-                    Article::find($fresh->campaignArticle->article_id)?->delete();
+                    if ($fresh->status === 'success') {
+                        $ca = ScheduleCampaignArticle::lockForUpdate()->find($fresh->schedule_campaign_article_id);
+                        if ($ca && $ca->article_id) {
+                            $art = Article::find($ca->article_id);
+                            if ($art) {
+                                $ca->update([
+                                    'article_title_snapshot' => $art->name,
+                                    'article_body_snapshot'  => $art->description,
+                                ]);
+                                $art->delete();
+                            }
+                        }
+                    }
                 });
             } catch (Throwable $e) {
 
@@ -187,23 +198,29 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
 
         private function buildContent(ScheduleCampaignPost $post): array
         {
-            $article = $post->campaignArticle->article;
-
-            if (!$article) {
-                throw new \Exception("Article not found. campaign_post_id={$post->id}");
+            $ca = $post->campaignArticle;
+            if (! $ca) {
+                throw new \Exception("Campaign article not found. campaign_post_id={$post->id}");
             }
 
-            $title = trim((string) $article->name);
-            $html  = trim((string) $article->description);
+            $article = $ca->article;
+            if ($article) {
+                $title = trim((string) $article->name);
+                $html  = trim((string) $article->description);
+            } else {
+                $title = trim((string) ($ca->article_title_snapshot ?? ''));
+                $html  = trim((string) ($ca->article_body_snapshot ?? ''));
+            }
 
             if ($title === '' || $html === '') {
-                throw new \Exception("Article missing content");
+                throw new \Exception(
+                    "Article content missing for campaign_post_id={$post->id} (library article removed; snapshots required)."
+                );
             }
 
             // --------------------------------------------------
             // 1) Collect keyword + url pairs (SEQUENTIAL)
             // --------------------------------------------------
-            $ca = $post->campaignArticle;
 
             $keywords = $ca->keyword_type === 'json'
                 ? json_decode($ca->keyword, true)
@@ -405,6 +422,7 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
                 'status'    => 'publish',
                 'post_type' => 'post',
                 'api_key'   => (string) $post->campaignDomain->domain->api_key,
+                'is_sticky' => (bool) ($post->campaign?->is_sticky_campaign ?? false),
             ];
             // Log::info('Calling WordPress API', [
             //     'endpoint' => $endpoint,
