@@ -8,9 +8,9 @@
 @section('main-content')
 
     {{-- bread-crumbs --}}
-    <div class="page-header">
-        <div class="w-full flex flex-wrap items-center">
-            <div class="w-1/2 flex flex-col gap-2 flex-wrap">
+    <div class="page-header w-full max-w-full min-w-0">
+        <div class="w-full flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+            <div class="w-full sm:w-1/2 flex flex-col gap-2 min-w-0">
                 <h2 class="page-title">Edit Domains </h2>
                 <div class="breadcrumb">
                     <div class="breadcrumb-item">
@@ -24,7 +24,7 @@
 
                 </div>
             </div>
-            <div class="w-1/2 flex flex-wrap justify-end items-center">
+            <div class="w-full sm:w-1/2 flex flex-wrap justify-start sm:justify-end items-center">
                 {{-- <a href="javascript:void(0)" id="make_article_Set"
                     class="flex !p-2 !py-3 text-[16px] font-normal w-1/5 justify-center duration:300 bg-black hover:bg-[var(--primary-color)] text-white rounded ">+
                     Add Article Set
@@ -36,8 +36,8 @@
     {{-- <h2 class="bg-green-500">Hello this is test section</h2> --}}
 
 
-    <div class="w-full  flex items-center justify-center">
-        <div class="w-[30%] max-w-[400px] bg-white rounded-xl !py-6 !px-2 text-lg flex flex-col justify-center gap-3">
+    <div class="w-full flex items-center justify-center">
+        <div class="w-full sm:w-[80%] md:w-[50%] lg:w-[30%] max-w-[400px] bg-white rounded-xl !py-6 !px-2 text-lg flex flex-col justify-center gap-3">
 
             {{-- <div class="w-full flex justify-center !p-2">
                 <img src="{{ asset('assets/Socialz-Vision-logo-fi.webp') }}" alt="logo" class="w-1/5">

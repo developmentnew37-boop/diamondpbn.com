@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Cache;
 use Spatie\SimpleExcel\SimpleExcelWriter;
 use Illuminate\Support\Str;
 use App\Jobs\BulkUpdateScheduleSidebarBlogrollJob;
+use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
 use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
 use App\Http\Controllers\Admin\Concerns\ValidatesBulkCampaignIds;
 use App\Jobs\DeleteScheduleSidebarCampaignJob;
@@ -30,6 +31,7 @@ use App\Services\BlogrollApiService;
 
 class ScheduleSidebarCampaignController extends Controller
 {
+    use AppliesSuperAdminCampaignOwnerFilter;
     use AuthorizesAdminCampaign;
     use ValidatesBulkCampaignIds;
 
@@ -48,6 +50,7 @@ class ScheduleSidebarCampaignController extends Controller
      ============================ */
         $request->validate([
             'search' => 'nullable|string|max:150',
+            'filter_user' => 'nullable|string|max:20',
             'status' => 'nullable|in:queued,running,paused,completed,failed',
             'from'   => 'nullable|date',
             'to'     => 'nullable|date',
@@ -118,9 +121,7 @@ class ScheduleSidebarCampaignController extends Controller
         }
 
         $admin = Auth::guard('admin')->user();
-        if (!$admin->isSuperAdmin()) {
-            $query->where('admin_id', $admin->id);
-        }
+        $ownerData = $this->scopeCampaignQueryForOwner($query, $request, $admin);
 
         /* ============================
      | Pagination
@@ -137,7 +138,7 @@ class ScheduleSidebarCampaignController extends Controller
 
         return view(
             'admin.campaigns.pbn-sidebar.schedule-sidebar-campaign',
-            compact('campaigns', 'offset')
+            array_merge(compact('campaigns', 'offset'), $ownerData)
         );
     }
 

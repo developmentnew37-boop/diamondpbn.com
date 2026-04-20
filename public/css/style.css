@@ -462,6 +462,8 @@ body {
     padding: 30px;
     transition: margin-left var(--transition-speed);
     min-height: calc(100vh - var(--navbar-height) - var(--footer-height));
+    min-width: 0;
+    max-width: 100%;
 }
 
 .sidebar.collapsed ~ .main-wrapper .main-content {
@@ -644,6 +646,153 @@ body {
     padding: 25px;
     box-shadow: var(--shadow-sm);
     margin-bottom: 20px;
+}
+
+/* Campaign create wizards — readable on small screens; tabs scroll horizontally */
+@media (max-width: 639px) {
+    .page-header .page-title {
+        font-size: 1.25rem;
+        line-height: 1.3;
+    }
+
+    .content-card {
+        padding: 12px 10px;
+    }
+}
+
+.campaign-create-tabs {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    padding-bottom: 6px;
+    margin-left: -4px;
+    margin-right: -4px;
+    padding-left: 4px;
+    padding-right: 4px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.campaign-create-tabs .tab-switcher {
+    flex: 0 0 auto;
+    min-height: 44px;
+    justify-content: center;
+    font-size: 0.8rem;
+    max-width: min(280px, 85vw);
+}
+
+@media (min-width: 640px) {
+    .campaign-create-tabs {
+        flex-wrap: wrap;
+        overflow: visible;
+        margin-left: 0;
+        margin-right: 0;
+        padding-left: 0;
+        padding-right: 0;
+    }
+
+    .campaign-create-tabs .tab-switcher {
+        font-size: 1.125rem;
+        max-width: none;
+    }
+}
+
+@media (max-width: 639px) {
+    .keyword-mobile-stack {
+        flex-direction: column;
+    }
+
+    .keyword-mobile-main,
+    .keyword-mobile-side,
+    .keyword-mobile-label,
+    .keyword-mobile-input-wrap,
+    .keyword-mobile-input-main,
+    .keyword-mobile-qty {
+        width: 100% !important;
+    }
+
+    .keyword-progress-wrap {
+        align-items: stretch;
+    }
+
+    .keyword-progress-wrap #overall-keyword-progress,
+    .keyword-progress-wrap #overall-multi-keyword-progress,
+    .multi-progress-wrap #overall-multi-keyword-progress,
+    .multi-progress-wrap #overall-sidebar-keyword-progress,
+    .multi-progress-wrap #overall-hidden-keyword-progress {
+        width: 100%;
+        text-align: center;
+        font-size: 12px;
+        line-height: 1.3;
+        white-space: normal;
+    }
+
+    .campaign-article-main-col {
+        min-width: 0;
+    }
+}
+
+/* Global admin Blade normalization for legacy fixed-width layouts */
+@media (max-width: 1024px) {
+    .main-content .page-header > .w-full.flex.flex-wrap.items-center {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+    }
+
+    .main-content .page-header > .w-full.flex.flex-wrap.items-center > .w-1\/2 {
+        width: 100% !important;
+    }
+
+    .main-content .page-header > .w-full.flex.flex-wrap.items-center > .w-1\/2.flex.flex-wrap.justify-end.items-center {
+        justify-content: flex-start !important;
+    }
+
+    .main-content .content-card [class*="w-[65%]"],
+    .main-content .content-card [class*="w-[35%]"],
+    .main-content .content-card [class*="w-[70%]"],
+    .main-content .content-card [class*="w-[30%]"] {
+        width: 100% !important;
+    }
+
+    .main-content .content-card .w-1\/5,
+    .main-content .content-card .w-2\/5,
+    .main-content .content-card .w-3\/5 {
+        width: 100% !important;
+    }
+
+    .main-content .content-card [class*="max-w-md"],
+    .main-content .content-card [class*="max-w-lg"] {
+        max-width: 100% !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .main-content .content-card [class*="w-1/2"],
+    .main-content .content-card [class*="w-1/3"],
+    .main-content .content-card [class*="w-1/4"] {
+        width: 100% !important;
+    }
+
+    .main-content .content-card form.flex,
+    .main-content .content-card .flex.flex-wrap {
+        gap: 0.5rem;
+    }
+}
+
+/* Keep data tables usable without clipping on narrow screens */
+.main-content .overflow-x-auto {
+    max-width: 100%;
+}
+
+.main-content .overflow-x-auto > table.searchable-table,
+.main-content .overflow-x-auto > table.display {
+    min-width: max(720px, 100%);
 }
 
 .card-title {

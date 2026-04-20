@@ -5,39 +5,34 @@
 @section('main-content')
 
 {{-- bread-crumbs --}}
-<div class="page-header">
-    <div class="w-full flex flex-wrap items-center">
-        <div class="w-1/2 flex flex-col gap-2">
-            <h2 class="page-title">Dashboards</h2>
-            <div class="breadcrumb">
-                <div class="breadcrumb-item">
-                    <a href="{{ route('admin.dashboard') }}" class="breadcrumb-link">Dashboard</a>
-                    <span>›</span>
-                </div>
-                <div class="breadcrumb-item">
-                    <a href="{{ route('admin.hidden.link.campaign.index') }}" class="breadcrumb-link">
-                        PBN Hidden Links
-                    </a>
-                      <span>›</span>
-                </div>
-                <div class="breadcrumb-item">
-                    <span>{{ $campaign->campaign_no }}</span>
-                </div>
-            </div>
-        </div>
-
-        <div class="w-1/2 flex justify-end items-center">
-            {{-- <a href="{{ url()->previous() ?: route('admin.hidden.link.campaign.index') }}" --}}
+<div class="page-header w-full max-w-full min-w-0">
+    <div class="w-full flex flex-col gap-3">
+        <div class="flex items-center justify-between gap-3 min-w-0">
+            <h2 class="page-title !mb-0 min-w-0 shrink leading-tight">Dashboards</h2>
             <a href="javascript:void(0)" onclick="history.back()"
-               class="inline-flex items-center gap-2 !px-3 !py-2 rounded bg-gray-200 hover:bg-gray-300 text-sm">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none"
-                     viewBox="0 0 24 24" stroke="currentColor">
+                class="inline-flex items-center justify-center gap-2 shrink-0 !px-3 !py-2 rounded bg-gray-200 hover:bg-gray-300 text-sm whitespace-nowrap"
+                aria-label="Go back">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" fill="none"
+                    viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                          d="M10 19l-7-7 7-7M3 12h18"/>
+                        d="M10 19l-7-7 7-7M3 12h18" />
                 </svg>
                 Back
             </a>
         </div>
+        <nav class="flex flex-wrap items-baseline gap-x-1.5 gap-y-2 text-sm text-gray-600 w-full min-w-0 leading-snug"
+            aria-label="Breadcrumb">
+            <span class="inline-flex flex-wrap items-baseline gap-x-1.5 min-w-0">
+                <a href="{{ route('admin.dashboard') }}" class="breadcrumb-link shrink-0">Dashboard</a>
+                <span class="text-gray-400 shrink-0" aria-hidden="true">›</span>
+            </span>
+            <span class="inline-flex flex-wrap items-baseline gap-x-1.5 min-w-0">
+                <a href="{{ route('admin.hidden.link.campaign.index') }}" class="breadcrumb-link">PBN Hidden Links</a>
+                <span class="text-gray-400 shrink-0" aria-hidden="true">›</span>
+            </span>
+            <span class="min-w-0 max-w-full text-gray-600 font-mono text-xs sm:text-sm break-all"
+                title="{{ $campaign->campaign_no }}">{{ $campaign->campaign_no }}</span>
+        </nav>
     </div>
 </div>
 

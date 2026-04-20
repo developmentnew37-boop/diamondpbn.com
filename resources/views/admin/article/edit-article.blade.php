@@ -17,11 +17,11 @@
 @section('main-content')
 
     {{-- bread-crumbs --}}
-    <div class="page-header">
-        <div class="w-full flex flex-wrap items-center">
-            <div class="w-1/2 flex flex-col gap-2 flex-wrap">
+    <div class="page-header w-full max-w-full min-w-0">
+        <div class="w-full flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+            <div class="w-full sm:w-1/2 flex flex-col gap-2 min-w-0">
                 <h2 class="page-title">Dashboards</h2>
-                <div class="breadcrumb">
+                <div class="breadcrumb flex-wrap">
                     <div class="breadcrumb-item">
                         <a href="{{ route('admin.dashboard') }}" class="breadcrumb-link">Dashboard</a>
                         <span>›</span>
@@ -37,7 +37,7 @@
                     </div>
                 </div>
             </div>
-            <div class="w-1/2 flex flex-wrap justify-end items-center">
+            <div class="w-full sm:w-1/2 flex flex-wrap justify-start sm:justify-end items-center">
                 {{-- <a href="" class="flex !p-2 !py-3 text-[16px] font-normal w-1/5 justify-center duration:300 bg-black hover:bg-[var(--primary-color)] text-white rounded ">+ Add Article</a> --}}
             </div>
         </div>
@@ -64,12 +64,12 @@
 
 
     <form action="{{ route('admin.article.update', $article->id) }}" method="POST"
-        class="w-full flex flex-wrap justify-between items-start">
+        class="w-full max-w-full min-w-0 flex flex-col gap-4 lg:flex-row lg:flex-nowrap lg:items-start">
         @csrf
         @method('PUT')
-        <div class="flex flex-col gap-2 w-[74%] content-card justify-start">
-            <h2 class="text-xl capitalize !mb-4 bg-[var(--primary-color)] text-white w-fit !p-2 rounded">Edit
-                {{ $article->name }}
+        <div class="flex flex-col gap-2 w-full lg:flex-1 min-w-0 content-card justify-start">
+            <h2 class="text-base sm:text-xl capitalize !mb-4 bg-[var(--primary-color)] text-white w-fit !p-2 rounded break-words max-w-full">
+                Edit {{ $article->name }}
             </h2>
 
             <div class="w-full flex flex-col gap-3 p-2">
@@ -90,7 +90,7 @@
 
             </div>
         </div>
-        <div class="w-1/4 flex flex-col gap-3 content-card">
+        <div class="w-full lg:w-72 xl:w-80 flex flex-col gap-3 content-card min-w-0">
             {{-- <h2 class="text-2xl capitalize">Categories & language here</h2> --}}
 
             <div data-dropdown-container class="w-full flex flex-col gap-3 p-2 relative">
@@ -108,7 +108,7 @@
 
                     {{-- Select Button --}}
                     <button data-select-btn type="button" id="selectBtn"
-                        class="w-full bg-gray-100 border border-gray-200 outline-none rounded !p-3 text-left flex text-sm items-center justify-between  focus:border-orange-600 transition-all">
+                        class="w-full bg-gray-100 border border-gray-200 outline-none rounded !p-3 text-left flex text-sm items-center justify-between focus:border-orange-600 transition-all min-w-0">
                         <span data-select-text id="selectText" class="text-gray-400">Select category...</span>
                         <svg data-chevron id="chevron" class="w-5 h-5 text-gray-400 transition-transform duration-200"
                             fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -129,7 +129,7 @@
                                         d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                                 </svg>
                                 <input data-search-input type="text" id="searchInput"
-                                    class="w-full !pl-10 !pr-4 !py-2 bg-gray-100 border border-gray-200 rounded outline-none focus:border-[var(--primary-color)]   text-sm"
+                                    class="w-full !pl-10 !pr-4 !py-2 bg-gray-100 border border-gray-200 rounded outline-none focus:border-[var(--primary-color)] text-sm min-w-0"
                                     placeholder="Search...">
                             </div>
                         </div>
@@ -167,7 +167,7 @@
 
                     {{-- Select Button --}}
                     <button data-select-btn type="button" id="selectBtn"
-                        class="w-full bg-gray-100 border border-gray-200 outline-none rounded !p-3 text-left flex text-sm items-center justify-between  focus:border-orange-600 transition-all">
+                        class="w-full bg-gray-100 border border-gray-200 outline-none rounded !p-3 text-left flex text-sm items-center justify-between focus:border-orange-600 transition-all min-w-0">
                         <span data-select-text id="selectText" class="text-gray-400">Select language...</span>
                         <svg data-chevron id="chevron" class="w-5 h-5 text-gray-400 transition-transform duration-200"
                             fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -188,7 +188,7 @@
                                         d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                                 </svg>
                                 <input data-search-input type="text" id="searchInput"
-                                    class="w-full !pl-10 !pr-4 !py-2 bg-gray-100 border border-gray-200 rounded outline-none focus:border-[var(--primary-color)]   text-sm"
+                                    class="w-full !pl-10 !pr-4 !py-2 bg-gray-100 border border-gray-200 rounded outline-none focus:border-[var(--primary-color)] text-sm min-w-0"
                                     placeholder="Search...">
                             </div>
                         </div>

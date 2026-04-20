@@ -26,11 +26,11 @@
 @section('main-content')
 
     {{-- bread-crumbs --}}
-    <div class="page-header">
-        <div class="w-full flex flex-wrap items-center">
-            <div class="w-1/2 flex flex-col gap-2 flex-wrap">
+    <div class="page-header w-full max-w-full min-w-0">
+        <div class="w-full flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div class="w-full md:flex-1 flex flex-col gap-2 min-w-0">
                 <h2 class="page-title">Domains Set</h2>
-                <div class="breadcrumb">
+                <div class="breadcrumb flex-wrap">
                     <div class="breadcrumb-item">
                         <a href="{{ route('admin.dashboard') }}" class="breadcrumb-link">Dashboard</a>
                         <span>›</span>
@@ -40,13 +40,13 @@
                         <span>›</span>
                     </div>
                     <div class="breadcrumb-item">
-                        <a href="#" class="breadcrumb-link">{{$set->name}}</a>
+                        <a href="#" class="breadcrumb-link break-words">{{ $set->name }}</a>
                     </div>
                 </div>
             </div>
-            <div class="w-1/2 flex flex-wrap justify-end items-center">
+            <div class="w-full md:w-auto flex flex-wrap justify-start md:justify-end items-center">
                 <a href="javascript:void(0)" id="make_domain_set"
-                    class="flex !p-2 !py-3 text-[16px] font-normal min-w-1/5 justify-center duration:300 bg-black hover:bg-[var(--primary-color)] text-white rounded ">
+                    class="flex !px-4 !py-3 text-[16px] font-normal justify-center duration:300 bg-black hover:bg-[var(--primary-color)] text-white rounded whitespace-nowrap w-full md:w-auto">
                     Create Domain Set
                 </a>
             </div>
@@ -71,14 +71,14 @@
                 @endif
             </div>
 
-            <div class="px-6 pt-6 flex flex-col gap-3 justify-between">
+            <div class="px-4 sm:px-6 pt-6 flex flex-col gap-3 justify-between">
                 {{-- heading here --}}
 
                 {{-- heading here --}}
 
 
-                <div class="w-full flex flex-wrap items-center !mt-6">
-                    <div class="w-1/2 flex flex-wrap gap-3">
+                <div class="w-full flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between !mt-6">
+                    <div class="w-full sm:w-auto flex flex-wrap gap-3 min-w-0">
                         <h2
                             class="text-xl bg-[var(--primary-color)] text-white !p-2 rounded font-semibold  capitalize w-fit">
                             {{ $set->name }} Here <span class="material-symbols-outlined !text-sm">
@@ -86,7 +86,7 @@
                             </span>
                         </h2>
                     </div>
-                    <div class="w-1/2 flex flex-wrap gap-3 justify-end">
+                    <div class="w-full sm:w-auto flex flex-wrap gap-3 justify-start sm:justify-end">
 
                         {{-- Search Box --}}
 
@@ -104,29 +104,35 @@
                     </div>
                 </div>
 
-                <div class="flex flex-wrap justify-between w-full !mt-6">
-                    <div class="w-[33%] flex flex-col gap-2">
+                <div class="w-full !mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <div class="w-full flex flex-col gap-2 min-w-0">
                         <label for="domain_authority"
                             class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">Domain Set
                         </label>
-                        <div class="flex min-h-12 bg-gray-100 border border-gray-200 !p-3 text-sm w-full rounded">{{$set->name}}</div>
+                        <div class="flex min-h-12 bg-gray-100 border border-gray-200 !p-3 text-sm w-full rounded break-words min-w-0">
+                            {{ $set->name }}
+                        </div>
                         
                     </div>
-                    <div class="w-[33%] flex flex-col gap-2">
+                    <div class="w-full flex flex-col gap-2 min-w-0">
                         <label for="domain_rating"
                             class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">Domain
                             Qty
                         </label>
-                        <div class="flex min-h-12 bg-gray-100 border border-gray-200 !p-3 text-sm w-full rounded">{{$set->qty}}</div>
+                        <div class="flex min-h-12 bg-gray-100 border border-gray-200 !p-3 text-sm w-full rounded">
+                            {{ $set->qty }}
+                        </div>
 
 
                     </div>
-                    <div class="w-[33%] flex flex-col gap-2">
+                    <div class="w-full flex flex-col gap-2 min-w-0">
                         <label for="domain_rating"
                             class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">Domain
                             Category
                         </label>
-                        <div class="flex min-h-12 bg-gray-100 border border-gray-200 !p-3 text-sm w-full rounded">{{$set->DomainCategory->name}}</div>
+                        <div class="flex min-h-12 bg-gray-100 border border-gray-200 !p-3 text-sm w-full rounded break-words min-w-0">
+                            {{ $set->DomainCategory->name }}
+                        </div>
                       
                     </div>
                 </div>
@@ -134,7 +140,7 @@
 
                 {{-- table code here --}}
 
-                <div class="overflow-x-auto !mt-3 w-full">
+                <div class="overflow-x-auto !mt-3 w-full max-w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
                     <table
                         class="display w-full border border-gray-200 border-collapse text-sm whitespace-nowrap searchable-table">
                         <colgroup>

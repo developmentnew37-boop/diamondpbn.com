@@ -14,6 +14,7 @@ use App\Models\Admin\SidebarCampaignLink;
 use App\Models\Admin\SidebarCampaignTask;
 use Illuminate\Support\Facades\DB;
 use App\Jobs\BulkUpdateSidebarBlogrollJob;
+use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
 use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
 use App\Http\Controllers\Admin\Concerns\ValidatesBulkCampaignIds;
 use App\Jobs\DeleteSidebarCampaignJob;
@@ -25,6 +26,7 @@ use Illuminate\Support\Str;
 
 class SidebarCampaignController extends Controller
 {
+    use AppliesSuperAdminCampaignOwnerFilter;
     use AuthorizesAdminCampaign;
     use ValidatesBulkCampaignIds;
 
@@ -41,6 +43,7 @@ class SidebarCampaignController extends Controller
         // ✅ Validate inputs
         $request->validate([
             'search' => 'nullable|string|max:150',
+            'filter_user' => 'nullable|string|max:20',
         ]);
 
         // ✅ Remove empty search from URL
@@ -84,21 +87,19 @@ class SidebarCampaignController extends Controller
             );
         }
         $admin = Auth::guard('admin')->user();
-        if (!$admin->isSuperAdmin()) {
-            $query->where('admin_id', $admin->id);
-        }
+        $ownerData = $this->scopeCampaignQueryForOwner($query, $request, $admin);
         // ✅ Paginate
         $campaigns = $query
             ->orderByDesc('id')
             ->simplePaginate($limit)
-            ->appends(['search' => $search]);
+            ->appends($request->query());
 
         // ✅ Offset for serial numbers
         $offset = ($campaigns->currentPage() - 1) * $limit;
 
         return view(
             'admin.campaigns.pbn-sidebar.sidebar-campaign',
-            compact('campaigns', 'offset')
+            array_merge(compact('campaigns', 'offset'), $ownerData)
         );
     }
 

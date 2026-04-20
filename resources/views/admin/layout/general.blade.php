@@ -9,10 +9,9 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
-    <link rel="stylesheet" href="{{ asset('build/assets/app-BMLFxF1u.css') }}">
-    <link rel="stylesheet" href="{{ asset('css/style.css') }}">
-    <script src="{{ asset('build/assets/app-Cwyqw0uf.js') }}"></script>
-    {{-- <script src="{{ asset('js/script.js') }}"></script> --}}
+    <link rel="stylesheet" href="{{ asset('build/assets/app-Bnu7dOZh.css') }}">
+    <script src="{{ asset('build/assets/app-Cwyqw0uf.js') }}" defer></script>
+    <script src="{{ asset('js/script.js') }}" defer></script>
     @stack('style')
 
 
@@ -45,7 +44,7 @@
     @stack('scripts')
 
     <script>
-        (function () {
+        (function() {
             const AUTO_HIDE_MS = 5000;
             const alerts = document.querySelectorAll(
                 [
@@ -55,11 +54,11 @@
                     '.main-content div.text-sm.rounded.bg-red-100.text-red-700',
                 ].join(', ')
             );
-            alerts.forEach(function (el) {
-                setTimeout(function () {
+            alerts.forEach(function(el) {
+                setTimeout(function() {
                     el.style.transition = 'opacity 0.3s ease';
                     el.style.opacity = '0';
-                    setTimeout(function () {
+                    setTimeout(function() {
                         el.remove();
                     }, 300);
                 }, AUTO_HIDE_MS);

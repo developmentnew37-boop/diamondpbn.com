@@ -9,11 +9,11 @@
 @section('main-content')
 
     {{-- bread-crumbs --}}
-    <div class="page-header">
-        <div class="w-full flex flex-wrap items-center">
-            <div class="w-1/2 flex flex-col gap-2 flex-wrap">
+    <div class="page-header w-full max-w-full min-w-0">
+        <div class="w-full flex flex-col gap-3 md:flex-row md:items-start md:justify-between md:gap-4">
+            <div class="min-w-0 flex-1">
                 <h2 class="page-title">Users Management</h2>
-                <div class="breadcrumb">
+                <div class="breadcrumb flex-wrap gap-y-1">
                     <div class="breadcrumb-item">
                         <a href="{{ route('admin.dashboard') }}" class="breadcrumb-link">Dashboard</a>
                         <span>›</span>
@@ -24,9 +24,9 @@
                 </div>
             </div>
             @if($currentAdmin->isSuperAdmin())
-            <div class="w-1/2 flex flex-wrap justify-end items-center">
+            <div class="w-full md:w-auto flex justify-start md:justify-end items-center shrink-0">
                 <a href="{{ route('admin.user.create') }}" id="make__admin__user"
-                    class="flex !p-2 !py-3 text-[16px] font-normal w-1/5 justify-center duration:300 bg-black hover:bg-[var(--primary-color)] text-white rounded ">
+                    class="inline-flex !p-2 !py-3 text-[16px] font-normal w-full md:w-auto min-w-[120px] justify-center duration:300 bg-black hover:bg-[var(--primary-color)] text-white rounded whitespace-nowrap">
                     Add User
                 </a>
             </div>
@@ -59,8 +59,8 @@
                     </h2>
 
                     {{-- table code here --}}
-                    <div class="flex flex-wrap overflow-x-auto !mt-6">
-                        <table class="w-full border border-gray-200 border-collapse text-sm whitespace-nowrap">
+                    <div class="overflow-x-auto !mt-6 w-full max-w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
+                        <table class="w-full min-w-[900px] border border-gray-200 border-collapse text-sm whitespace-nowrap">
                             <thead>
                                 <tr class="bg-[var(--sidebar-bg)] text-white active-border-color">
                                     @php
@@ -104,8 +104,8 @@
                                         <td class="border border-gray-200 font-sans !px-3 !py-3">
                                             {{ $user->created_at->format('d M Y, h:i A') }}
                                         </td>
-                                        <td class="border border-gray-200 font-sans !px-3 !py-3">
-                                            <div class="flex flex-wrap gap-2">
+                                        <td class="border border-gray-200 font-sans !px-3 !py-3 min-w-[120px]">
+                                            <div class="flex items-center justify-center gap-2 flex-nowrap">
                                                 {{-- View Button --}}
                                                 <a href="{{ route('admin.user.show', $user->id) }}"
                                                     class="bg-green-600 flex items-center justify-center rounded-full w-8 h-8 duration-500 hover:bg-green-700"

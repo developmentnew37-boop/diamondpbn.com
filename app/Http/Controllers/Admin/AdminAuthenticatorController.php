@@ -61,9 +61,15 @@ class AdminAuthenticatorController extends Controller
             ]
         );
 
-        // Send OTP email
-        Mail::raw("Your Admin OTP Code: $otp", function ($message) use ($admin) {
-            $message->to($admin->email)->subject('Admin Login OTP');
+        // Send OTP email (designed HTML template)
+        Mail::send('admin.Auth.email-otp', [
+            'otp' => $otp,
+            'admin' => $admin,
+            'brandName' => 'Diamond PBN',
+            'logoUrl' => 'https://diamondpbn.com/logo.png',
+        ], function ($message) use ($admin) {
+            $message->to($admin->email)
+                ->subject('Diamond PBN Login Verification Code');
         });
 
         // Store admin ID for OTP verification

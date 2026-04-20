@@ -8,11 +8,11 @@
 @section('main-content')
 
     {{-- bread-crumbs --}}
-    <div class="page-header">
-        <div class="w-full flex flex-wrap items-center">
-            <div class="w-1/2 flex flex-col gap-2 flex-wrap">
+    <div class="page-header w-full max-w-full min-w-0">
+        <div class="w-full flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+            <div class="w-full sm:w-1/2 flex flex-col gap-2 min-w-0">
                 <h2 class="page-title">Edit Domains </h2>
-                <div class="breadcrumb">
+                <div class="breadcrumb flex-wrap">
                     <div class="breadcrumb-item">
                         <a href="{{ route('admin.dashboard') }}" class="breadcrumb-link">Dashboard</a>
                         <span>›</span>
@@ -26,7 +26,7 @@
                     </div>
                 </div>
             </div>
-            <div class="w-1/2 flex flex-wrap justify-end items-center">
+            <div class="w-full sm:w-1/2 flex flex-wrap justify-start sm:justify-end items-center">
                 {{-- <a href="javascript:void(0)" id="make_article_Set"
                     class="flex !p-2 !py-3 text-[16px] font-normal w-1/5 justify-center duration:300 bg-black hover:bg-[var(--primary-color)] text-white rounded ">+
                     Add Article Set
@@ -39,11 +39,10 @@
 
 
 
-    <div class="w-full flex flex-wrap gap-8 justify-center  ">
-        <div class="w-full flex flex-wrap gap-4 justify-center ">
-            <div class=" w-full mx-auto content-card !p-8">
+    <div class="w-full flex flex-col gap-4 items-center">
+        <div class="w-full max-w-[720px] xl:max-w-[860px] content-card !p-4 sm:!p-8 min-w-0">
                 {{-- <div class="content-card"> --}}
-                <div class="px-6 pt-6 flex flex-col gap-3 justify-between">
+                <div class="px-0 sm:px-6 pt-2 sm:pt-6 flex flex-col gap-3 justify-between min-w-0">
                     {{-- heading here --}}
 
                     <h2 class="text-xl bg-[var(--primary-color)] text-white !p-2 rounded font-semibold  capitalize w-fit">
@@ -71,7 +70,7 @@
 
                     <div class="w-full items-center duration-600 transition-all">
 
-                        <form action="{{ route('admin.domain.update', $domain->id) }}" class="w-full flex flex-col gap-5"
+                        <form action="{{ route('admin.domain.update', $domain->id) }}" class="w-full flex flex-col gap-5 min-w-0"
                             method="post">
                             @csrf
                             @method('PUT')
@@ -108,8 +107,8 @@
                                     <p class="text-sm text-red-500">{{ $message }}</p>
                                 @enderror
                             </div>
-                            <div class="flex flex-wrap justify-between w-full">
-                                <div class="w-[49.5%] flex flex-col gap-2">
+                            <div class="w-full grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div class="w-full flex flex-col gap-2 min-w-0">
                                     <label for="domain_authority"
                                         class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">DA(domain
                                         Authority)
@@ -121,7 +120,7 @@
                                         <p class="text-sm text-red-500">{{ $message }}</p>
                                     @enderror
                                 </div>
-                                <div class="w-[49.5%] flex flex-col gap-2">
+                                <div class="w-full flex flex-col gap-2 min-w-0">
                                     <label for="domain_rating"
                                         class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">DR(domain
                                         rating)
@@ -134,8 +133,8 @@
                                     @enderror
                                 </div>
                             </div>
-                            <div class="flex flex-wrap justify-between w-full">
-                                <div class="w-[49.5%] flex flex-col gap-2">
+                            <div class="w-full grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div class="w-full flex flex-col gap-2 min-w-0">
                                     <label for="domain_trust_flow"
                                         class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">TF(Trust
                                         Flow)
@@ -147,7 +146,7 @@
                                         <p class="text-sm text-red-500">{{ $message }}</p>
                                     @enderror
                                 </div>
-                                <div class="w-[49.5%] flex flex-col gap-2">
+                                <div class="w-full flex flex-col gap-2 min-w-0">
                                     <label for="domain_spam_score"
                                         class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">SS(spam
                                         score)
@@ -160,8 +159,8 @@
                                     @enderror
                                 </div>
                             </div>
-                            <div class="flex flex-wrap justify-between w-full">
-                                <div class="w-[49.5%] flex flex-col gap-2">
+                            <div class="w-full grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div class="w-full flex flex-col gap-2 min-w-0">
                                     <label for="ip_address" class="text-sm flex items-center ">IP Address
                                     </label>
                                     <input type="text" name="ip" id="ip_address" placeholder="Enter Ip Address"
@@ -171,7 +170,7 @@
                                         <p class="text-sm text-red-500">{{ $message }}</p>
                                     @enderror
                                 </div>
-                                <div class="w-[49.5%] flex flex-col gap-2">
+                                <div class="w-full flex flex-col gap-2 min-w-0">
                                     <label for="api_key"
                                         class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">Api
                                         Key
@@ -186,7 +185,7 @@
                             </div>
                             <div class="w-full">
                                 <input type="submit" value="update domain"
-                                    class="!p-3 text-[16px] cursor-pointer bg-black text-white rounded hover:bg-[var(--primary-color)] w-fit">
+                                    class="!p-3 text-[16px] cursor-pointer bg-black text-white rounded hover:bg-[var(--primary-color)] w-full sm:w-fit">
                             </div>
                         </form>
                     </div>
@@ -267,13 +266,6 @@
 
 
             </div>
-
-            {{-- </div> --}}
-        </div>
-
-    </div>
-
-    </div>
 
 
 @endsection

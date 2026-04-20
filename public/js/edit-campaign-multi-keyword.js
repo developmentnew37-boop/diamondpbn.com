@@ -63,21 +63,31 @@
 
     function rowHtml(numStr, urlVal, kwVal) {
         return (
-            '<div class="w-full flex flex-col gap-2 md:flex-row mf:gap-0 md:justify-between relative !px-10 !py-1 multi-keyword-url-row">' +
-            '<span class="multi-keyword-url-count cursor-move flex items-center justify-center absolute top-1/2 -translate-y-1/2 left-2 text-white bg-black w-6 h-6 !p-1 text-[12px] rounded">' +
+            '<div class="w-full flex flex-col gap-2 md:flex-row md:flex-nowrap md:items-center md:gap-3 multi-keyword-url-row">' +
+            // Mobile: center the count + remove button
+            '<div class="flex items-center justify-center gap-2 md:hidden">' +
+            '<span class="multi-keyword-url-count cursor-move flex items-center justify-center text-white bg-black w-6 h-6 !p-1 text-[12px] rounded">' +
             numStr +
             "</span>" +
-            '<div class="w-full md:w-[49.5%] flex">' +
-            '<input type="text" placeholder="Enter Url" class="bg-gray-50 !p-3 text-sm outline-none border border-gray-300 w-full multi-url-inp" value="' +
+            '<button type="button" class="remove-multi-keyword-url-row w-7 h-7 bg-red-600 rounded-full text-white flex items-center justify-center cursor-pointer">' +
+            '<span class="material-symbols-outlined !text-sm">close</span>' +
+            "</button>" +
+            "</div>" +
+            // Desktop/tablet: keep left badge + right remove
+            '<span class="multi-keyword-url-count cursor-move hidden md:flex items-center justify-center text-white bg-black w-6 h-6 !p-1 text-[12px] rounded flex-shrink-0">' +
+            numStr +
+            "</span>" +
+            '<div class="w-full md:flex-1 flex min-w-0">' +
+            '<input type="text" placeholder="Enter Url" class="bg-gray-50 !p-2 sm:!p-3 text-xs sm:text-sm outline-none border border-gray-300 w-full multi-url-inp rounded" value="' +
             escapeAttr(urlVal) +
             '">' +
             "</div>" +
-            '<div class="w-full md:w-[49.5%] flex">' +
-            '<input type="text" placeholder="Enter Keyword" class="bg-gray-50 !p-3 text-sm outline-none border border-gray-300 w-full multi-keyowrd-inp" value="' +
+            '<div class="w-full md:flex-1 flex min-w-0">' +
+            '<input type="text" placeholder="Enter Keyword" class="bg-gray-50 !p-2 sm:!p-3 text-xs sm:text-sm outline-none border border-gray-300 w-full multi-keyowrd-inp rounded" value="' +
             escapeAttr(kwVal) +
             '">' +
             "</div>" +
-            '<button type="button" class="remove-multi-keyword-url-row w-6 h-6 bg-red-600 rounded-full text-white flex items-center justify-center absolute top-1/2 -translate-y-1/2 right-2 cursor-pointer">' +
+            '<button type="button" class="remove-multi-keyword-url-row hidden md:flex w-7 h-7 bg-red-600 rounded-full text-white items-center justify-center cursor-pointer flex-shrink-0 md:ml-auto">' +
             '<span class="material-symbols-outlined !text-sm">close</span>' +
             "</button>" +
             "</div>"
@@ -100,36 +110,36 @@
             rowsHtml += rowHtml(pad2(r + 1), rows[r].url || "", rows[r].keyword || "");
         }
         return (
-            '<div class="w-full flex items-center !px-4 !py-2 !pr-10 bg-[var(--primary-color)] justify-end cursor-pointer relative multi-keyword-url-collapser">' +
+            '<div class="w-full flex items-center !px-3 sm:!px-4 !py-2 !pr-9 sm:!pr-10 bg-[var(--primary-color)] justify-end cursor-pointer relative multi-keyword-url-collapser rounded-t">' +
             '<div class="w-1/2 flex items-center">' +
-            '<span class="multi-box-count flex !px-3 !py-1 text-sm font-semibold text-white rounded">' +
+            '<span class="multi-box-count flex !px-2 sm:!px-3 !py-1 text-xs sm:text-sm font-semibold text-white rounded">' +
             paddedBoxNum +
             "</span></div>" +
             '<div class="w-1/2 flex gap-2 justify-end items-center">' +
-            '<label class="text-white">Apply for</label>' +
+            '<label class="text-white text-xs sm:text-sm">Apply for</label>' +
             '<input type="text" value="' +
             escapeAttr(String(quantity)) +
-            '" class="bg-gray-50 !p-2 text-sm outline-none text-center border border-gray-300 w-1/5 multi-keyword-url-box-quantity num-inp">' +
+            '" class="bg-gray-50 !p-1.5 sm:!p-2 text-xs sm:text-sm outline-none text-center border border-gray-300 w-12 sm:w-16 rounded multi-keyword-url-box-quantity num-inp">' +
             "</div>" +
             '<span class="material-symbols-outlined text-gray-100 absolute top-1/2 -translate-y-1/2 right-2 duration-500 transition-all arrow-rotate">keyboard_arrow_up</span>' +
             "</div>" +
-            '<div class="w-full flex flex-col duration-300 bg-orange-100 transition-all !pb-2 multi-keyword-url-accordion">' +
-            '<div class="w-full flex flex-col gap-2 items-center !px-4 !py-1">' +
-            '<label class="text-sm flex items-center after:content-[\'*\'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-full">Media Link</label>' +
-            '<input type="text" placeholder="Enter Url" class="bg-gray-50 !p-4 text-sm outline-none border border-gray-300 w-full multiple-box-media-link" value="' +
+            '<div class="w-full flex flex-col duration-300 bg-orange-50 transition-all !pb-2 multi-keyword-url-accordion border border-t-0 border-gray-200 rounded-b">' +
+            '<div class="w-full flex flex-col gap-2 items-center !px-3 sm:!px-4 !py-2">' +
+            '<label class="text-xs sm:text-sm flex items-center after:content-[\'*\'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-full">Media Link</label>' +
+            '<input type="text" placeholder="Enter Url" class="bg-gray-50 !p-2.5 sm:!p-3 text-xs sm:text-sm outline-none border border-gray-300 w-full multiple-box-media-link rounded" value="' +
             escapeAttr(media || "") +
             '">' +
             "</div>" +
-            '<div class="w-full flex items-center !px-4 !py-2">' +
-            '<div class="w-1/2 flex"><label class="text-sm flex items-center after:content-[\'*\'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-full">Add Multiple Urls &amp; Keywords</label></div>' +
+            '<div class="w-full flex items-center !px-3 sm:!px-4 !py-2">' +
+            '<div class="w-1/2 flex"><label class="text-xs sm:text-sm flex items-center after:content-[\'*\'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-full">Add Multiple Urls &amp; Keywords</label></div>' +
             '<div class="w-1/2 flex gap-2 justify-end items-center">' +
             '<button type="button" class="w-6 h-6 cursor-pointer bg-green-500 flex items-center text-white outline-none add-multipe-box justify-center rounded">' +
             '<span class="material-symbols-outlined !text-sm">add</span></button></div></div>' +
-            '<div class="w-full flex flex-col gap-1 max-h-[120px] overflow-hidden overflow-y-auto multi-url-keyword-attachment-box">' +
+            '<div class="w-full flex flex-col gap-1 max-h-[140px] overflow-hidden overflow-y-auto multi-url-keyword-attachment-box">' +
             rowsHtml +
             "</div>" +
-            '<div class="w-full flex flex-col items-start !px-4 !py-1 !mt-2">' +
-            '<button type="button" class="!p-1 bg-red-600 rounded text-sm cursor-pointer text-white remove-multi-keyword-box">delete</button>' +
+            '<div class="w-full flex flex-col items-start !px-3 sm:!px-4 !py-1 !mt-2">' +
+            '<button type="button" class="!px-2 !py-1 bg-red-600 rounded text-xs sm:text-sm cursor-pointer text-white remove-multi-keyword-box">delete</button>' +
             "</div></div>"
         );
     }
@@ -210,14 +220,22 @@
             var paddedNumber = pad2(spanCount);
             var div = document.createElement("div");
             div.className =
-                "w-full flex flex-col gap-2 md:flex-row mf:gap-0 md:justify-between relative !px-10 !py-1 multi-keyword-url-row";
+                "w-full flex flex-col gap-2 md:flex-row md:flex-nowrap md:items-center md:gap-3 multi-keyword-url-row";
             div.innerHTML =
-                '<span class="multi-keyword-url-count cursor-move flex items-center justify-center absolute top-1/2 -translate-y-1/2 left-2 text-white bg-black w-6 h-6 !p-1 text-[12px] rounded">' +
+                '<div class="flex items-center justify-center gap-2 md:hidden">' +
+                '<span class="multi-keyword-url-count cursor-move flex items-center justify-center text-white bg-black w-6 h-6 !p-1 text-[12px] rounded">' +
                 paddedNumber +
                 "</span>" +
-                '<div class="w-full md:w-[49.5%] flex"><input type="text" placeholder="Enter Url" class="bg-gray-50 !p-3 text-sm outline-none border border-gray-300 w-full multi-url-inp"></div>' +
-                '<div class="w-full md:w-[49.5%] flex"><input type="text" placeholder="Enter Keyword" class="bg-gray-50 !p-3 text-sm outline-none border border-gray-300 w-full multi-keyowrd-inp"></div>' +
-                '<button type="button" class="remove-multi-keyword-url-row w-6 h-6 bg-red-600 rounded-full text-white flex items-center justify-center absolute top-1/2 -translate-y-1/2 right-2 cursor-pointer">' +
+                '<button type="button" class="remove-multi-keyword-url-row w-7 h-7 bg-red-600 rounded-full text-white flex items-center justify-center cursor-pointer">' +
+                '<span class="material-symbols-outlined !text-sm">close</span>' +
+                "</button>" +
+                "</div>" +
+                '<span class="multi-keyword-url-count cursor-move hidden md:flex items-center justify-center text-white bg-black w-6 h-6 !p-1 text-[12px] rounded flex-shrink-0">' +
+                paddedNumber +
+                "</span>" +
+                '<div class="w-full md:w-[49.5%] flex min-w-0"><input type="text" placeholder="Enter Url" class="bg-gray-50 !p-2 sm:!p-3 text-xs sm:text-sm outline-none border border-gray-300 w-full multi-url-inp rounded"></div>' +
+                '<div class="w-full md:w-[49.5%] flex min-w-0"><input type="text" placeholder="Enter Keyword" class="bg-gray-50 !p-2 sm:!p-3 text-xs sm:text-sm outline-none border border-gray-300 w-full multi-keyowrd-inp rounded"></div>' +
+                '<button type="button" class="remove-multi-keyword-url-row hidden md:flex w-7 h-7 bg-red-600 rounded-full text-white items-center justify-center cursor-pointer flex-shrink-0">' +
                 '<span class="material-symbols-outlined !text-sm">close</span></button>';
             fieldsAttachParent.appendChild(div);
             div.scrollIntoView({ behavior: "smooth", block: "end" });

@@ -16,6 +16,7 @@ use App\Models\Admin\HiddenLinksCampaign;
 use App\Jobs\PublishHiddenLinksJob;
 use App\Jobs\BulkUpdateHiddenLinksJob;
 use App\Jobs\BulkDeleteHiddenLinksJob;
+use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
 use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
 use App\Http\Controllers\Admin\Concerns\ValidatesBulkCampaignIds;
 use App\Jobs\BulkDeleteHiddenLinkCampaignsJob;
@@ -26,6 +27,7 @@ use Illuminate\Support\Str;
 
 class HiddenLinkCampaignController extends Controller
 {
+    use AppliesSuperAdminCampaignOwnerFilter;
     use AuthorizesAdminCampaign;
     use ValidatesBulkCampaignIds;
 
@@ -42,6 +44,7 @@ class HiddenLinkCampaignController extends Controller
         // ✅ Validate inputs
         $request->validate([
             'search' => 'nullable|string|max:150',
+            'filter_user' => 'nullable|string|max:20',
         ]);
 
         // ✅ Remove empty search from URL
@@ -76,9 +79,7 @@ class HiddenLinkCampaignController extends Controller
         }
 
         $admin = Auth::guard('admin')->user();
-        if (!$admin->isSuperAdmin()) {
-            $query->where('admin_id', $admin->id);
-        }
+        $ownerData = $this->scopeCampaignQueryForOwner($query, $request, $admin);
 
         $campaigns = $query
             ->orderByDesc('id')
@@ -89,7 +90,7 @@ class HiddenLinkCampaignController extends Controller
 
         return view(
             'admin.campaigns.pbn-hidden-links.hidden-links-campaign',
-            compact('campaigns', 'offset')
+            array_merge(compact('campaigns', 'offset'), $ownerData)
         );
     }
 

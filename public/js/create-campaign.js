@@ -2113,6 +2113,60 @@ window.addEventListener("DOMContentLoaded", () => {
 
         tabStyleSwitcher(keywordTabBtn, keywordTab, checkNormal);
 
+        function countNonEmptyLines(value) {
+            return String(value || "")
+                .split("\n")
+                .map((line) => line.trim())
+                .filter((line) => line !== "").length;
+        }
+
+        function updateMultiBulkProgress() {
+            syncPostCountFromInput();
+
+            const postQtyNode = document.getElementById("multi-bulk-post-qty");
+            const filledPairsNode = document.getElementById("multi-bulk-filled-pairs");
+            const totalUrlNode = document.getElementById("multi-bulk-total-url-lines");
+            const totalKeywordNode = document.getElementById("multi-bulk-total-keyword-lines");
+
+            const urlInputs = Array.from(document.querySelectorAll(".multi-bulk-url"));
+            const keywordInputs = Array.from(document.querySelectorAll(".multi-bulk-keyword"));
+            const urlCountNodes = Array.from(document.querySelectorAll(".multi-bulk-url-count"));
+            const keywordCountNodes = Array.from(document.querySelectorAll(".multi-bulk-keyword-count"));
+
+            let totalUrls = 0;
+            let totalKeywords = 0;
+            let filledPairs = 0;
+
+            for (let i = 0; i < 5; i++) {
+                const urlCount = countNonEmptyLines(urlInputs[i]?.value || "");
+                const keywordCount = countNonEmptyLines(keywordInputs[i]?.value || "");
+
+                if (urlCountNodes[i]) urlCountNodes[i].textContent = String(urlCount);
+                if (keywordCountNodes[i]) keywordCountNodes[i].textContent = String(keywordCount);
+
+                totalUrls += urlCount;
+                totalKeywords += keywordCount;
+
+                if (urlCount > 0 || keywordCount > 0) {
+                    filledPairs++;
+                }
+            }
+
+            if (postQtyNode) postQtyNode.textContent = String(postCount);
+            if (filledPairsNode) filledPairsNode.textContent = String(filledPairs);
+            if (totalUrlNode) totalUrlNode.textContent = String(totalUrls);
+            if (totalKeywordNode) totalKeywordNode.textContent = String(totalKeywords);
+        }
+
+        document.querySelectorAll(".multi-bulk-url, .multi-bulk-keyword").forEach((el) => {
+            el.addEventListener("input", updateMultiBulkProgress);
+        });
+        if (pqEl) {
+            pqEl.addEventListener("input", updateMultiBulkProgress);
+            pqEl.addEventListener("change", updateMultiBulkProgress);
+        }
+        updateMultiBulkProgress();
+
         // === Global references ===
         let AddMoreBtn = document.getElementById("add-more-keyword-URL");
         let keywordUrlCon = document.getElementById("keyword-url-container");
@@ -2332,19 +2386,19 @@ window.addEventListener("DOMContentLoaded", () => {
 
             let div = document.createElement("div");
             div.className =
-                "flex w-full bg-orange-100 keyword-url-box relative";
+                "flex w-full bg-orange-100 keyword-url-box relative keyword-mobile-stack";
             div.innerHTML = `
-        <div class="w-3/5 flex flex-col gap-2 !p-4 !pt-[45px]">
+        <div class="w-3/5 flex flex-col gap-2 !p-4 !pt-[45px] keyword-mobile-main">
             <div class="w-full flex items-center">
-                <label class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-1/5">Client Url</label>
-                <div class="w-4/5 flex items-center justify-between">
-                    <input type="text" placeholder="Enter Url" class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-[78%] client-url">
-                    <input type="text" value="0" class="bg-gray-50 !p-2 text-sm outline-none text-center border border-gray-300 w-1/5 client-url-quantity num-inp">
+                <label class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-1/5 keyword-mobile-label">Client Url</label>
+                <div class="w-4/5 flex items-center justify-between keyword-mobile-input-wrap">
+                    <input type="text" placeholder="Enter Url" class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-[78%] client-url keyword-mobile-input-main">
+                    <input type="text" value="0" class="bg-gray-50 !p-2 text-sm outline-none text-center border border-gray-300 w-1/5 client-url-quantity num-inp keyword-mobile-qty">
                 </div>
             </div>
             <div class="w-full flex items-center">
-                <label class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-1/5 ">Media Link</label>
-                <div class="w-4/5 flex items-center justify-between">
+                <label class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-1/5 keyword-mobile-label ">Media Link</label>
+                <div class="w-4/5 flex items-center justify-between keyword-mobile-input-wrap">
                     <textarea class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none media-link" rows="2" placeholder="Enter Media Link Here"></textarea>
                 </div>
             </div>
@@ -2352,13 +2406,13 @@ window.addEventListener("DOMContentLoaded", () => {
                 <button class="!p-1 bg-red-600 rounded text-sm cursor-pointer text-white remove-keyword-box">delete</button>
             </div>
         </div>
-        <div class="w-2/5 flex flex-col gap-1 !p-4">
+        <div class="w-2/5 flex flex-col gap-1 !p-4 keyword-mobile-side">
             <label class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">Client Keyword</label>
             <div class="w-full flex flex-wrap justify-between keywords-area-parent">
-                <div class="w-[78%] flex flex-wrap">
+                <div class="w-[78%] flex flex-wrap keyword-mobile-input-main">
                     <textarea rows="5" class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none keywords-area"></textarea>
                 </div>
-                <div class="w-1/5 flex flex-wrap">
+                <div class="w-1/5 flex flex-wrap keyword-mobile-qty">
                     <textarea rows="5" class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none text-center keywords-quantity-area"></textarea>
                 </div>
             </div>
@@ -2893,6 +2947,90 @@ window.addEventListener("DOMContentLoaded", () => {
                 }
 
                 keywords_url_data = bulkData;
+            }
+            if (method == "multi_bulk") {
+                const multiBulkUrlInputs = Array.from(
+                    document.querySelectorAll(".multi-bulk-url")
+                );
+                const multiBulkKeywordInputs = Array.from(
+                    document.querySelectorAll(".multi-bulk-keyword")
+                );
+
+                const usedPairs = [];
+                const pairErrors = [];
+
+                for (let i = 0; i < 5; i++) {
+                    const urls = (multiBulkUrlInputs[i]?.value || "")
+                        .split("\n")
+                        .map((line) => line.trim())
+                        .filter((line) => line !== "");
+                    const keywords = (multiBulkKeywordInputs[i]?.value || "")
+                        .split("\n")
+                        .map((line) => line.trim())
+                        .filter((line) => line !== "");
+
+                    // Allow empty pair; validate only when user uses either side.
+                    if (urls.length === 0 && keywords.length === 0) {
+                        continue;
+                    }
+
+                    if (urls.length === 0 || keywords.length === 0) {
+                        pairErrors.push(`Pair ${i + 1} needs both URL and keyword lines.`);
+                        continue;
+                    }
+
+                    if (urls.length !== keywords.length) {
+                        pairErrors.push(`Pair ${i + 1} URL/keyword line count must match.`);
+                        continue;
+                    }
+
+                    if (urls.length > postCount) {
+                        pairErrors.push(`Pair ${i + 1} cannot exceed post quantity (${postCount}).`);
+                        continue;
+                    }
+
+                    usedPairs.push({ urls, keywords });
+                }
+
+                if (pairErrors.length > 0) {
+                    alert(pairErrors.join("\n"));
+                    return;
+                }
+
+                if (usedPairs.length < 1) {
+                    alert("Please fill at least 1 URL/keyword pair.");
+                    return;
+                }
+                if (usedPairs[0].urls.length !== postCount) {
+                    alert(`Pair 1 must have exactly ${postCount} URL/keyword lines.`);
+                    return;
+                }
+
+                let multiBulkData = Array.from({ length: postCount }, () => ({
+                    url: [],
+                    keyword: [],
+                    media: "-",
+                    nofollow: noFollow,
+                }));
+
+                usedPairs.forEach((pair) => {
+                    for (let lineIndex = 0; lineIndex < pair.urls.length; lineIndex++) {
+                        if (lineIndex >= postCount) break;
+                        multiBulkData[lineIndex].url.push(pair.urls[lineIndex]);
+                        multiBulkData[lineIndex].keyword.push(pair.keywords[lineIndex]);
+                    }
+                });
+
+                // Safety: every website must have at least one link pair from pair 1.
+                const hasEmptyRow = multiBulkData.some(
+                    (row) => row.url.length === 0 || row.keyword.length === 0
+                );
+                if (hasEmptyRow) {
+                    alert("Some websites still have no link data. Please complete Pair 1 correctly.");
+                    return;
+                }
+
+                keywords_url_data = multiBulkData;
             }
             if (method == "multiple") {
 

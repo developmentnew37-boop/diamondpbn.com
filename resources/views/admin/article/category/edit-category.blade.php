@@ -25,11 +25,11 @@
 @section('main-content')
 
     {{-- bread-crumbs --}}
-    <div class="page-header">
-        <div class="w-full flex flex-wrap items-center">
-            <div class="w-1/2 flex flex-col gap-2 flex-wrap">
+    <div class="page-header w-full max-w-full min-w-0">
+        <div class="w-full flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+            <div class="w-full sm:w-1/2 flex flex-col gap-2 min-w-0">
                 <h2 class="page-title">Dashboards</h2>
-                <div class="breadcrumb">
+                <div class="breadcrumb flex-wrap">
                     <div class="breadcrumb-item">
                         <a href="{{ route('admin.dashboard') }}" class="breadcrumb-link">Dashboard</a>
                         <span>›</span>
@@ -45,7 +45,7 @@
                     </div>
                 </div>
             </div>
-            <div class="w-1/2 flex flex-wrap justify-end items-center">
+            <div class="w-full sm:w-1/2 flex flex-wrap justify-start sm:justify-end items-center">
             </div>
         </div>
     </div>
@@ -78,13 +78,14 @@
 
 
 
-    <div class="w-full flex flex-wrap gap-4 justify-center">
+    <div class="w-full flex flex-col gap-4 items-center">
         {{-- sec 1 max-w-[600px] --}}
-        <div class="w-1/3  flex flex-col content-card">
+        <div class="w-full max-w-[560px] xl:max-w-[680px] flex flex-col content-card min-w-0">
             <div class="flex flex-col gap-5 mb-4 w-full ">
-                <h2 class="text-xl font-semibold  capitalize">Edit <span
-                        class="text-[var(--primary-color)]">{{ $category->name }}</span> Category here</h2>
-                <form action="{{ route('admin.articles.category.update',$category->id) }}" method="post" class="w-full flex-col">
+                <h2 class="text-base sm:text-xl font-semibold capitalize break-words">
+                    Edit <span class="text-[var(--primary-color)]">{{ $category->name }}</span> Category
+                </h2>
+                <form action="{{ route('admin.articles.category.update',$category->id) }}" method="post" class="w-full flex-col min-w-0">
                     @csrf
                     @method('PUT')
                     <div class="w-full flex flex-col gap-5">
@@ -120,8 +121,8 @@
                                 <p class="text-red-600 bg-red-100 !p-2 text-sm">{{ $message }}</p>
                             @enderror
                         </div> --}}
-                        <div class="w-full flex flex-col gap-2 p-2 relative">
-                            <div data-dropdown-container class="w-full flex flex-col gap-3 p-2 relative">
+                        <div class="w-full flex flex-col gap-2 p-2 relative min-w-0">
+                            <div data-dropdown-container class="w-full flex flex-col gap-3 p-2 relative min-w-0">
                                 <label for="category_title" class="text-sm flex items-center ">Select
                                     Parent
                                 </label>
@@ -132,7 +133,7 @@
 
                                 {{-- Select Button --}}
                                 <button data-select-btn type="button" id="selectBtn"
-                                    class="w-full bg-gray-100 border border-gray-200 outline-none rounded !p-3 text-left flex text-sm items-center justify-between  focus:border-orange-600 transition-all">
+                                    class="w-full bg-gray-100 border border-gray-200 outline-none rounded !p-3 text-left flex text-sm items-center justify-between focus:border-orange-600 transition-all min-w-0">
                                     <span data-select-text id="selectText" class="text-gray-400">Select category...</span>
                                     <svg data-chevron id="chevron"
                                         class="w-5 h-5 text-gray-400 transition-transform duration-200" fill="none"
@@ -144,7 +145,7 @@
 
                                 {{-- Dropdown --}}
                                 <div data-dropdown id="dropdown"
-                                    class="hidden absolute z-50 w-full top-full !mt-2 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden">
+                                    class="hidden absolute z-50 w-full top-full !mt-2 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden max-w-full">
                                     {{-- Search Box --}}
                                     <div class="!p-3 border-b border-gray-200">
                                         <div class="relative">
@@ -154,7 +155,7 @@
                                                     d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                                             </svg>
                                             <input data-search-input type="text" id="searchInput"
-                                                class="w-full !pl-10 !pr-4 !py-2 bg-gray-100 border border-gray-200 rounded outline-none focus:border-[var(--primary-color)]   text-sm"
+                                                class="w-full !pl-10 !pr-4 !py-2 bg-gray-100 border border-gray-200 rounded outline-none focus:border-[var(--primary-color)] text-sm min-w-0"
                                                 placeholder="Search...">
                                         </div>
                                     </div>

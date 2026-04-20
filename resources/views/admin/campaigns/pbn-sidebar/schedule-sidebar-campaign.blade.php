@@ -90,15 +90,18 @@
                 </div>
 
             </div>
-            <div class="w-[35%] flex flex-wrap gap-3 justify-end">
+            <div class="w-[35%] flex flex-wrap gap-3 justify-end items-center">
+
+                @include('admin.campaigns.partials.campaign-owner-filter')
 
                 {{-- Search Box --}}
 
-                <div class="relative w-1/2 max-h-12 overflow-hidden">
+                <div class="relative flex-1 min-w-[200px] max-w-[50%] max-h-12 overflow-hidden">
                     <form method="GET" action="{{ url()->current() }}" class="relative w-full">
 
                         {{-- keep other parameters --}}
                         @foreach (request()->except('search') as $key => $value)
+                            @continue(is_array($value))
                             <input type="hidden" name="{{ $key }}" value="{{ $value }}">
                         @endforeach
 
@@ -150,21 +153,6 @@
                         </th>
 
                         @php
-                            // $tHead = [
-                            //     'sno',
-                            //     'Campaign No',
-                            //     'Type',
-                            //     'Domain Category',
-                            //     'Sidebar Links',
-                            //     'Domains',
-                            //     'Completed',
-                            //     'Failed',
-                            //     'Pending',
-                            //     'Progress',
-                            //     'Status',
-                            //     'Created At',
-                            //     'Actions',
-                            // ];
                             $tHead = [
                                 'sno',
                                 'Campaign No',

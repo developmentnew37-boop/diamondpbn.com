@@ -6,9 +6,10 @@
 @section('main-content')
 
     {{-- bread-crumbs --}}
-    <div class="page-header">
-        <div class="w-full flex flex-wrap items-center">
-            <div class="w-1/2 flex flex-col gap-2 flex-wrap">
+    <div class="page-header w-full max-w-full min-w-0">
+        <div
+            class="w-full flex flex-col gap-3 md:flex-row md:flex-nowrap md:items-start md:justify-between md:gap-4">
+            <div class="min-w-0">
                 <h2 class="page-title">Articles</h2>
                 <div class="breadcrumb">
                     <div class="breadcrumb-item">
@@ -20,13 +21,13 @@
                     </div>
                 </div>
             </div>
-            <div class="w-1/2 flex flex-wrap justify-end items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2 shrink-0 w-full md:w-auto justify-start md:justify-end">
                 <a href="{{ route('admin.article.trashed.index') }}"
-                    class="flex !p-2 !py-3 text-sm font-normal justify-center duration-300 bg-gray-700 hover:bg-gray-600 text-white rounded">
+                    class="flex flex-1 sm:flex-initial !p-2 !py-3 text-sm font-normal justify-center duration-300 bg-gray-700 hover:bg-gray-600 text-white rounded whitespace-nowrap">
                     Deleted used articles
                 </a>
                 <a href="{{ route('admin.articles.opt') }}"
-                    class="flex !p-2 !py-3 text-[16px] font-normal min-w-[140px] justify-center duration-300 bg-black hover:bg-[var(--primary-color)] text-white rounded">+
+                    class="flex flex-1 sm:flex-initial !p-2 !py-3 text-[16px] font-normal min-w-[140px] justify-center duration-300 bg-black hover:bg-[var(--primary-color)] text-white rounded whitespace-nowrap">+
                     Add Article</a>
             </div>
         </div>
@@ -65,9 +66,9 @@
                     </h2>
 
 
-                    <div class="w-full flex flex-wrap items-center !mt-2">
-                        <div class="w-[70%] flex flex-wrap gap-2">
-                            <div class="w-1/5">
+                    <div class="w-full flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-start lg:justify-between !mt-2 min-w-0">
+                        <div class="w-full lg:w-auto lg:flex-1 lg:min-w-0 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+                            <div class="w-full sm:w-44 shrink-0">
                                 <select name="" id="article_category"
                                     class="bg-gray-100  border border-gray-200 !w-full !p-3 text-sm w-full rounded outline-none focus:border-orange-600">
                                     <option value="">select category</option>
@@ -81,7 +82,7 @@
                                     @endif
                                 </select>
                             </div>
-                            <div class="w-1/5">
+                            <div class="w-full sm:w-44 shrink-0">
                                 <select name="" id="article_langauge"
                                     class="bg-gray-100  border border-gray-200 !w-full !p-3 text-sm w-full rounded outline-none focus:border-orange-600">
                                     <option value="">select language</option>
@@ -94,19 +95,19 @@
                                     @endif
                                 </select>
                             </div>
-                            <div class="w-2/5">
+                            <div class="w-full sm:flex-1 sm:min-w-0">
                                 {{-- {{ route('admin.domain.category.delete') }} --}}
                                 <form action="{{ route('admin.articles.delete') }}"
-                                    class="w-full flex flex-wrap justify-start items-center gap-1" method="post">
+                                    class="w-full flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2" method="post">
                                     @csrf
                                     <select name="actions" id=""
-                                        class="bg-gray-100 border border-gray-200 !w-2/5 !p-3 text-sm w-full rounded outline-none focus:border-orange-600">
+                                        class="bg-gray-100 border border-gray-200 !p-3 text-sm w-full sm:flex-1 sm:min-w-[10rem] rounded outline-none focus:border-orange-600">
                                         <option value="">Bulk actions</option>
                                         <option value="1">Delete</option>
                                     </select>
                                     <input type="hidden" name="bulk_ids" id="valHolders">
                                     <button type="submit"
-                                        class="flex !p-3  !px-4 text-sm font-normal justify-center duration:600 transition-all bg-[var(--sidebar-bg)] hover:bg-[var(--primary-color)] text-white rounded cursor-pointer">
+                                        class="flex !p-3 !px-4 text-sm font-normal justify-center duration:600 transition-all bg-[var(--sidebar-bg)] hover:bg-[var(--primary-color)] text-white rounded cursor-pointer shrink-0 w-full sm:w-auto">
                                         Apply
                                     </button>
                                 </form>
@@ -114,11 +115,11 @@
 
                             </div>
                         </div>
-                        <div class="w-[30%] flex flex-wrap gap-3 justify-end">
+                        <div class="w-full lg:w-auto lg:max-w-md xl:max-w-lg flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-stretch lg:items-center lg:justify-end lg:shrink-0 min-w-0">
 
                             {{-- Search Box --}}
 
-                            <div class="relative w-1/2 max-h-12 overflow-hidden">
+                            <div class="relative w-full sm:flex-1 sm:min-w-[12rem] max-h-12 overflow-hidden min-w-0">
                                 <form method="GET" action="{{ url()->current() }}" class="relative w-full">
 
                                     {{-- keep other parameters --}}
@@ -148,9 +149,9 @@
                     </div>
 
 
-                    <div class="flex flex-wrap overflow-x-auto !mt-6">
+                    <div class="overflow-x-auto !mt-6 w-full max-w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
                         <table
-                            class="w-full border border-gray-200 border-collapse text-sm whitespace-nowrap searchable-table">
+                            class="w-full min-w-[980px] border border-gray-200 border-collapse text-sm whitespace-nowrap searchable-table">
                             <colgroup>
                                 <col style="width:4%">
                                 <col style="width:5%">
@@ -223,7 +224,7 @@
                                         <td class="border border-gray-200 font-sans !px-2 !py-2">
                                             {{ $article->created_at->format('d-m-Y') }}</td>
                                         <td class="border border-gray-200 font-sans !px-2 !py-2">
-                                            <div class="flex flex-wrap gap-2 justify-center">
+                                            <div class="flex  gap-2 justify-center">
                                                 {{-- {{ route('view-article', $article_id) }} --}}
                                                 <a href="{{ route('admin.article.show', $article->id) }}"
                                                     class="bg-black flex items-center justify-center rounded-full w-8 h-8 duration-500 hover:bg-gray-700 relative overflow ">

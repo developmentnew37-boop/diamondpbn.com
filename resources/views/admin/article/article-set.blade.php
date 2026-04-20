@@ -25,24 +25,27 @@
 @section('main-content')
 
     {{-- bread-crumbs --}}
-    <div class="page-header">
-        <div class="w-full flex flex-wrap items-center">
-            <div class="w-1/2 flex flex-col gap-2 flex-wrap">
+    <div class="page-header w-full max-w-full min-w-0">
+        <div class="w-full flex flex-col gap-3 md:flex-row md:items-start md:justify-between md:gap-4">
+            <div class="min-w-0">
                 <h2 class="page-title">Articles Set</h2>
                 <div class="breadcrumb">
                     <div class="breadcrumb-item">
                         <a href="{{ route('admin.dashboard') }}" class="breadcrumb-link">Dashboard</a>
                         <span>›</span>
                     </div>
-                    {{-- {{ route('article') }} --}}
                     <div class="breadcrumb-item">
-                        <a href="" class="breadcrumb-link">Articles set</a>
+                        <a href="{{ route('admin.article.index') }}" class="breadcrumb-link">Articles</a>
+                        <span>›</span>
+                    </div>
+                    <div class="breadcrumb-item">
+                        <span class="breadcrumb-link">Articles set</span>
                     </div>
                 </div>
             </div>
-            <div class="w-1/2 flex flex-wrap justify-end items-center">
+            <div class="w-full shrink-0 md:w-auto">
                 <a href="javascript:void(0)" id="make_article_Set"
-                    class="flex !p-2 !py-3 text-[16px] font-normal w-1/5 justify-center duration:300 bg-black hover:bg-[var(--primary-color)] text-white rounded ">+
+                    class="flex w-full md:w-auto !p-2 !py-3 text-[16px] font-normal justify-center duration:300 bg-black hover:bg-[var(--primary-color)] text-white rounded whitespace-nowrap">+
                     Add Article Set
                 </a>
             </div>
@@ -77,19 +80,22 @@
         <div class="w-full flex flex-wrap gap-4 justify-center ">
             <div class=" w-full mx-auto content-card ">
                 {{-- <div class="content-card"> --}}
-                <div class="px-6 pt-6 flex flex-col gap-3 justify-between">
+                <div class="px-3 pt-4 sm:px-6 sm:pt-6 flex flex-col gap-3 justify-between min-w-0">
                     {{-- heading here --}}
 
                     {{-- heading here --}}
-                    <h2 class="text-xl bg-[var(--primary-color)] text-white !p-2 rounded font-semibold  capitalize w-fit">
-                        All Articles Set Here <span class="material-symbols-outlined !text-sm">
+                    <h2
+                        class="text-xl bg-[var(--primary-color)] text-white !p-2 rounded font-semibold capitalize w-full sm:w-fit max-w-full">
+                        All Articles Set Here <span class="material-symbols-outlined !text-sm align-middle">
                             arrow_cool_down
                         </span>
                     </h2>
 
-                    <div class="w-full flex flex-wrap items-center !mt-6">
-                        <form method="GET" action="{{ url()->current() }}" class="w-1/2 flex flex-wrap gap-3">
-                            <div class="w-1/3 flex flex-col">
+                    <div
+                        class="w-full flex flex-col gap-4 xl:flex-row xl:flex-wrap xl:items-end xl:gap-4 !mt-4 sm:!mt-6 min-w-0">
+                        <form method="GET" action="{{ url()->current() }}"
+                            class="w-full xl:flex-1 xl:min-w-0 flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end">
+                            <div class="w-full md:flex-1 md:min-w-0 flex flex-col min-w-0">
                                 <div data-dropdown-container class="w-full flex flex-col gap-3 p-2 relative">
                                     {{-- Hidden input for form submission --}}
                                     <input data-hidden-input type="hidden" id="hidden-user" name="user"
@@ -144,7 +150,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="w-1/3 flex flex-col">
+                            <div class="w-full md:flex-1 md:min-w-0 flex flex-col min-w-0">
                                 <div data-dropdown-container class="w-full flex flex-col gap-3 p-2 relative">
                                     {{-- Hidden input for form submission --}}
                                     <input data-hidden-input type="hidden" id="language" name="language"
@@ -200,35 +206,31 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="w-auto">
+                            <div class="w-full md:w-auto shrink-0">
                                 <button type="submit"
-                                    class="!p-3 text-sm cursor-pointer bg-black text-white rounded hover:bg-[var(--primary-color)] w-full">Filter
+                                    class="!p-3 text-sm cursor-pointer bg-black text-white rounded hover:bg-[var(--primary-color)] w-full md:w-auto min-h-12">Filter
                                     Articles</button>
                             </div>
                         </form>
-                        <div class="w-1/2 flex flex-wrap gap-3 justify-end">
-
-                            {{-- Search Box --}}
-
-                            <div class="relative flex items-center">
-                                <svg class="absolute !left-3 !top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400"
+                        <div class="w-full xl:w-72 xl:flex-shrink-0 min-w-0">
+                            <div class="relative flex items-center w-full min-w-0">
+                                <svg class="absolute !left-3 !top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
                                     fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                         d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                                 </svg>
                                 <input data-search-input type="text" id="search_category"
-                                    class="w-full !pl-10 !pr-4 !py-2 bg-gray-100 min-h-12 border border-gray-200 rounded outline-none focus:border-[var(--primary-color)]   text-sm"
+                                    class="w-full min-w-0 !pl-10 !pr-4 !py-2 bg-gray-100 min-h-12 border border-gray-200 rounded outline-none focus:border-[var(--primary-color)] text-sm"
                                     placeholder="Search...">
                             </div>
-
                         </div>
                     </div>
 
                     {{-- table code here --}}
 
-                    <div class="flex flex-wrap overflow-x-auto !mt-6">
+                    <div class="overflow-x-auto !mt-6 w-full max-w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
                         <table
-                            class="w-full border border-gray-200 border-collapse text-sm whitespace-nowrap searchable-table">
+                            class="w-full min-w-[900px] border border-gray-200 border-collapse text-sm whitespace-nowrap searchable-table">
                             <thead>
                                 <tr class="bg-black text-white ">
                                     <th><input type="checkbox" name="bulk_category_select[]" class="text-lg"></th>
@@ -266,7 +268,7 @@
                                         <td class="border border-gray-200 font-sans !px-2 !py-3">
                                             {{ $set->created_at->format('d-m-Y') }}</td>
                                         <td class="border border-gray-200 font-sans !px-2 !py-3">
-                                            <div class="flex flex-wrap gap-2 justify-center">
+                                            <div class="flex gap-2 justify-center">
                                                 {{-- {{ route('set-articles', ['id' => 8]) }} --}}
                                                 <a href="{{ route('admin.articles.set.show', $set->id) }}"
                                                     class="bg-black flex items-center justify-center rounded-full w-8 h-8 duration-500 hover:bg-gray-700 relative overflow ">
@@ -344,7 +346,7 @@
         <div
             class="set-overlay w-screen h-screen bg-black opacity-0 absolute top-0 left-0  hidden duration-300 transition-all">
         </div>
-        <div class="pop-box w-[480px] flex flex-col items-center hidden !shadow-2xl bg-gray-50 border border-gray-300 z-2 rounded !mt-[70px] -translate-y-[20%] linear opacity-0 duration-600 transition-all"
+        <div class="pop-box w-[min(100vw-1.5rem,480px)] max-w-[calc(100vw-1.5rem)] flex flex-col items-center hidden !shadow-2xl bg-gray-50 border border-gray-300 z-2 rounded !mt-[70px] -translate-y-[20%] linear opacity-0 duration-600 transition-all mx-3"
             id="create-article-box">
             <div class="w-full flex justify-between items-center !bg-gray-200 !p-3">
                 <h6>Create Article Set</h6>
@@ -427,7 +429,7 @@
                 </a>
             </div>
         </div>
-        <div class="pop-box w-[480px] flex flex-col hidden items-center !shadow-2xl bg-gray-50 border border-gray-300 z-2 rounded !mt-[70px] -translate-y-[20%] linear opacity-0 duration-600 transition-all"
+        <div class="pop-box w-[min(100vw-1.5rem,480px)] max-w-[calc(100vw-1.5rem)] flex flex-col hidden items-center !shadow-2xl bg-gray-50 border border-gray-300 z-2 rounded !mt-[70px] -translate-y-[20%] linear opacity-0 duration-600 transition-all mx-3"
             id="update-article-box">
             <div class="w-full flex justify-between items-center !bg-gray-200 !p-3">
                 <h6>Update Article Set</h6>

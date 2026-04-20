@@ -4,7 +4,8 @@
 
 @section('main-content')
 
-<div class="w-full content-card">
+<div class="w-full px-3 sm:px-4 lg:px-8 xl:px-10 !py-3">
+<div class="w-full content-card !p-3 sm:!p-5 lg:!p-6 min-w-0 max-w-full">
 
     {{-- Header --}}
     <div class="w-full flex flex-col sm:flex-row items-center sm:justify-between gap-3 !mb-6">
@@ -25,42 +26,42 @@
     </div>
 
     {{-- Stats --}}
-    <div class="flex flex-wrap gap-4 !mb-6">
+    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 !mb-6 w-full">
 
-        <div class="flex-1 min-w-[220px] bg-white rounded-xl shadow-sm !p-5 border-l-4 border-blue-500">
+        <div class="bg-white rounded-xl shadow-sm !p-5 border-l-4 border-blue-500 min-w-0">
             <div class="text-sm text-gray-500">Total Links</div>
             <div class="text-3xl font-bold text-gray-800">{{ $stats->total }}</div>
         </div>
 
-        <div class="flex-1 min-w-[220px] bg-white rounded-xl shadow-sm !p-5 border-l-4 border-green-500">
+        <div class="bg-white rounded-xl shadow-sm !p-5 border-l-4 border-green-500 min-w-0">
             <div class="text-sm text-gray-500">Success</div>
             <div class="text-3xl font-bold text-green-600">{{ $stats->success }}</div>
         </div>
 
-        <div class="flex-1 min-w-[220px] bg-white rounded-xl shadow-sm !p-5 border-l-4 border-yellow-500">
+        <div class="bg-white rounded-xl shadow-sm !p-5 border-l-4 border-yellow-500 min-w-0">
             <div class="text-sm text-gray-500">Queued</div>
             <div class="text-3xl font-bold text-yellow-600">{{ $stats->queued }}</div>
         </div>
 
-        <div class="flex-1 min-w-[220px] bg-white rounded-xl shadow-sm !p-5 border-l-4 border-red-500">
+        <div class="bg-white rounded-xl shadow-sm !p-5 border-l-4 border-red-500 min-w-0">
             <div class="text-sm text-gray-500">Failed</div>
             <div class="text-3xl font-bold text-red-600">{{ $stats->failed }}</div>
         </div>
     </div>
 
     {{-- Table --}}
-    <div class="overflow-x-auto">
-        <table class="display w-full border border-gray-200 text-sm whitespace-nowrap">
+    <div class="overflow-x-auto w-full max-w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
+        <table class="display w-full min-w-[900px] border border-gray-200 text-sm">
 
             <thead>
                 <tr class="bg-gray-800 text-white">
-                    <th class="border !px-2 !py-3">S.No</th>
+                    <th class="border !px-2 !py-3 whitespace-nowrap">S.No</th>
                     <th class="border !px-2 !py-3">Live Link</th>
                     <th class="border !px-2 !py-3">Domain</th>
                     <th class="border !px-2 !py-3">Anchor</th>
                     <th class="border !px-2 !py-3">Target URL</th>
-                    <th class="border !px-2 !py-3">Status</th>
-                    <th class="border !px-2 !py-3">Date</th>
+                    <th class="border !px-2 !py-3 whitespace-nowrap">Status</th>
+                    <th class="border !px-2 !py-3 whitespace-nowrap">Date</th>
                 </tr>
             </thead>
 
@@ -79,7 +80,7 @@
                     @endphp
 
                     <tr class="hover:bg-gray-50">
-                        <td class="border !px-2 !py-3 text-center">
+                        <td class="border !px-2 !py-3 text-center whitespace-nowrap">
                             {{ $index + 1 }}
                         </td>
 
@@ -89,7 +90,7 @@
                             </a>
                         </td>
 
-                        <td class="border !px-2 !py-3">
+                        <td class="border !px-2 !py-3 max-w-[12rem] break-words">
                             {{ $domain }}
                         </td>
 
@@ -97,19 +98,19 @@
                             $anchorCell = \App\Support\ReportDisplay::keyword($anchor !== '-' ? $anchor : null);
                             $urlCell = \App\Support\ReportDisplay::url($url !== '-' ? $url : null);
                         @endphp
-                        <td class="border !px-2 !py-3 max-w-[12rem] align-top"
+                        <td class="border !px-2 !py-3 max-w-[12rem] align-top break-words"
                             @if ($anchorCell['title'] !== '') title="{{ $anchorCell['title'] }}" @endif>{{ $anchorCell['display'] }}</td>
 
-                        <td class="border !px-2 !py-3 max-w-[18rem] align-top"
+                        <td class="border !px-2 !py-3 max-w-[16rem] align-top break-words"
                             @if ($urlCell['title'] !== '') title="{{ $urlCell['title'] }}" @endif>{{ $urlCell['display'] }}</td>
 
-                        <td class="border !px-2 !py-3 text-center">
+                        <td class="border !px-2 !py-3 text-center whitespace-nowrap">
                             <span class="!px-2 !py-1 rounded text-xs font-semibold {{ $statusClass }}">
                                 {{ $statusText }}
                             </span>
                         </td>
 
-                        <td class="border !px-2 !py-3">
+                        <td class="border !px-2 !py-3 whitespace-nowrap">
                             {{ $task->created_at->format('d-M-Y') }}
                         </td>
                     </tr>
@@ -126,6 +127,7 @@
         </table>
     </div>
 
+</div>
 </div>
 
 @endsection

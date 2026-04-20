@@ -18,6 +18,7 @@ use App\Models\Admin\ScheduleCampaignDate;
 use App\Support\WordPressApiFetchedPost;
 use App\Services\CampaignKeywordPairValidator;
 use App\Jobs\BulkUpdateScheduleCampaignPostsJob;
+use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
 use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
 use App\Http\Controllers\Admin\Concerns\ValidatesBulkCampaignIds;
 use App\Jobs\DeleteScheduleCampaignJob;
@@ -35,6 +36,7 @@ use App\Services\EditCampaignMultiLevelKeywordState;
 
 class ScheduleCampaignController extends Controller
 {
+    use AppliesSuperAdminCampaignOwnerFilter;
     use AuthorizesAdminCampaign;
     use ValidatesBulkCampaignIds;
 
@@ -48,6 +50,10 @@ class ScheduleCampaignController extends Controller
      */
     public function index(Request $request)
     {
+        $request->validate([
+            'search' => 'nullable|string|max:150',
+            'filter_user' => 'nullable|string|max:20',
+        ]);
 
         $limit = 100;
 
@@ -66,9 +72,7 @@ class ScheduleCampaignController extends Controller
             );
         }
         $admin = Auth::guard('admin')->user();
-        if (!$admin->isSuperAdmin()) {
-            $query->where('admin_id', $admin->id);
-        }
+        $ownerData = $this->scopeCampaignQueryForOwner($query, $request, $admin);
 
         $campaigns = $query
             ->orderByDesc('id')
@@ -79,7 +83,7 @@ class ScheduleCampaignController extends Controller
 
         return view(
             'admin.campaigns.pbn-post.schedule-campaign',
-            array_merge(compact('campaigns', 'offset'), ['isStickySchedule' => false])
+            array_merge(compact('campaigns', 'offset'), ['isStickySchedule' => false], $ownerData)
         );
     }
 
@@ -88,6 +92,11 @@ class ScheduleCampaignController extends Controller
      */
     public function indexSticky(Request $request)
     {
+        $request->validate([
+            'search' => 'nullable|string|max:150',
+            'filter_user' => 'nullable|string|max:20',
+        ]);
+
         $limit = 100;
 
         $query = ScheduleCampaign::query()
@@ -104,9 +113,7 @@ class ScheduleCampaignController extends Controller
             );
         }
         $admin = Auth::guard('admin')->user();
-        if (!$admin->isSuperAdmin()) {
-            $query->where('admin_id', $admin->id);
-        }
+        $ownerData = $this->scopeCampaignQueryForOwner($query, $request, $admin);
 
         $campaigns = $query
             ->orderByDesc('id')
@@ -117,7 +124,7 @@ class ScheduleCampaignController extends Controller
 
         return view(
             'admin.campaigns.pbn-post.schedule-campaign',
-            array_merge(compact('campaigns', 'offset'), ['isStickySchedule' => true])
+            array_merge(compact('campaigns', 'offset'), ['isStickySchedule' => true], $ownerData)
         );
     }
 

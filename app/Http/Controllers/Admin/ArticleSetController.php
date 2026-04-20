@@ -140,15 +140,21 @@ class ArticleSetController extends Controller
         $validated = $validator->validated();
         $adminId   = Auth::guard('admin')->id();
 
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(0);
+        }
+
         // 3️⃣ Clean description (HTML allowed)
         $description = $validated['description']
             ? Purifier::clean($validated['description'])
             : null;
 
         // 4️⃣ Check for existing article (duplicate prevention)
+        $normalizedName = mb_strtolower(trim($validated['name']));
+
         $article = Article::where('admin_id', $adminId)
             ->where('article_language_id', $validated['language'])
-            ->whereRaw('LOWER(name) = ?', [strtolower(trim($validated['name']))])
+            ->where('name_normalized', $normalizedName)
             ->first();
 
         $isDuplicateArticle = false;
@@ -837,6 +843,11 @@ class ArticleSetController extends Controller
         $admin = auth('admin')->user();
         abort_if(!$admin, 403);
 
+        // DOCX + Purifier + DOM per article can exceed default PHP/proxy limits; avoid premature timeout.
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(0);
+        }
+
         $validated = $validator->validated();
         $articleSet = ArticleSet::findOrFail($validated['id']);
 
@@ -863,6 +874,12 @@ class ArticleSetController extends Controller
             ->groupBy('slug')
             ->pluck('total', 'slug')
             ->toArray();
+
+        // O(1) active slug checks (avoids one EXISTS query per chunk — major win on large imports).
+        $activeSlugLookup = array_fill_keys(
+            Article::query()->whereNull('deleted_at')->pluck('slug')->all(),
+            true
+        );
 
         // ✅ Split articles
         $chunks = preg_split('/\*\*\s*article starts\s*\*\*/i', $rawHtml);
@@ -899,11 +916,7 @@ class ArticleSetController extends Controller
             /* -------------------------------------------------
          | 🚫 SCENARIO 1: ACTIVE ARTICLE EXISTS → SKIP
          |--------------------------------------------------*/
-            $activeExists = Article::where('slug', $baseSlug)
-                ->whereNull('deleted_at')
-                ->exists();
-
-            if ($activeExists) {
+            if (isset($activeSlugLookup[$baseSlug])) {
                 $duplicates++;
                 continue;
             }
@@ -952,6 +965,8 @@ class ArticleSetController extends Controller
 
             // ✅ Attach to set
             $articleSet->articles()->syncWithoutDetaching([$article->id]);
+
+            $activeSlugLookup[$finalSlug] = true;
 
             $created++;
         }

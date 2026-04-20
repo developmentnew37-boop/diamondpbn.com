@@ -38,10 +38,10 @@
       </a>
 
       <nav class="sidebar-menu">
-          <div class="menu-section">
-              <div class="menu-title">Main</div>
+          <div class="menu-section flex flex-col">
+              <div class="menu-title order-1 shrink-0">Main</div>
               <a href="{{ route('admin.dashboard') }}"
-                  class="menu-item {{ $currentRoute === 'admin.dashboard' ? 'active' : '' }}">
+                  class="menu-item order-3 lg:order-2 {{ $currentRoute === 'admin.dashboard' ? 'active' : '' }}">
                   <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <rect x="3" y="3" width="7" height="7"></rect>
                       <rect x="14" y="3" width="7" height="7"></rect>
@@ -53,7 +53,7 @@
 
               {{-- Run Campaigns: only Super Admin and Admin can create; Members can only add articles --}}
               @if ($sidebarAdmin->canCreateCampaigns())
-              <div class="menu-item side-menu-btn {{ $isActive($runCampaignRoutes) ? 'active' : '' }}"
+              <div class="menu-item side-menu-btn order-2 lg:order-3 {{ $isActive($runCampaignRoutes) ? 'active' : '' }}"
                   data-submenu-open="{{ $isActive($runCampaignRoutes) ? 'true' : 'false' }}">
                   <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -66,7 +66,7 @@
                       <polyline points="9 18 15 12 9 6"></polyline>
                   </svg>
               </div>
-              <div class="submenu {{ $isActive($runCampaignRoutes) ? 'open' : '' }}">
+              <div class="submenu order-2 lg:order-3 {{ $isActive($runCampaignRoutes) ? 'open' : '' }}">
                   <a href="{{ route('admin.campaign.create') }}"
                       class="submenu-item {{ $currentRoute === 'admin.campaign.create' ? 'active' : '' }}">PBN Post</a>
                   <a href="{{ route('admin.sidebar.campaign.create') }}"
@@ -80,7 +80,7 @@
 
               {{-- Reporting: only for users who can create campaigns (Members cannot see campaigns) --}}
               @if ($sidebarAdmin->canCreateCampaigns())
-              <div class="menu-item side-menu-btn {{ $isActive($reportingRoutes) ? 'active' : '' }}"
+              <div class="menu-item side-menu-btn order-4 {{ $isActive($reportingRoutes) ? 'active' : '' }}"
                   data-submenu-open="{{ $isActive($reportingRoutes) ? 'true' : 'false' }}">
                   <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
@@ -91,7 +91,7 @@
                       <polyline points="9 18 15 12 9 6"></polyline>
                   </svg>
               </div>
-              <div class="submenu {{ $isActive($reportingRoutes) ? 'open' : '' }}">
+              <div class="submenu order-4 {{ $isActive($reportingRoutes) ? 'open' : '' }}">
                   <a href="{{ route('admin.campaign.index') }}"
                       class="submenu-item {{ str_starts_with($currentRoute, 'admin.campaign.') && $currentRoute !== 'admin.campaign.create' ? 'active' : '' }}">PBN
                       Post</a>
@@ -107,7 +107,7 @@
               </div>
               @endif
 
-              <div class="menu-item side-menu-btn {{ $isActive($domainRoutes) ? 'active' : '' }}"
+              <div class="menu-item side-menu-btn order-5 {{ $isActive($domainRoutes) ? 'active' : '' }}"
                   data-submenu-open="{{ $isActive($domainRoutes) ? 'true' : 'false' }}">
                   <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <circle cx="12" cy="12" r="10"></circle>
@@ -122,7 +122,7 @@
                       <polyline points="9 18 15 12 9 6"></polyline>
                   </svg>
               </div>
-              <div class="submenu {{ $isActive($domainRoutes) ? 'open' : '' }}">
+              <div class="submenu order-5 {{ $isActive($domainRoutes) ? 'open' : '' }}">
                   <a href="{{ route('admin.set.index') }}"
                       class="submenu-item {{ str_starts_with($currentRoute, 'admin.set') ? 'active' : '' }}">Domains
                       Set </a>

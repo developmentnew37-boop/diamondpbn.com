@@ -30,9 +30,11 @@ use Illuminate\Support\Str;
 use Spatie\SimpleExcel\SimpleExcelWriter;
 use App\Support\WordPressApiFetchedPost;
 use App\Services\EditCampaignMultiLevelKeywordState;
+use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
 
 class WpScheduledCampaignController extends Controller
 {
+    use AppliesSuperAdminCampaignOwnerFilter;
     use ValidatesBulkCampaignIds;
 
     /** Minutes to add to "now" for today/past posts so WordPress does not mark "Missed schedule" (WP cron runs on visit). */
@@ -45,7 +47,10 @@ class WpScheduledCampaignController extends Controller
 
     public function index(Request $request)
     {
-        $request->validate(['search' => 'nullable|string|max:150']);
+        $request->validate([
+            'search' => 'nullable|string|max:150',
+            'filter_user' => 'nullable|string|max:20',
+        ]);
 
         $query = WpScheduledCampaign::query()->with('domainCategory');
 
@@ -54,9 +59,7 @@ class WpScheduledCampaignController extends Controller
         }
 
         $admin = Auth::guard('admin')->user();
-        if (!$admin->isSuperAdmin()) {
-            $query->where('admin_id', $admin->id);
-        }
+        $ownerData = $this->scopeCampaignQueryForOwner($query, $request, $admin);
 
         $campaigns = $query->orderByDesc('id')->paginate(20)->appends($request->all());
         $offset = ($campaigns->currentPage() - 1) * 20;
@@ -68,7 +71,10 @@ class WpScheduledCampaignController extends Controller
             }
         }
 
-        return view('admin.campaigns.wp-scheduled.index', compact('campaigns', 'offset'));
+        return view(
+            'admin.campaigns.wp-scheduled.index',
+            array_merge(compact('campaigns', 'offset'), $ownerData)
+        );
     }
 
     public function create()

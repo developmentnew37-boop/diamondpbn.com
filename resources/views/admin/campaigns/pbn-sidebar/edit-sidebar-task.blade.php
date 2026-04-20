@@ -4,11 +4,11 @@
 
 @section('main-content')
 
-    <div class="page-header">
-        <div class="w-full flex flex-wrap items-center">
-            <div class="w-1/2 flex flex-col gap-2 flex-wrap">
+    <div class="page-header w-full max-w-full min-w-0">
+        <div class="w-full flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div class="w-full md:flex-1 flex flex-col gap-2 min-w-0">
                 <h2 class="page-title">Edit Sidebar Link</h2>
-                <div class="breadcrumb">
+                <div class="breadcrumb flex-wrap gap-y-1">
                     <div class="breadcrumb-item">
                         <a href="{{ route('admin.dashboard') }}" class="breadcrumb-link">Dashboard</a>
                         <span>›</span>
@@ -18,7 +18,7 @@
                         <span>›</span>
                     </div>
                     <div class="breadcrumb-item">
-                        <a href="{{ route('admin.sidebar.campaign.show', $task->sidebar_campaign_id) }}" class="breadcrumb-link">{{ $task->campaign->campaign_no ?? 'Campaign' }}</a>
+                        <a href="{{ route('admin.sidebar.campaign.show', $task->sidebar_campaign_id) }}" class="breadcrumb-link break-all">{{ $task->campaign->campaign_no ?? 'Campaign' }}</a>
                         <span>›</span>
                     </div>
                     <div class="breadcrumb-item">
@@ -26,9 +26,9 @@
                     </div>
                 </div>
             </div>
-            <div class="w-1/2 flex flex-wrap justify-end items-center">
+            <div class="w-full md:w-auto flex flex-wrap justify-start md:justify-end items-center md:shrink-0">
                 <a href="{{ route('admin.sidebar.campaign.show', $task->sidebar_campaign_id) }}"
-                    class="inline-flex items-center gap-2 !px-3 !py-2 rounded bg-gray-200 hover:bg-gray-300 text-sm">Back</a>
+                    class="inline-flex items-center gap-2 !px-3 !py-2 rounded bg-gray-200 hover:bg-gray-300 text-sm w-full sm:w-auto justify-center whitespace-nowrap">Back</a>
             </div>
         </div>
     </div>
@@ -57,7 +57,7 @@
             This will update the keyword and link on the remote site (via blogroll API) and in our database.
         </p>
 
-        <form action="{{ route('admin.sidebar.campaign.update.task', $task->id) }}" method="POST" class="flex flex-col gap-4 max-w-xl">
+        <form action="{{ route('admin.sidebar.campaign.update.task', $task->id) }}" method="POST" class="flex flex-col gap-4 max-w-xl w-full">
             @csrf
             <div>
                 <label for="keyword" class="block text-sm font-medium text-gray-700 !mb-1">Keyword <span class="text-red-500">*</span></label>
@@ -77,12 +77,12 @@
                     <p class="text-red-500 text-xs !mt-1">{{ $message }}</p>
                 @enderror
             </div>
-            <div class="flex gap-2">
+            <div class="flex flex-col sm:flex-row gap-2">
                 <button type="submit" class="!px-4 !py-2 bg-[var(--primary-color)] text-white rounded hover:opacity-90">
                     Update on remote &amp; DB
                 </button>
                 <a href="{{ route('admin.sidebar.campaign.show', $task->sidebar_campaign_id) }}"
-                    class="!px-4 !py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">Cancel</a>
+                    class="!px-4 !py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-center">Cancel</a>
             </div>
         </form>
     </div>

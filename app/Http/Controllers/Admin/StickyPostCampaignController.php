@@ -11,10 +11,13 @@ use App\Models\Admin\ArticleSet;
 use App\Models\Admin\DomainSet;
 use App\Models\Admin\Campaign;
 use App\Models\Admin\ArticleLanguage;
+use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
 use Illuminate\Support\Facades\Auth;
 
 class StickyPostCampaignController extends Controller
 {
+    use AppliesSuperAdminCampaignOwnerFilter;
+
     public function __construct()
     {
         $this->middleware('can.create.campaigns');
@@ -25,6 +28,7 @@ class StickyPostCampaignController extends Controller
         // ✅ Validate inputs
         $request->validate([
             'search' => 'nullable|string|max:150',
+            'filter_user' => 'nullable|string|max:20',
         ]);
 
         // ✅ Clean empty search from URL
@@ -49,9 +53,7 @@ class StickyPostCampaignController extends Controller
             $query->where('campaign_no', 'LIKE', $search);
         }
         $admin = Auth::guard('admin')->user();
-        if (!$admin->isSuperAdmin()) {
-            $query->where('admin_id', $admin->id);
-        }
+        $ownerData = $this->scopeCampaignQueryForOwner($query, $request, $admin);
         // ✅ Paginate + keep query params
         $campaigns = $query
             ->orderByDesc('id')
@@ -61,7 +63,10 @@ class StickyPostCampaignController extends Controller
         // ✅ Offset (for serial numbers in table)
         $offset = ($campaigns->currentPage() - 1) * $limit;
 
-        return view('admin.campaigns.pbn-post.campaign', compact('campaigns', 'offset'));
+        return view(
+            'admin.campaigns.pbn-post.campaign',
+            array_merge(compact('campaigns', 'offset'), $ownerData)
+        );
     }
 
     public function create()

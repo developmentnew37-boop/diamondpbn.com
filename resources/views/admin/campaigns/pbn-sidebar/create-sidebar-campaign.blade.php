@@ -61,11 +61,11 @@
 @section('main-content')
 
     {{-- bread-crumbs --}}
-    <div class="page-header">
-        <div class="w-full flex flex-wrap items-center">
-            <div class="w-1/2 flex flex-col gap-2 flex-wrap">
+    <div class="page-header w-full max-w-full min-w-0">
+        <div class="w-full flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+            <div class="w-full sm:w-1/2 flex flex-col gap-2 min-w-0">
                 <h2 class="page-title">Dashboards</h2>
-                <div class="breadcrumb">
+                <div class="breadcrumb flex-wrap">
                     <div class="breadcrumb-item">
                         <a href="{{ route('admin.dashboard') }}" class="breadcrumb-link">Dashboard</a>
                         <span>›</span>
@@ -80,7 +80,7 @@
                     </div>
                 </div>
             </div>
-            <div class="w-1/2 flex flex-wrap justify-end items-center">
+            <div class="w-full sm:w-1/2 flex flex-wrap justify-start sm:justify-end items-center">
                 {{-- <a href="" class="flex !p-2 !py-3 text-[16px] font-normal w-1/5 justify-center duration:300 bg-black hover:bg-[var(--primary-color)] text-white rounded ">+ Add Article</a> --}}
             </div>
         </div>
@@ -129,13 +129,13 @@
 
 
     <form action="{{ route('admin.sidebar.campaign.store') }}" method="POST"
-        class="w-full flex flex-wrap justify-between items-start content-card" id="sidebar-campaign">
+        class="w-full max-w-full min-w-0 flex flex-wrap justify-between items-start content-card overflow-x-hidden" id="sidebar-campaign">
         @csrf
-        <h2 class="text-xl capitalize !mb-4 bg-[var(--primary-color)] text-white w-fit !p-2 rounded">Create Sidebar
+        <h2 class="text-base sm:text-xl capitalize !mb-4 bg-[var(--primary-color)] text-white w-full max-w-full sm:w-fit !p-2 rounded">Create Sidebar
             Campaigns
         </h2>
         {{-- xxxxxxxxxxxxxxxxxx campaigns button xxxxxxxxxxxxxxxxxxxxxxxxxxxx --}}
-        <div class="w-full flex flex-wrap gap-5 !p-2">
+        <div class="campaign-create-tabs w-full !p-2">
             <button data-id="campaign-info" type="button"
                 class="group flex flex-col gap-3  rounded !p-2 cursor-pointer text-[var(--primary-color)] duration-300 transition-all hover:text-[var(--primary-color)]  w-fit text-lg tab-switcher">
                 <span>Campaign Info</span>
@@ -416,9 +416,9 @@
                     </div>
                 </div> --}}
                 {{-- *** end here *** --}}
-                <div class="w-full flex flex-col gap-3 max-h-[600px] overflow-hidden overflow-y-auto">
+                <div class="w-full flex flex-col gap-3 max-h-[600px] overflow-x-auto overflow-y-auto">
                     {{-- filters here --}}
-                    <table id="RandomDomainsTable" class="display w-full border border-gray-200 border-collapse text-sm ">
+                    <table id="RandomDomainsTable" class="display w-full min-w-[700px] border border-gray-200 border-collapse text-sm ">
 
                         <thead>
                             <tr class="bg-gray-800 text-white">
@@ -482,8 +482,8 @@
             </div>
 
             <div class="w-full flex flex-col hidden domains-sections" id="domainSetSection">
-                <div class="w-full flex flex-wrap gap-3 items-center !mt-6">
-                    <div class="w-1/5 flex flex-col">
+            <div class="w-full flex flex-wrap gap-3 items-start sm:items-center !mt-6">
+                    <div class="w-full sm:w-1/5 flex flex-col">
                         <div data-dropdown-container class="w-full flex flex-col gap-3 p-2 relative">
                             {{-- Hidden input for form submission --}}
                             <input data-hidden-input type="hidden" id="domain-set" name="domain-set"
@@ -538,7 +538,7 @@
                             </div>
                         </div>
                     </div>
-                    <div class="w-auto">
+                    <div class="w-full sm:w-auto">
                         <button type="button"
                             class="!p-3 text-sm cursor-pointer bg-black text-white rounded hover:bg-[var(--primary-color)] w-full flex gap-2 items-center"
                             id="fetch-domains-set">
@@ -549,9 +549,9 @@
                         </button>
                     </div>
                 </div>
-                <div class="w-full flex flex-col max-h-[600px] overflow-hidden overflow-y-auto !mt-6">
+                <div class="w-full flex flex-col max-h-[600px] overflow-x-auto overflow-y-auto !mt-6">
                     {{-- filters here --}}
-                    <table id="domainSetTable" class="display w-full border border-gray-200 border-collapse text-sm ">
+                    <table id="domainSetTable" class="display w-full min-w-[700px] border border-gray-200 border-collapse text-sm ">
 
                         <thead>
                             <tr class="bg-gray-800 text-white">
@@ -735,7 +735,7 @@
         <div
             class="dy-key-set-overlay w-screen h-screen bg-black/40 absolute top-0 left-0 duration-300 opacity-0  transition-all">
         </div>
-        <div class="dy-key-pop-box w-[80%] max-w-[850px] flex flex-col items-center !shadow-2xl bg-gray-50 border border-gray-300 z-2 rounded !mt-[70px] linear duration-600 opacity-0 -translate-y-[20%] transition-all"
+        <div class="dy-key-pop-box w-[96%] sm:w-[80%] max-w-[850px] max-h-[calc(100vh-24px)] sm:max-h-none flex flex-col items-center !shadow-2xl bg-gray-50 border border-gray-300 z-2 rounded !mt-3 sm:!mt-[70px] linear duration-600 opacity-0 -translate-y-[20%] transition-all"
             id="dy-key-article-box">
             {{-- pop top bar --}}
             <div class="w-full flex justify-between items-center !bg-gray-200 !p-3">
@@ -767,17 +767,17 @@
                 </div>
                 <div class="w-full flex flex-col max-h-[280px] overflow-hidden overflow-y-auto keyword-tab-sec"
                     id="keyword-url-container">
-                    <div class="flex w-full bg-orange-100 keyword-url-box static-box relative">
-                        <div class="w-3/5 flex flex-col gap-2 !p-4 !pt-[45px]">
+                    <div class="flex w-full bg-orange-100 keyword-url-box static-box relative keyword-mobile-stack">
+                        <div class="w-3/5 flex flex-col gap-2 !p-4 !pt-[45px] keyword-mobile-main">
                             <div class="w-full flex items-center">
                                 <label for=""
-                                    class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-1/5">Client
+                                    class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-1/5 keyword-mobile-label">Client
                                     Url</label>
-                                <div class="w-4/5 flex items-center justify-between">
+                                <div class="w-4/5 flex items-center justify-between keyword-mobile-input-wrap">
                                     <input type="text" placeholder="Enter Url"
-                                        class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-[78%] client-url">
+                                        class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-[78%] client-url keyword-mobile-input-main">
                                     <input type="text" value="0"
-                                        class="bg-gray-50 !p-2 text-sm outline-none text-center border border-gray-300 w-1/5 client-url-quantity num-inp">
+                                        class="bg-gray-50 !p-2 text-sm outline-none text-center border border-gray-300 w-1/5 client-url-quantity num-inp keyword-mobile-qty">
                                 </div>
                             </div>
                             <div class="w-full flex items-center justify-end">
@@ -785,16 +785,16 @@
                                     class="!p-1 bg-red-600 rounded text-sm cursor-pointer text-white remove-keyword-box">delete</button>
                             </div>
                         </div>
-                        <div class="w-2/5 flex flex-col gap-1 !p-4">
+                        <div class="w-2/5 flex flex-col gap-1 !p-4 keyword-mobile-side">
                             <label for=""
                                 class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">Client
                                 Keyword</label>
                             <div class="w-full flex flex-wrap justify-between keywords-area-parent">
-                                <div class="w-[78%] flex flex-wrap">
+                                <div class="w-[78%] flex flex-wrap keyword-mobile-input-main">
                                     <textarea name="" id="" rows="5"
                                         class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none keywords-area"></textarea>
                                 </div>
-                                <div class="w-1/5 flex flex-wrap">
+                                <div class="w-1/5 flex flex-wrap keyword-mobile-qty">
                                     <textarea name="" id="" rows="5"
                                         class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none text-center keywords-quantity-area focus:border-[var(--primary-color)] "></textarea>
                                 </div>
@@ -807,7 +807,7 @@
                 </div>
 
                 <div class="w-full flex flex-wrap justify-end !py-2 add-more-window keyword-tab-sec ">
-                    <div class="w-1/2 flex justify-between items-center  text-sm">
+                    <div class="w-full sm:w-1/2 flex flex-wrap sm:flex-nowrap gap-2 sm:gap-0 justify-between items-center text-sm keyword-progress-wrap">
                         <p>Total <span class="total-box-count">1</span></p>
                         <a href="javascript:void(0)" class="bg-blue-400 !p-2 text-sm rounded text-white"
                             id="add-more-keyword-URL">+Add More Url</a>
@@ -842,8 +842,8 @@
 
 
             </div>
-            <div class="w-full flex justify-between items-center !bg-gray-200 !px-3 !py-2">
-                <div class="flex gap-1 items-center">
+            <div class="w-full flex flex-col sm:flex-row gap-2 sm:gap-0 justify-between sm:items-center !bg-gray-200 !px-3 !py-2">
+                <div class="flex flex-wrap gap-1 items-center">
                     <input type="checkbox" name="no_follow" id="no_follow" value="1">
                     <label for="no_follow" class="text-sm">No Follow</label>
                     <p class="text-[12px]">(Check here to get Nofollow Link)</p>

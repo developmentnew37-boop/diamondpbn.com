@@ -13,8 +13,9 @@
 
     <!-- Styles / Scripts -->
     @if (file_exists(public_path('build/manifest.json')) || file_exists(public_path('hot')))
-        <link rel="stylesheet" href="{{ asset('build/assets/app-BMLFxF1u.css') }}">
-        <script src="{{ asset('build/assets/app-Cwyqw0uf.js') }}"></script>
+        @vite(['resources/css/app.css', 'resources/js/app.js'])
+        {{-- <link rel="stylesheet" href="{{ asset('css/style.css') }}">
+        <link rel="stylesheet" href="{{ asset('build/assets/app-Bq23pLt-.css') }}"> --}}
     @else
         <style>
             /*! tailwindcss v4.0.7 | MIT License | https://tailwindcss.com */

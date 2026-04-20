@@ -39,32 +39,32 @@
         $editTab = in_array($rawTab, ['campaign', 'normal', 'bulk'], true) ? $rawTab : 'normal';
     @endphp
 
-    <div class="page-header">
-        <div class="w-full flex flex-wrap items-center">
-            <div class="w-1/2 flex flex-col gap-2 flex-wrap">
-                <h2 class="page-title">Bulk Edit Hidden Links</h2>
-                <div class="breadcrumb">
-                    <div class="breadcrumb-item">
-                        <a href="{{ route('admin.dashboard') }}" class="breadcrumb-link">Dashboard</a>
-                        <span>›</span>
-                    </div>
-                    <div class="breadcrumb-item">
-                        <a href="{{ route('admin.hidden.link.campaign.index') }}" class="breadcrumb-link">PBN Hidden Links</a>
-                        <span>›</span>
-                    </div>
-                    <div class="breadcrumb-item">
-                        <a href="{{ route('admin.hidden.link.campaign.show', $campaign->id) }}" class="breadcrumb-link">{{ $campaign->campaign_no }}</a>
-                        <span>›</span>
-                    </div>
-                    <div class="breadcrumb-item">
-                        <span class="breadcrumb-link">Bulk edit links</span>
-                    </div>
-                </div>
-            </div>
-            <div class="w-1/2 flex flex-wrap justify-end items-center">
+    <div class="page-header w-full max-w-full min-w-0">
+        <div class="w-full flex flex-col gap-3">
+            <div class="flex items-center justify-between gap-3 min-w-0">
+                <h2 class="page-title !mb-0 min-w-0 shrink leading-tight">Bulk Edit Hidden Links</h2>
                 <a href="{{ route('admin.hidden.link.campaign.show', $campaign->id) }}"
-                    class="inline-flex items-center gap-2 !px-3 !py-2 rounded bg-gray-200 hover:bg-gray-300 text-sm">Back to campaign</a>
+                    class="inline-flex items-center justify-center gap-2 shrink-0 !px-3 !py-2 rounded bg-gray-200 hover:bg-gray-300 text-sm whitespace-nowrap"
+                    aria-label="Back to campaign view">Back to campaign</a>
             </div>
+            <nav class="flex flex-wrap items-baseline gap-x-1.5 gap-y-2 text-sm text-gray-600 w-full min-w-0 leading-snug"
+                aria-label="Breadcrumb">
+                <span class="inline-flex flex-wrap items-baseline gap-x-1.5 min-w-0">
+                    <a href="{{ route('admin.dashboard') }}" class="breadcrumb-link shrink-0">Dashboard</a>
+                    <span class="text-gray-400 shrink-0" aria-hidden="true">›</span>
+                </span>
+                <span class="inline-flex flex-wrap items-baseline gap-x-1.5 min-w-0">
+                    <a href="{{ route('admin.hidden.link.campaign.index') }}" class="breadcrumb-link">PBN Hidden Links</a>
+                    <span class="text-gray-400 shrink-0" aria-hidden="true">›</span>
+                </span>
+                <span class="inline-flex flex-wrap items-baseline gap-x-1.5 min-w-0 max-w-full">
+                    <a href="{{ route('admin.hidden.link.campaign.show', $campaign->id) }}"
+                        class="breadcrumb-link break-all font-mono text-xs sm:text-sm"
+                        title="{{ $campaign->campaign_no }}">{{ $campaign->campaign_no }}</a>
+                    <span class="text-gray-400 shrink-0" aria-hidden="true">›</span>
+                </span>
+                <span class="text-gray-600 min-w-0">Bulk edit links</span>
+            </nav>
         </div>
     </div>
 
@@ -238,32 +238,33 @@
                         <input type="hidden" name="batch_representative_link_id[]" value="{{ $linkRow['link_id'] }}">
                     @endforeach
 
-                    <div class="w-full flex flex-wrap justify-between max-h-[420px] overflow-hidden overflow-y-auto bg-gray-100 rounded border border-gray-200 !p-3">
-                        <div class="w-[49.5%] flex flex-col gap-2">
-                            <div class="flex items-center">
+                    <div
+                        class="w-full flex flex-col gap-3 md:grid md:grid-cols-2 md:gap-3 max-h-none md:max-h-[420px] overflow-visible md:overflow-y-auto bg-gray-100 rounded border border-gray-200 !p-3 min-w-0">
+                        <div class="w-full flex flex-col gap-2 min-w-0">
+                            <div class="flex items-center justify-between gap-2">
                                 <label for="hl-bulk-urls-edit"
                                     class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">Bulk URLs</label>
-                                <span class="bulk-count text-sm flex !ml-[2px]" id="hl-bulk-urls-edit-count"></span>
+                                <span class="bulk-count text-xs sm:text-sm flex shrink-0" id="hl-bulk-urls-edit-count"></span>
                             </div>
                             <textarea name="bulk_urls" id="hl-bulk-urls-edit"
-                                class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none"
+                                class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full min-w-0 resize-none"
                                 rows="14">{{ old('bulk_urls', $bulkUrlsDefault) }}</textarea>
                         </div>
-                        <div class="w-[49.5%] flex flex-col gap-2">
-                            <div class="flex items-center">
+                        <div class="w-full flex flex-col gap-2 min-w-0">
+                            <div class="flex items-center justify-between gap-2">
                                 <label for="hl-bulk-keywords-edit"
                                     class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">Bulk Keywords</label>
-                                <span class="bulk-count text-sm flex !ml-[2px]" id="hl-bulk-keywords-edit-count"></span>
+                                <span class="bulk-count text-xs sm:text-sm flex shrink-0" id="hl-bulk-keywords-edit-count"></span>
                             </div>
                             <textarea name="bulk_keywords" id="hl-bulk-keywords-edit"
-                                class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none"
+                                class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full min-w-0 resize-none"
                                 rows="14">{{ old('bulk_keywords', $bulkKeywordsDefault) }}</textarea>
                         </div>
                     </div>
                     <div class="!mt-2 text-xs text-gray-500">Required non-empty lines: {{ $bulkCount }} in each textarea.</div>
-                    <div class="!mt-4 flex gap-2">
+                    <div class="!mt-4 flex flex-col sm:flex-row gap-2 sm:items-center">
                         <button type="submit" id="hl-bulk-submit" class="!px-4 !py-2 bg-[var(--primary-color)] text-white rounded hover:opacity-90">Update bulk data &amp; sync to remote</button>
-                        <a href="{{ route('admin.hidden.link.campaign.show', $campaign->id) }}" class="!px-4 !py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">Cancel</a>
+                        <a href="{{ route('admin.hidden.link.campaign.show', $campaign->id) }}" class="!px-4 !py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-center">Cancel</a>
                     </div>
                 </form>
             @endif

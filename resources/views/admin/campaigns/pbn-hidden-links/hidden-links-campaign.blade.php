@@ -55,16 +55,19 @@
     </div>
 
     {{-- filters --}}
-    <div class="flex flex-wrap items-center content-card w-full">
+    <div class="flex flex-wrap items-center content-card w-full gap-3 justify-between">
 
-        <div class="w-full flex flex-wrap gap-2">
+        @include('admin.campaigns.partials.campaign-owner-filter')
+
+        <div class="flex flex-wrap gap-2 flex-1 min-w-[200px] justify-end">
             <form method="GET" action="{{ url()->current() }}"
-                class="w-full flex flex-col justify-center items-end gap-1">
+                class="w-full max-w-md flex flex-col justify-center items-stretch gap-1">
+                @foreach (request()->except('search') as $key => $value)
+                    @continue(is_array($value))
+                    <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                @endforeach
                 <input type="search" name="search" value="{{ request('search') }}" placeholder="Search campaign no"
                     class="bg-gray-100 border border-gray-200 !p-3 text-sm rounded w-full">
-                {{-- <button type="submit" class="bg-[var(--sidebar-bg)] text-white !mt-1 !px-5 !py-3 rounded cursor-pointer">
-                    Search
-                </button> --}}
             </form>
         </div>
 

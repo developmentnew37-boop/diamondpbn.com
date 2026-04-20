@@ -4,32 +4,32 @@
 
 @section('main-content')
 
-    <div class="page-header">
-        <div class="w-full flex flex-wrap items-center">
-            <div class="w-1/2 flex flex-col gap-2 flex-wrap">
-                <h2 class="page-title">Edit Hidden Link</h2>
-                <div class="breadcrumb">
-                    <div class="breadcrumb-item">
-                        <a href="{{ route('admin.dashboard') }}" class="breadcrumb-link">Dashboard</a>
-                        <span>›</span>
-                    </div>
-                    <div class="breadcrumb-item">
-                        <a href="{{ route('admin.hidden.link.campaign.index') }}" class="breadcrumb-link">PBN Hidden Links</a>
-                        <span>›</span>
-                    </div>
-                    <div class="breadcrumb-item">
-                        <a href="{{ route('admin.hidden.link.campaign.show', $task->hidden_links_campaigns_id) }}" class="breadcrumb-link">{{ $task->campaign->campaign_no ?? 'Campaign' }}</a>
-                        <span>›</span>
-                    </div>
-                    <div class="breadcrumb-item">
-                        <span class="breadcrumb-link">Edit keyword/link</span>
-                    </div>
-                </div>
-            </div>
-            <div class="w-1/2 flex flex-wrap justify-end items-center">
+    <div class="page-header w-full max-w-full min-w-0">
+        <div class="w-full flex flex-col gap-3">
+            <div class="flex items-center justify-between gap-3 min-w-0">
+                <h2 class="page-title !mb-0 min-w-0 shrink leading-tight">Edit Hidden Link</h2>
                 <a href="{{ route('admin.hidden.link.campaign.show', $task->hidden_links_campaigns_id) }}"
-                    class="inline-flex items-center gap-2 !px-3 !py-2 rounded bg-gray-200 hover:bg-gray-300 text-sm">Back</a>
+                    class="inline-flex items-center justify-center gap-2 shrink-0 !px-3 !py-2 rounded bg-gray-200 hover:bg-gray-300 text-sm whitespace-nowrap"
+                    aria-label="Back to campaign view">Back</a>
             </div>
+            <nav class="flex flex-nowrap items-center gap-1.5 text-sm text-gray-600 w-full min-w-0 overflow-x-auto whitespace-nowrap pb-1"
+                aria-label="Breadcrumb">
+                <span class="inline-flex items-center gap-x-1.5 shrink-0">
+                    <a href="{{ route('admin.dashboard') }}" class="breadcrumb-link shrink-0">Dashboard</a>
+                    <span class="text-gray-400 shrink-0" aria-hidden="true">›</span>
+                </span>
+                <span class="inline-flex items-center gap-x-1.5 shrink-0">
+                    <a href="{{ route('admin.hidden.link.campaign.index') }}" class="breadcrumb-link">PBN Hidden Links</a>
+                    <span class="text-gray-400 shrink-0" aria-hidden="true">›</span>
+                </span>
+                <span class="inline-flex items-center gap-x-1.5 shrink-0 max-w-full">
+                    <a href="{{ route('admin.hidden.link.campaign.show', $task->hidden_links_campaigns_id) }}"
+                        class="breadcrumb-link font-mono text-xs sm:text-sm whitespace-nowrap"
+                        title="{{ $task->campaign->campaign_no ?? 'Campaign' }}">{{ $task->campaign->campaign_no ?? 'Campaign' }}</a>
+                    <span class="text-gray-400 shrink-0" aria-hidden="true">›</span>
+                </span>
+                <span class="text-gray-600 shrink-0">Edit keyword/link</span>
+            </nav>
         </div>
     </div>
 
@@ -71,10 +71,10 @@
                     <p class="text-red-500 text-xs !mt-1">{{ $message }}</p>
                 @enderror
             </div>
-            <div class="flex gap-2">
-                <button type="submit" class="!px-4 !py-2 bg-[var(--primary-color)] text-white rounded hover:opacity-90">Update on remote &amp; DB</button>
+            <div class="flex flex-col sm:flex-row gap-2 sm:items-center">
+                <button type="submit" class="!px-4 !py-2 bg-[var(--primary-color)] text-white rounded hover:opacity-90 text-center">Update on remote &amp; DB</button>
                 <a href="{{ route('admin.hidden.link.campaign.show', $task->hidden_links_campaigns_id) }}"
-                    class="!px-4 !py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">Cancel</a>
+                    class="!px-4 !py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-center">Cancel</a>
             </div>
         </form>
     </div>

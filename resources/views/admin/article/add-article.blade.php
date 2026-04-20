@@ -8,6 +8,12 @@
             min-height: 500px !important;
             /* increase as needed */
         }
+
+        @media (max-width: 640px) {
+            #article-container .ck-editor__editable_inline {
+                min-height: 320px !important;
+            }
+        }
     </style>
     <link rel="stylesheet" href="https://cdn.ckeditor.com/ckeditor5/45.2.0/ckeditor5.css" crossorigin>
 @endpush
@@ -15,9 +21,9 @@
 @section('main-content')
 
     {{-- bread-crumbs --}}
-    <div class="page-header">
-        <div class="w-full flex flex-wrap items-center">
-            <div class="w-1/2 flex flex-col gap-2 flex-wrap">
+    <div class="page-header w-full max-w-full min-w-0">
+        <div class="w-full flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+            <div class="w-full sm:w-1/2 flex flex-col gap-2 min-w-0">
                 <h2 class="page-title">Dashboards</h2>
                 <div class="breadcrumb">
                     <div class="breadcrumb-item">
@@ -34,7 +40,7 @@
                     </div>
                 </div>
             </div>
-            <div class="w-1/2 flex flex-wrap justify-end items-center">
+            <div class="w-full sm:w-1/2 flex flex-wrap justify-start sm:justify-end items-center">
                 {{-- <a href="" class="flex !p-2 !py-3 text-[16px] font-normal w-1/5 justify-center duration:300 bg-black hover:bg-[var(--primary-color)] text-white rounded ">+ Add Article</a> --}}
             </div>
         </div>
@@ -61,9 +67,9 @@
     @endif
 
     <form action="{{ route('admin.article.store') }}" method="POST"
-        class="w-full flex flex-wrap justify-between items-start">
+        class="w-full flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-4 min-w-0">
         @csrf
-        <div class="flex flex-col gap-2 w-[74%] content-card justify-start">
+        <div class="flex flex-col gap-2 w-full lg:flex-1 content-card justify-start min-w-0 order-2 lg:order-1">
             <h2 class="text-xl capitalize !mb-4 bg-[var(--primary-color)] text-white w-fit !p-2 rounded">Create post/article
             </h2>
 
@@ -94,7 +100,7 @@
                 <textarea name="post_description" id="editor" rows="10"></textarea>
             </div> --}}
         </div>
-        <div class="w-[25%] flex flex-col gap-3 content-card">
+        <div class="w-full lg:w-72 xl:w-80 flex-shrink-0 flex flex-col gap-3 content-card min-w-0 order-1 lg:order-2">
             {{-- <h2 class="text-2xl capitalize">Categories & language here</h2> --}}
             <div data-dropdown-container class="w-full flex flex-col gap-3 p-2 relative">
                 <label for="category_title"
@@ -212,7 +218,7 @@
             @error('language')
                 <p class="text-red-400 bg-red-100 text-sm !p-2 rounded">{{ $message }}</p>
             @enderror
-            <div class="w-full !mt-6">
+            <div class="w-full !mt-2 sm:!mt-4 lg:!mt-6">
                 <input type="hidden" name="type" value="0">
                 <button
                     class="!p-3 text-[16px] cursor-pointer bg-black text-white rounded hover:bg-[var(--primary-color)] w-full">Add

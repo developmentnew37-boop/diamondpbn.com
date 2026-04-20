@@ -26,6 +26,7 @@ use App\Services\CampaignPostContentBuilder;
 use App\Support\WordPressApiFetchedPost;
 use App\Models\Admin\Article;
 use App\Models\Admin\ArticleLanguage;
+use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
 use Spatie\SimpleExcel\SimpleExcelWriter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -33,6 +34,7 @@ use Illuminate\Support\Facades\Http;
 
 class campaignController extends Controller
 {
+    use AppliesSuperAdminCampaignOwnerFilter;
     use AuthorizesAdminCampaign;
     use ValidatesBulkCampaignIds;
 
@@ -49,6 +51,7 @@ class campaignController extends Controller
         // ✅ Validate inputs
         $request->validate([
             'search' => 'nullable|string|max:150',
+            'filter_user' => 'nullable|string|max:20',
         ]);
 
         // ✅ Clean empty search from URL
@@ -73,9 +76,7 @@ class campaignController extends Controller
             $query->where('campaign_no', 'LIKE', $search);
         }
 
-        if (!$admin->isSuperAdmin()) {
-            $query->where('admin_id', $admin->id);
-        }
+        $ownerData = $this->scopeCampaignQueryForOwner($query, $request, $admin);
 
         // ✅ Paginate + keep query params
         $campaigns = $query
@@ -86,7 +87,10 @@ class campaignController extends Controller
         // ✅ Offset (for serial numbers in table)
         $offset = ($campaigns->currentPage() - 1) * $limit;
 
-        return view('admin.campaigns.pbn-post.campaign', compact('campaigns', 'offset'));
+        return view(
+            'admin.campaigns.pbn-post.campaign',
+            array_merge(compact('campaigns', 'offset'), $ownerData)
+        );
     }
 
 
@@ -164,7 +168,7 @@ class campaignController extends Controller
             'sel_articles_opt'      =>  'required|in:own_article,system_article,language_article',
             'selected_articles_val' => 'required|string',   // CSV: "163,164,165,..."
 
-            'keywordmethod'         => 'nullable|string|in:normal,bulk,multiple',
+            'keywordmethod'         => 'nullable|string|in:normal,bulk,multiple,multi_bulk',
             'keywordsDataHolder'    => 'required|string',   // JSON string array
 
             'sel_domains'           => 'required|integer|in:0,1,2',
@@ -247,8 +251,8 @@ class campaignController extends Controller
 
             // 3) campaign_articles (store and keep map by index)
             $campaignArticleIds = [];
-            $method = (string) ($request->keywordmethod ?? 'normal'); // normal | bulk | multiple
-            $isMultiple = ($method === 'multiple');
+            $method = (string) ($request->keywordmethod ?? 'normal'); // normal | bulk | multiple | multi_bulk
+            $isMultiple = in_array($method, ['multiple', 'multi_bulk'], true);
 
             foreach ($articleIds as $i => $articleId) {
                 $row = $keywords[$i] ?? [];

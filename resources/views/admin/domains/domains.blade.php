@@ -250,7 +250,7 @@
                                             </div>
                                         </td>
                                         <td class="border border-gray-200 font-sans !px-2 !py-[6px]">
-                                            <div class="flex flex-wrap gap-2 justify-center">
+                                            <div class="flex gap-2 justify-center">
                                                 <a href="{{ route('admin.domain.edit', $domain->id) }}"
                                                     class="edit-set-btn bg-yellow-500 flex items-center justify-center rounded w-7 h-7 duration-500 hover:bg-yellow-600">
                                                     <span

@@ -25,9 +25,9 @@
 @section('main-content')
 
     {{-- bread-crumbs --}}
-    <div class="page-header">
-        <div class="w-full flex flex-wrap items-center">
-            <div class="w-1/2 flex flex-col gap-2 flex-wrap">
+    <div class="page-header w-full max-w-full min-w-0">
+        <div class="w-full flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+            <div class="w-full sm:w-1/2 flex flex-col gap-2 min-w-0">
                 <h2 class="page-title">Dashboards</h2>
                 <div class="breadcrumb">
                     <div class="breadcrumb-item">
@@ -43,7 +43,7 @@
                     </div>
                 </div>
             </div>
-            <div class="w-1/2 flex flex-wrap justify-end items-center">
+            <div class="w-full sm:w-1/2 flex flex-wrap justify-start sm:justify-end items-center">
             </div>
         </div>
     </div>
@@ -52,7 +52,7 @@
 
     {{-- <h2 class="bg-green-500">Hello this is test section</h2> --}}
 
-    <div class="w-full flex flex-wrap gap-8 justify-center">
+    <div class="w-full flex flex-wrap gap-6 justify-center">
         <div class="w-full flex flex-col gap-2">
             @if (session()->has('cus__success'))
                 <div class="!p-4  text-sm rounded bg-green-100 text-green-700 w-full !mb-2" role="alert">
@@ -66,9 +66,9 @@
             @endif
         </div>
 
-        <div class="w-full flex flex-wrap gap-4 justify-center ">
+        <div class="w-full flex flex-col gap-4">
             {{-- sec 1 max-w-[600px] --}}
-            <div class="w-1/3  flex flex-col content-card">
+            <div class="w-full max-w-[980px] mx-auto flex flex-col content-card">
 
                 <div class="flex flex-col gap-5 mb-4 w-full ">
                     <h2 class="text-xl font-semibold  capitalize">Add Domain category here</h2>
@@ -110,10 +110,10 @@
 
             </div>
             {{-- sec 2 max-w-7xl --}}
-            <div class=" w-[65%] mx-auto content-card ">
+            <div class="w-full content-card min-w-0">
 
-                <div class="w-full flex flex-wrap">
-                    <div class="w-1/2 flex flex-col gap-2">
+                <div class="w-full flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                    <div class="w-full xl:w-auto xl:flex-1 flex flex-col gap-2 min-w-0">
                         @error('actions')
                             <p class="text-red-600 bg-red-100 !p-2 text-sm">{{ $message }}</p>
                         @enderror
@@ -121,22 +121,22 @@
                             <p class="text-red-600 bg-red-100 !p-2 text-sm">{{ $message }}</p>
                         @enderror
                         <form action="{{ route('admin.domain.category.delete') }}"
-                            class="w-full flex flex-wrap justify-start items-center gap-2" method="post">
+                            class="w-full flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2 xl:max-w-[560px]" method="post">
                             @csrf
                             <select name="actions" id=""
-                                class="bg-gray-100 border border-gray-200 !w-2/5 !p-3 text-sm w-full rounded outline-none focus:border-orange-600">
+                                class="bg-gray-100 border border-gray-200 !p-3 text-sm w-full sm:flex-1 sm:min-w-[10rem] rounded outline-none focus:border-orange-600">
                                 <option value="">Bulk actions</option>
                                 <option value="1">Delete</option>
                             </select>
                             <input type="hidden" name="bulk_ids" id="valHolders">
                             <button type="submit"
-                                class="flex !p-3  !px-4 text-sm font-normal justify-center duration:600 transition-all bg-[var(--sidebar-bg)] hover:bg-[var(--primary-color)] text-white rounded cursor-pointer">
+                                class="flex !p-3 !px-4 text-sm font-normal justify-center duration:600 transition-all bg-[var(--sidebar-bg)] hover:bg-[var(--primary-color)] text-white rounded cursor-pointer shrink-0 w-full sm:w-auto">
                                 Apply
                             </button>
                         </form>
                     </div>
-                    <div class="w-1/2 flex justify-end items-center gap-2">
-                        <div class="relative w-1/2 max-h-12 overflow-hidden">
+                    <div class="w-full xl:w-auto xl:flex-1 flex justify-start xl:justify-end items-center gap-2 min-w-0">
+                        <div class="relative w-full sm:max-w-sm xl:w-[320px] max-h-12 overflow-hidden min-w-0">
                             <form method="GET" action="{{ url()->current() }}" class="relative w-full">
 
                                 <input type="search" name="search" placeholder="search here" id="search_category"
@@ -160,8 +160,8 @@
                     </div>
                 </div>
 
-                <div class="flex flex-wrap overflow-x-auto !mt-6">
-                    <table class="w-full border border-gray-200 border-collapse text-sm whitespace-nowrap"
+                <div class="overflow-x-auto !mt-6 w-full max-w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
+                    <table class="w-full min-w-[760px] border border-gray-200 border-collapse text-sm whitespace-nowrap"
                         id="domainCategoryTable">
                         <thead>
                             <tr class="bg-[var(--sidebar-bg)] text-white active-border-color ">

@@ -12,34 +12,35 @@
 
 @section('main-content')
 
-    {{-- bread-crumbs --}}
-    <div class="page-header">
-        <div class="w-full flex flex-wrap items-center">
-            <div class="w-1/2 flex flex-col gap-2 flex-wrap">
-                <h2 class="page-title">Dashboards</h2>
-                <div class="breadcrumb">
-                    <div class="breadcrumb-item">
-                        <a href="{{ route('admin.dashboard') }}" class="breadcrumb-link">Dashboard</a>
-                        <span>›</span>
-                    </div>
-                    <div class="breadcrumb-item">
-                        <a href="{{ route('admin.campaign.index') }}" class="breadcrumb-link">PBN Post Campaign</a>
-                        <span>›</span>
-                    </div>
-                    <div class="breadcrumb-item">
-                        <a href="javascript:void(0)" class="breadcrumb-link">Edit {{ $campaign->campaign_no }}</a>
-                    </div>
-                </div>
-            </div>
-            <div class="w-1/2 flex flex-wrap justify-end items-center">
+    {{-- bread-crumbs: title + Back share one row; crumbs full width below (avoids Back aligning to wrapped crumbs) --}}
+    <div class="page-header w-full max-w-full min-w-0">
+        <div class="w-full flex flex-col gap-3">
+            <div class="flex items-center justify-between gap-3 min-w-0">
+                <h2 class="page-title !mb-0 min-w-0 shrink">Dashboards</h2>
                 <a href="javascript:void(0)" onclick="history.back()"
-                    class="inline-flex items-center gap-2 !px-3 !py-2 rounded bg-gray-200 duration-400 hover:bg-gray-300 text-sm">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" class="w-5 h-5">
+                    class="inline-flex items-center justify-center gap-2 shrink-0 !px-3 !py-2 rounded bg-gray-200 duration-400 hover:bg-gray-300 text-sm whitespace-nowrap"
+                    aria-label="Go back">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" class="w-5 h-5 shrink-0">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7 7-7M3 12h18" />
                     </svg>
                     Back
                 </a>
             </div>
+            <nav class="flex flex-wrap items-baseline gap-x-1.5 gap-y-2 text-sm text-gray-600 w-full min-w-0 leading-snug"
+                aria-label="Breadcrumb">
+                <span class="inline-flex flex-wrap items-baseline gap-x-1.5 min-w-0">
+                    <a href="{{ route('admin.dashboard') }}" class="breadcrumb-link shrink-0">Dashboard</a>
+                    <span class="text-gray-400 shrink-0" aria-hidden="true">›</span>
+                </span>
+                <span class="inline-flex flex-wrap items-baseline gap-x-1.5 min-w-0">
+                    <a href="{{ route('admin.campaign.index') }}" class="breadcrumb-link">PBN Post Campaign</a>
+                    <span class="text-gray-400 shrink-0" aria-hidden="true">›</span>
+                </span>
+                <span class="min-w-0 max-w-full text-gray-600">
+                    <span class="text-gray-500">Edit</span>
+                    <span class="font-mono text-xs sm:text-sm break-all align-baseline" title="{{ $campaign->campaign_no }}">{{ $campaign->campaign_no }}</span>
+                </span>
+            </nav>
         </div>
     </div>
 
@@ -266,9 +267,9 @@
                         <input type="hidden" name="keywordmethod" value="multiple">
                         <input type="hidden" name="keywordsDataHolder" id="editKeywordsDataHolder" value="">
 
-                        <div class="w-full flex flex-col gap-1 justify-between overflow-hidden overflow-y-auto max-h-[560px] border border-gray-200 rounded-lg !p-3 bg-gray-50"
+                        <div class="w-full max-w-5xl mx-auto flex flex-col gap-2 justify-between overflow-hidden overflow-y-auto max-h-[560px] border border-gray-200 rounded-lg !p-2 sm:!p-3 bg-gray-50"
                             id="edit-multi-level-keyword-url-container">
-                            <div class="w-full flex flex-col gap-1 max-h-[420px] overflow-hidden overflow-y-auto"
+                            <div class="w-full flex flex-col gap-2 max-h-[420px] overflow-hidden overflow-y-auto"
                                 id="edit-multi-key-url-box-parent"></div>
 
                             <div class="w-full flex flex-wrap justify-end !py-2">

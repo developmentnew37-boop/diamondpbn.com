@@ -54,11 +54,11 @@
 @section('main-content')
 
     {{-- bread-crumbs --}}
-    <div class="page-header">
-        <div class="w-full flex flex-wrap items-center">
-            <div class="w-1/2 flex flex-col gap-2 flex-wrap">
+    <div class="page-header w-full max-w-full min-w-0">
+        <div class="w-full flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+            <div class="w-full sm:w-1/2 flex flex-col gap-2 min-w-0">
                 <h2 class="page-title">Add Domains </h2>
-                <div class="breadcrumb">
+                <div class="breadcrumb flex-wrap">
                     <div class="breadcrumb-item">
                         <a href="#" class="breadcrumb-link">Dashboard</a>
                         <span>›</span>
@@ -72,7 +72,7 @@
                     </div>
                 </div>
             </div>
-            <div class="w-1/2 flex flex-wrap justify-end items-center">
+            <div class="w-full sm:w-1/2 flex flex-wrap justify-start sm:justify-end items-center">
                 {{-- <a href="javascript:void(0)" id="make_article_Set"
                     class="flex !p-2 !py-3 text-sm font-normal w-1/5 justify-center duration:300 bg-black hover:bg-[var(--primary-color)] text-white rounded ">+
                     Add Article Set
@@ -85,11 +85,10 @@
 
 
 
-    <div class="w-full flex flex-wrap gap-8 justify-center  ">
-        <div class="w-full flex flex-wrap gap-4 justify-center ">
-            <div class=" w-full mx-auto content-card ">
+    <div class="w-full flex flex-col gap-4 items-center">
+        <div class="w-full max-w-[900px] content-card min-w-0">
                 {{-- <div class="content-card"> --}}
-                <div class="px-6 pt-6 flex flex-col gap-3 justify-between">
+                <div class="px-4 sm:px-6 pt-6 flex flex-col gap-3 justify-between min-w-0">
 
                     {{-- alerts here --}}
                     <div class="w-full flex flex-col gap-1">
@@ -116,9 +115,9 @@
 
                     {{-- selecting domains types --}}
                     <div
-                        class="text-xl bg-[var(--primary-color)] text-center !py-5 rounded font-semibold  capitalize w-full">
+                        class="text-xl bg-[var(--primary-color)] text-center !py-5 rounded font-semibold capitalize w-full max-w-full min-w-0 !px-3 sm:!px-5">
                         <select name="" id="domain_category"
-                            class="text-sm bg-white font-normal !p-3 rounded outline-none border border-gray-200 focus:border-2 focus:border-black">
+                            class="text-sm bg-white font-normal !p-3 rounded outline-none border border-gray-200 focus:border-2 focus:border-black w-full sm:w-auto max-w-full">
                             <option value="">select domain Type</option>
                             @if ($domainCategories && count($domainCategories) > 0)
                                 @foreach ($domainCategories as $domain)
@@ -130,15 +129,15 @@
 
                     {{--  ** domains Upload Buttons ** --}}
 
-                    <div class="w-full flex flex-wrap items-center gap-2 !mt-4">
+                    <div class="w-full flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 !mt-4">
 
                         <button
-                            class="bg-black !px-4 !py-3 rounded cursor-pointer text-sm text-white domain-add-opts duration-300 transition-all"
+                            class="bg-black !px-4 !py-3 rounded cursor-pointer text-sm text-white domain-add-opts duration-300 transition-all w-full sm:w-auto"
                             data-id="drop-file-method">Upload
                             Domains
                             File</button>
                         <button
-                            class="bg-gray-200 !px-4 !py-3 rounded cursor-pointer text-sm domain-add-opts duration-300 transition-all"
+                            class="bg-gray-200 !px-4 !py-3 rounded cursor-pointer text-sm domain-add-opts duration-300 transition-all w-full sm:w-auto"
                             data-id="manual-add-method">Add
                             Domain</button>
 
@@ -269,7 +268,7 @@
                     <div class="w-full items-center duration-600 transition-all add-domains translate-y-[20px] opacity-0 hidden"
                         id="manual-add-method">
 
-                        <form action="{{ route('admin.domain.store') }}" class="w-full flex flex-col gap-5"
+                        <form action="{{ route('admin.domain.store') }}" class="w-full flex flex-col gap-5 min-w-0"
                             method="post">
                             @csrf
                             <input type="hidden" name="domain_category_id" id="hidden_category_id">
@@ -284,8 +283,8 @@
                                     <p class="text-sm text-red-500">{{ $message }}</p>
                                 @enderror
                             </div>
-                            <div class="flex flex-wrap justify-between w-full">
-                                <div class="w-[49.5%] flex flex-col gap-2">
+                            <div class="w-full grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div class="w-full flex flex-col gap-2 min-w-0">
                                     <label for="domain_authority"
                                         class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">DA(domain
                                         Authority)
@@ -296,7 +295,7 @@
                                         <p class="text-sm text-red-500">{{ $message }}</p>
                                     @enderror
                                 </div>
-                                <div class="w-[49.5%] flex flex-col gap-2">
+                                <div class="w-full flex flex-col gap-2 min-w-0">
                                     <label for="domain_rating"
                                         class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">DR(domain
                                         rating)
@@ -308,8 +307,8 @@
                                     @enderror
                                 </div>
                             </div>
-                            <div class="flex flex-wrap justify-between w-full">
-                                <div class="w-[49.5%] flex flex-col gap-2">
+                            <div class="w-full grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div class="w-full flex flex-col gap-2 min-w-0">
                                     <label for="domain_trust_flow"
                                         class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">TF(Trust
                                         Flow)
@@ -320,7 +319,7 @@
                                         <p class="text-sm text-red-500">{{ $message }}</p>
                                     @enderror
                                 </div>
-                                <div class="w-[49.5%] flex flex-col gap-2">
+                                <div class="w-full flex flex-col gap-2 min-w-0">
                                     <label for="domain_spam_score"
                                         class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">SS(spam
                                         score)
@@ -332,8 +331,8 @@
                                     @enderror
                                 </div>
                             </div>
-                            <div class="flex flex-wrap justify-between w-full">
-                                <div class="w-[49.5%] flex flex-col gap-2">
+                            <div class="w-full grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div class="w-full flex flex-col gap-2 min-w-0">
                                     <label for="ip_address" class="text-sm flex items-center ">IP Address
                                     </label>
                                     <input type="text" name="ip" id="ip_address" placeholder="Enter Ip Address"
@@ -342,7 +341,7 @@
                                         <p class="text-sm text-red-500">{{ $message }}</p>
                                     @enderror
                                 </div>
-                                <div class="w-[49.5%] flex flex-col gap-2">
+                                <div class="w-full flex flex-col gap-2 min-w-0">
                                     <label for="api_key"
                                         class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">Api
                                         Key
@@ -356,7 +355,7 @@
                             </div>
                             <div class="w-full">
                                 <input type="submit" value="Add domain"
-                                    class="!p-3 text-[16px] cursor-pointer bg-black text-white rounded hover:bg-[var(--primary-color)] w-fit">
+                                    class="!p-3 text-[16px] cursor-pointer bg-black text-white rounded hover:bg-[var(--primary-color)] w-full sm:w-fit">
                             </div>
                         </form>
                     </div>
@@ -437,13 +436,6 @@
 
 
             </div>
-
-            {{-- </div> --}}
-        </div>
-
-    </div>
-
-    </div>
 
 
 @endsection

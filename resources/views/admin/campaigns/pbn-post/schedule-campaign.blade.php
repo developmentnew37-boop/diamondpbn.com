@@ -89,9 +89,11 @@
             </div>
         </div>
 
-        <div class="w-[35%] flex justify-end">
-            <form method="GET" action="{{ url()->current() }}" class="relative w-1/2">
+        <div class="w-[35%] flex flex-wrap justify-end items-center gap-3">
+            @include('admin.campaigns.partials.campaign-owner-filter')
+            <form method="GET" action="{{ url()->current() }}" class="relative flex-1 min-w-[200px] max-w-[50%]">
                 @foreach (request()->except('search') as $key => $value)
+                    @continue(is_array($value))
                     <input type="hidden" name="{{ $key }}" value="{{ $value }}">
                 @endforeach
 

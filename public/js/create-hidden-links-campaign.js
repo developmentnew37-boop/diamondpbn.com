@@ -865,27 +865,27 @@ window.addEventListener("DOMContentLoaded", () => {
             }
 
             let div = document.createElement("div");
-            div.className = "flex w-full bg-orange-100 keyword-url-box relative";
+            div.className = "flex w-full bg-orange-100 keyword-url-box relative keyword-mobile-stack";
             div.innerHTML = `
-                <div class="w-3/5 flex flex-col gap-2 !p-4 !pt-[45px]">
+                <div class="w-3/5 flex flex-col gap-2 !p-4 !pt-[45px] keyword-mobile-main">
                     <div class="w-full flex items-center">
-                        <label class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-1/5">Client Url</label>
-                        <div class="w-4/5 flex items-center justify-between">
-                            <input type="text" placeholder="Enter Url" class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-[78%] client-url">
-                            <input type="text" value="0" class="bg-gray-50 !p-2 text-sm outline-none text-center border border-gray-300 w-1/5 client-url-quantity num-inp">
+                        <label class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-1/5 keyword-mobile-label">Client Url</label>
+                        <div class="w-4/5 flex items-center justify-between keyword-mobile-input-wrap">
+                            <input type="text" placeholder="Enter Url" class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-[78%] client-url keyword-mobile-input-main">
+                            <input type="text" value="0" class="bg-gray-50 !p-2 text-sm outline-none text-center border border-gray-300 w-1/5 client-url-quantity num-inp keyword-mobile-qty">
                         </div>
                     </div>
                     <div class="w-full flex items-center justify-end">
                         <button class="!p-1 bg-red-600 rounded text-sm cursor-pointer text-white remove-keyword-box">delete</button>
                     </div>
                 </div>
-                <div class="w-2/5 flex flex-col gap-1 !p-4">
+                <div class="w-2/5 flex flex-col gap-1 !p-4 keyword-mobile-side">
                     <label class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">Client Keyword</label>
                     <div class="w-full flex flex-wrap justify-between keywords-area-parent">
-                        <div class="w-[78%] flex flex-wrap">
+                        <div class="w-[78%] flex flex-wrap keyword-mobile-input-main">
                             <textarea rows="5" class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none keywords-area"></textarea>
                         </div>
-                        <div class="w-1/5 flex flex-wrap">
+                        <div class="w-1/5 flex flex-wrap keyword-mobile-qty">
                             <textarea rows="5" class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none text-center keywords-quantity-area"></textarea>
                         </div>
                     </div>

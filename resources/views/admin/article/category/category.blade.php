@@ -25,9 +25,9 @@
 @section('main-content')
 
     {{-- bread-crumbs --}}
-    <div class="page-header">
-        <div class="w-full flex flex-wrap items-center">
-            <div class="w-1/2 flex flex-col gap-2 flex-wrap">
+    <div class="page-header w-full max-w-full min-w-0">
+        <div class="w-full flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+            <div class="min-w-0">
                 <h2 class="page-title">Dashboards</h2>
                 <div class="breadcrumb">
                     <div class="breadcrumb-item">
@@ -35,17 +35,13 @@
                         <span>›</span>
                     </div>
                     <div class="breadcrumb-item">
-                        {{-- {{ route('article') }} --}}
-                        <a href="" class="breadcrumb-link">Articles</a>
+                        <a href="{{ route('admin.article.index') }}" class="breadcrumb-link">Articles</a>
                         <span>›</span>
                     </div>
                     <div class="breadcrumb-item">
-                        {{-- {{ route('category') }} --}}
                         <a href="#" class="breadcrumb-link">Category</a>
                     </div>
                 </div>
-            </div>
-            <div class="w-1/2 flex flex-wrap justify-end items-center">
             </div>
         </div>
     </div>
@@ -78,11 +74,11 @@
 
 
 
-    <div class="w-full flex flex-wrap gap-4 justify-center">
-        {{-- sec 1 max-w-[600px] --}}
-        <div class="w-1/3  flex flex-col content-card">
-            <div class="flex flex-col gap-5 mb-4 w-full ">
-                <h2 class="text-xl font-semibold  capitalize">Add category here</h2>
+    <div class="w-full flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-6 min-w-0">
+        {{-- Form: full width when stacked; fixed comfortable width when beside table --}}
+        <div class="w-full lg:w-96 lg:flex-shrink-0 flex flex-col content-card min-w-0">
+            <div class="flex flex-col gap-5 mb-4 w-full text-left">
+                <h2 class="text-xl font-semibold capitalize">Add category here</h2>
                 <form action="{{ route('admin.articles.category.store') }}" method="post" class="w-full flex-col">
                     @csrf
                     <div class="w-full flex flex-col gap-5">
@@ -170,9 +166,9 @@
                             @enderror
 
                         </div>
-                        <div class="w-full flex items-center p-2">
+                        <div class="w-full flex items-stretch sm:items-center p-2">
                             <button type="submit"
-                                class="flex !p-2 !py-3 text-sm font-normal justify-center duration:600 transition-all bg-black hover:bg-[var(--primary-color)] text-white rounded cursor-pointer">
+                                class="w-full sm:w-auto flex !p-2 !py-3 text-sm font-normal justify-center duration:600 transition-all bg-black hover:bg-[var(--primary-color)] text-white rounded cursor-pointer">
                                 Add Category</button>
                         </div>
 
@@ -183,21 +179,20 @@
             </div>
 
         </div>
-        <div class=" w-[65%] mx-auto content-card ">
-            {{-- flex flex-wrap justify-start items-center gap-2 --}}
-            <div class="w-full flex flex-wrap">
-                <div class="w-1/2 flex flex-col gap-2">
+        <div class="w-full lg:flex-1 lg:min-w-0 content-card min-w-0">
+            <div class="w-full flex flex-col gap-3 md:flex-row md:flex-wrap md:items-start md:justify-between md:gap-4">
+                <div class="w-full md:flex-1 md:min-w-0 flex flex-col gap-2">
                     <form action="{{ route('admin.articles.category.delete') }}" method="post"
-                        class="flex flex-wrap justify-start items-center gap-2">
+                        class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2 w-full">
                         @csrf
                         <select name="actions" id=""
-                            class="bg-gray-100  border border-gray-200 !w-2/5 !p-3 text-sm w-full rounded outline-none focus:border-orange-600">
+                            class="bg-gray-100 border border-gray-200 !p-3 text-sm w-full sm:flex-1 sm:min-w-[10rem] rounded outline-none focus:border-orange-600">
                             <option value="">Bulk actions</option>
                             <option value="1">Delete</option>
                         </select>
                         <input type="hidden" name="bulk_ids" id="valHolders">
                         <button type="submit"
-                            class="flex !p-3  !px-4 text-sm font-normal justify-center duration:600 transition-all bg-[var(--sidebar-bg)] hover:bg-[var(--primary-color)] text-white rounded cursor-pointer">
+                            class="flex !p-3 !px-4 text-sm font-normal justify-center duration:600 transition-all bg-[var(--sidebar-bg)] hover:bg-[var(--primary-color)] text-white rounded cursor-pointer shrink-0 w-full sm:w-auto">
                             Apply
                         </button>
                     </form>
@@ -213,8 +208,8 @@
                         </div>
                     @enderror
                 </div>
-                <div class="w-1/2 flex justify-end items-center gap-2">
-                    <form method="GET" action="{{ url()->current() }}" class="relative w-1/2">
+                <div class="w-full md:w-auto md:max-w-md flex justify-start md:justify-end items-center gap-2 min-w-0">
+                    <form method="GET" action="{{ url()->current() }}" class="relative w-full min-w-0">
 
                         {{-- keep other parameters --}}
                         @foreach (request()->except('search') as $key => $value)
@@ -237,8 +232,9 @@
                     </form>
                 </div>
             </div>
-            <div class="flex flex-wrap overflow-x-auto !mt-6">
-                <table class="w-full border border-gray-100 border-collapse text-sm whitespace-nowrap searchable-table">
+            <div class="overflow-x-auto !mt-6 w-full max-w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
+                <table
+                    class="w-full min-w-[900px] border border-gray-100 border-collapse text-sm whitespace-nowrap searchable-table">
                     <thead>
                         <tr class="bg-black text-white   ">
                             <th class="border border-gray-200">

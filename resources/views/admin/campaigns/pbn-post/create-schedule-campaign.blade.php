@@ -1185,7 +1185,7 @@
             class="dy-set-overlay w-screen h-screen bg-black opacity-0 absolute top-0 left-0  duration-300 transition-all">
         </div>
 
-        <div class="dy-pop-box w-[80%] max-w-[850px] flex flex-col items-center !shadow-2xl bg-gray-50 border border-gray-300 z-2 rounded !mt-[70px] opacity-0 -translate-y-[20%] linear  duration-600 transition-all"
+        <div class="dy-pop-box w-[96%] sm:w-[80%] max-w-[850px] max-h-[calc(100vh-24px)] sm:max-h-none flex flex-col items-stretch !shadow-2xl bg-gray-50 border border-gray-300 z-2 rounded !mt-3 sm:!mt-[70px] opacity-0 -translate-y-[20%] linear  duration-600 transition-all min-w-0"
             id="dy-article-box">
             {{-- pop top bar --}}
             <div class="w-full flex justify-between items-center !bg-gray-200 !p-3">
@@ -1254,24 +1254,28 @@
 
             </div>
 
-            <div class="w-full flex justify-between items-center !bg-gray-200 !px-3 !py-2">
-                <div class="flex gap-2 items-center">
+            <div
+                class="w-full flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between !bg-gray-200 !px-3 !py-2 min-w-0 article-selected-modal-footer">
+                <div class="flex flex-col gap-2 w-full min-w-0 sm:flex-1 sm:flex-row sm:flex-wrap sm:items-center">
                     <input type="text" name="randomSelect" id="randomSelect"
-                        class="randomSelInp !p-2 bg-white rounded outline-none text-sm text-center"
+                        class="randomSelInp !p-2 bg-white rounded outline-none text-sm text-center w-full sm:w-28 sm:max-w-[10rem] shrink-0"
                         placeholder="Add random articles quantity">
-                    <button type="button" id="randomSelector"
-                        class="randomSelBtn cursor-pointer bg-blue-500 text-white  rounded !p-2 text-sm">
-                        Random
-                    </button>
-                    <button type="button" id="autoSelectArticlesBtn"
-                        class="cursor-pointer bg-indigo-600 text-white rounded !p-2 text-sm"
-                        style="background-color:#4f46e5 !important;color:#ffffff !important;">
-                        Auto Select Required
-                    </button>
-                    <span id="autoSelectArticlesProgress" class="text-xs text-gray-700"></span>
+                    <div class="flex flex-wrap gap-2 items-center w-full sm:w-auto sm:flex-1 min-w-0">
+                        <button type="button" id="randomSelector"
+                            class="randomSelBtn cursor-pointer bg-blue-500 text-white rounded !p-2 text-sm shrink-0 flex-1 min-w-[5.5rem] sm:flex-none">
+                            Random
+                        </button>
+                        <button type="button" id="autoSelectArticlesBtn"
+                            class="cursor-pointer bg-indigo-600 text-white rounded !p-2 text-sm shrink-0 flex-1 min-w-[8rem] sm:flex-none"
+                            style="background-color:#4f46e5 !important;color:#ffffff !important;">
+                            Auto Select Required
+                        </button>
+                        <span id="autoSelectArticlesProgress"
+                            class="text-xs text-gray-700 w-full sm:w-auto sm:flex-1 min-w-0"></span>
+                    </div>
                 </div>
                 <a href="#" id="multiple-articles-select"
-                    class="cursor-pointer bg-green-500 text-white rounded !p-3">
+                    class="cursor-pointer bg-green-500 text-white rounded !p-3 text-center whitespace-nowrap w-full sm:w-auto shrink-0">
                     Proceed
                 </a>
             </div>

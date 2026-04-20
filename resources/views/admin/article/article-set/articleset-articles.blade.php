@@ -7,11 +7,11 @@
 @section('main-content')
 
     {{-- bread-crumbs --}}
-    <div class="page-header">
-        <div class="w-full flex flex-wrap items-center">
-            <div class="w-1/2 flex flex-col gap-2 flex-wrap">
-                <h2 class="page-title">{{ $articleSet->name }}</h2>
-                <div class="breadcrumb">
+    <div class="page-header w-full max-w-full min-w-0">
+        <div class="w-full flex flex-col gap-3 md:flex-row md:items-start md:justify-between md:gap-4">
+            <div class="min-w-0">
+                <h2 class="page-title break-words">{{ $articleSet->name }}</h2>
+                <div class="breadcrumb flex-wrap gap-y-1">
                     <div class="breadcrumb-item">
                         <a href="{{ route('admin.dashboard') }}" class="breadcrumb-link">Dashboard</a>
                         <span>›</span>
@@ -21,13 +21,13 @@
                         <span>›</span>
                     </div>
                     <div class="breadcrumb-item">
-                        <a href="javacsript:void(0)" class="breadcrumb-link">{{ $articleSet->name . ' articles' }}</a>
+                        <span class="breadcrumb-link">{{ $articleSet->name }} articles</span>
                     </div>
                 </div>
             </div>
-            <div class="w-1/2 flex flex-wrap justify-end items-center">
+            <div class="w-full shrink-0 md:w-auto">
                 <a href="{{ route('admin.articles.set.create.options', ['id' => $articleSet->id]) }}"
-                    class="flex !p-2 !py-3 text-[16px] font-normal w-1/5 justify-center duration:300 bg-black hover:bg-[var(--primary-color)] text-white rounded ">+
+                    class="flex w-full md:w-auto !p-2 !py-3 text-[16px] font-normal justify-center duration:300 bg-black hover:bg-[var(--primary-color)] text-white rounded whitespace-nowrap">+
                     Add Article</a>
             </div>
         </div>
@@ -59,53 +59,52 @@
         <div class="w-full flex flex-wrap gap-4 justify-center ">
             <div class="w-full mx-auto content-card ">
                 {{-- <div class="content-card"> --}}
-                <div class="px-6 pt-6 flex flex-col gap-3 justify-between">
+                <div class="px-3 pt-4 sm:px-6 sm:pt-6 flex flex-col gap-3 justify-between min-w-0">
                     {{-- heading here --}}
                     <h2
-                        class="text-lg bg-[var(--primary-color)] text-white !p-2 rounded font-semibold text-center capitalize w-fit">
-                        {{ $articleSet->name }} Articles Here <span class="material-symbols-outlined !text-sm">
+                        class="text-lg bg-[var(--primary-color)] text-white !p-2 rounded font-semibold capitalize w-full sm:w-fit max-w-full text-left">
+                        {{ $articleSet->name }} Articles Here <span class="material-symbols-outlined !text-sm align-middle">
                             arrow_cool_down
                         </span>
                     </h2>
 
                     {{-- this is bulk delete thing --}}
 
-                    <div class="w-full flex flex-wrap !mt-6">
+                    <div class="w-full flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end md:justify-between md:gap-4 !mt-4 sm:!mt-6 min-w-0">
                         <form method="post" action="{{ route('admin.article.set.bulk.delete') }}"
-                            class="w-1/2 flex flex-wrap justify-start items-center gap-2">
+                            class="w-full md:flex-1 md:min-w-0 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
                             @csrf
                             <select name="actions" id=""
-                                class="bg-gray-100  border border-gray-200 !w-2/5 !p-3 text-sm w-full rounded outline-none focus:border-orange-600">
+                                class="bg-gray-100 border border-gray-200 !p-3 text-sm w-full sm:flex-1 sm:min-w-[10rem] rounded outline-none focus:border-orange-600">
                                 <option value="0">Bulk actions</option>
                                 <option value="1">Delete</option>
                             </select>
                             <input type="hidden" name="bulk_ids" id="valHolders">
                             <input type="hidden" name="article_set_id" value="{{ $articleSet->id }}">
                             <button type="submit"
-                                class="flex !p-3  !px-4 text-sm font-normal justify-center duration:600 transition-all bg-[var(--sidebar-bg)] hover:bg-[var(--primary-color)] text-white rounded cursor-pointer">
+                                class="flex !p-3 !px-4 text-sm font-normal justify-center duration:600 transition-all bg-[var(--sidebar-bg)] hover:bg-[var(--primary-color)] text-white rounded cursor-pointer shrink-0 w-full sm:w-auto min-h-12">
                                 Apply
                             </button>
                         </form>
-                        <div class="w-1/2 flex justify-end items-center gap-2">
+                        <div class="w-full md:w-auto md:max-w-md flex justify-start md:justify-end items-center gap-2 min-w-0">
                             {{-- Search Box --}}
-
-                            <div class="relative flex items-center">
-                                <svg class="absolute !left-3 !top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400"
+                            <div class="relative flex items-center w-full min-w-0">
+                                <svg class="absolute !left-3 !top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
                                     fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                         d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                                 </svg>
                                 <input data-search-input type="text" id="search_category"
-                                    class="w-full !pl-10 !pr-4 !py-2 bg-gray-100 min-h-12 border border-gray-200 rounded outline-none focus:border-[var(--primary-color)]   text-sm"
+                                    class="w-full min-w-0 !pl-10 !pr-4 !py-2 bg-gray-100 min-h-12 border border-gray-200 rounded outline-none focus:border-[var(--primary-color)] text-sm"
                                     placeholder="Search...">
                             </div>
-
                         </div>
                     </div>
 
 
-                    <div class="flex flex-wrap overflow-x-auto !mt-3">
-                        <table class="w-full border border-gray-200 border-collapse text-sm whitespace-nowrap searchable-table">
+                    <div class="overflow-x-auto !mt-3 w-full max-w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
+                        <table
+                            class="w-full min-w-[720px] border border-gray-200 border-collapse text-sm whitespace-nowrap searchable-table">
                             <thead>
                                 <tr class="bg-black text-white ">
                                     <th><input type="checkbox" name="bulk_category_select[]" id="bulk-checkBox-selector"
@@ -142,7 +141,7 @@
                                         <td class="border border-gray-200 font-sans !px-2 !py-2">
                                             {{ $article->created_at->format('d-m-Y') }}</td>
                                         <td class="border border-gray-200 font-sans !px-2 !py-2">
-                                            <div class="flex flex-wrap gap-2 justify-center items-center">
+                                            <div class="flex gap-2 justify-center items-center">
                                                 <a href="{{ route('admin.article.edit', $article->id) }}"
                                                     class="bg-yellow-500 flex items-center justify-center rounded-full w-8 h-8 duration-500 hover:bg-yellow-600">
                                                     <span class="material-symbols-outlined !text-[16px] text-white">

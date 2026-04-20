@@ -40,10 +40,17 @@
     @endif
 
     <div class="content-card w-full !mt-3">
-        <form method="GET" action="{{ url()->current() }}" class="!mb-3">
-            <input type="search" name="search" value="{{ request('search') }}" placeholder="Search campaign no"
-                class="bg-gray-100 border border-gray-200 !p-3 text-sm rounded w-full max-w-xs">
-        </form>
+        <div class="flex flex-wrap items-center gap-3 !mb-3">
+            @include('admin.campaigns.partials.campaign-owner-filter')
+            <form method="GET" action="{{ url()->current() }}" class="flex flex-wrap items-center gap-2 flex-1 min-w-[200px]">
+                @foreach (request()->except('search') as $key => $value)
+                    @continue(is_array($value))
+                    <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                @endforeach
+                <input type="search" name="search" value="{{ request('search') }}" placeholder="Search campaign no"
+                    class="bg-gray-100 border border-gray-200 !p-3 text-sm rounded w-full max-w-xs">
+            </form>
+        </div>
 
         <h2 class="text-xl capitalize !mb-4 bg-[var(--primary-color)] text-white w-fit !p-2 rounded">
             WordPress Scheduled Campaigns
@@ -105,7 +112,7 @@
                             </td>
                             <td class="border !px-2 !py-2">{{ $campaign->created_at?->format('d-M-Y H:i') }}</td>
                             <td class="border !px-2 !py-2">
-                                <div class="flex flex-wrap gap-2 justify-center items-center">
+                                <div class="flex gap-2 justify-center items-center">
                                     <a href="{{ route('admin.wp.schedule.campaign.show', $campaign->id) }}"
                                         class="bg-green-500 flex items-center justify-center rounded w-7 h-7 hover:bg-green-600"
                                         title="View campaign">

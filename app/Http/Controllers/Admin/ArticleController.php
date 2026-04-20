@@ -363,6 +363,10 @@ class ArticleController extends Controller
             'type'        => 'required|integer|in:0,1,2'
         ]);
 
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(0);
+        }
+
         // ✅ Clean description (remove scripts, keep HTML)
         $description = null;
         if (!empty($validated['description'])) {
@@ -429,6 +433,10 @@ class ArticleController extends Controller
             'category'    => 'required|integer|exists:article_categories,id',
             'language'    => 'required|integer|exists:article_languages,id',
         ]);
+
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(0);
+        }
 
         // ✅ Clean description (ALLOW HEADINGS)
         $description = null;
@@ -763,6 +771,10 @@ class ArticleController extends Controller
             abort(403);
         }
 
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(0);
+        }
+
         /* -------------------------------------------------
      | 1️⃣ Load DOCX
      |--------------------------------------------------*/
@@ -787,9 +799,10 @@ class ArticleController extends Controller
         /* -------------------------------------------------
      | 3️⃣ Preload EXISTING TITLES (GLOBAL)
      |--------------------------------------------------*/
-        $existingTitles = Article::pluck('name')
-            ->map(fn($t) => mb_strtolower(trim($t)))
-            ->toArray();
+        $existingTitles = [];
+        foreach (Article::query()->select('name')->cursor() as $row) {
+            $existingTitles[mb_strtolower(trim($row->name))] = true;
+        }
 
         /* -------------------------------------------------
      | 4️⃣ Split articles
@@ -824,7 +837,7 @@ class ArticleController extends Controller
             /* -------------------------------------------------
          | 🚫 GLOBAL DUPLICATE CHECK
          |--------------------------------------------------*/
-            if (in_array($normalizedTitle, $existingTitles, true)) {
+            if (isset($existingTitles[$normalizedTitle])) {
                 $duplicates++;
                 $duplicateTitles[] = $title;
                 continue;
@@ -866,7 +879,7 @@ class ArticleController extends Controller
             ]);
 
             // Prevent same-file duplicates
-            $existingTitles[] = $normalizedTitle;
+            $existingTitles[$normalizedTitle] = true;
 
             $created++;
         }

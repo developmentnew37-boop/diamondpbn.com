@@ -39,6 +39,7 @@ class Article extends Model
 
     protected $fillable = [
         'name',
+        'name_normalized',
         'slug',
         'description',
         'search_text',
@@ -58,6 +59,7 @@ class Article extends Model
     protected static function booted()
     {
         static::creating(function ($article) {
+            $article->name_normalized = mb_strtolower(trim((string) $article->name));
 
             if (empty($article->slug)) {
                 $article->slug = static::generateUniqueSlug($article->name);
@@ -70,6 +72,9 @@ class Article extends Model
         });
 
         static::updating(function ($article) {
+            if ($article->isDirty('name')) {
+                $article->name_normalized = mb_strtolower(trim((string) $article->name));
+            }
 
             // ✅ ALWAYS regenerate slug if name changed
             if ($article->isDirty('name')) {
@@ -96,10 +101,17 @@ class Article extends Model
     {
         $cleanTitle = static::removeEmojis($title);
 
+        // Latin / default transliteration
         $baseSlug = Str::slug($cleanTitle);
 
+        // Thai and other scripts often produce an empty ASCII slug; ICU locale avoids falling back to
+        // generic "article", "article-1", … which forces many EXISTS() queries per row at scale.
+        if ($baseSlug === '' && mb_strlen(trim($cleanTitle)) > 0) {
+            $baseSlug = Str::slug($cleanTitle, '-', 'th');
+        }
+
         if ($baseSlug === '') {
-            $baseSlug = 'article';
+            $baseSlug = 't-' . substr(bin2hex(hash('sha256', $cleanTitle, true)), 0, 12);
         }
 
         $slug = $baseSlug;
