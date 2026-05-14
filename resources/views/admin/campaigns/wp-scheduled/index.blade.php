@@ -48,7 +48,7 @@
                     <input type="hidden" name="{{ $key }}" value="{{ $value }}">
                 @endforeach
                 <input type="search" name="search" value="{{ request('search') }}" placeholder="Search campaign no"
-                    class="bg-gray-100 border border-gray-200 !p-3 text-sm rounded w-full max-w-xs">
+                    class="bg-gray-100 border border-gray-200 !p-3 text-sm rounded w-full !max-w-xs">
             </form>
         </div>
 

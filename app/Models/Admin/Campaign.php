@@ -40,9 +40,14 @@ class Campaign extends Model
         });
     }
 
-   
+
 
     public function campaignDomain()
+    {
+        return $this->belongsTo(DomainCategory::class, 'domain_category_id');
+    }
+
+    public function domainCategory()
     {
         return $this->belongsTo(DomainCategory::class, 'domain_category_id');
     }

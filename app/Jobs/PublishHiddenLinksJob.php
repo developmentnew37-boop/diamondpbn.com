@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Throwable;
+use App\Services\HiddenLinksApiService;
 
 use App\Models\Admin\HiddenLinksCampaign;
 use App\Models\Admin\HiddenLinksCampaignTasks;
@@ -112,12 +113,28 @@ class PublishHiddenLinksJob implements ShouldQueue
 
             // ✅ Hidden Links endpoint
             $endpoint = rtrim($base, '/') . '/wp-json/external/v1/hidden-links/add';
+            $nofollow = (bool) ($link->nofollow ?? false);
+            $sponsored = (bool) ($link->sponsored ?? false);
+            $rel = [];
+            if ($nofollow) {
+                $rel[] = 'nofollow';
+            }
+            if ($sponsored) {
+                $rel[] = 'sponsored';
+            }
+            $relString = implode(' ', $rel);
 
             // ✅ Payload you gave
             $payload = [
                 'keyword' => (string) $link->anchor_keyword,
                 'link'    => (string) $link->target_url,
                 'api_key' => (string) $apiKey,
+                'nofollow' => $nofollow ? 1 : 0,
+                'no_follow' => $nofollow ? 1 : 0,
+                'sponsored' => $sponsored ? 1 : 0,
+                'sponsor' => $sponsored ? 1 : 0,
+                'rel' => $rel,
+                'rel_attr' => $relString,
             ];
 
             // 🌐 STEP 3: Send request
@@ -142,6 +159,22 @@ class PublishHiddenLinksJob implements ShouldQueue
             }
             if (!is_array($json)) {
                 $json = ['raw' => $res->body()];
+            }
+
+            // Some remote implementations ignore rel on ADD.
+            // Force rel persistence via UPDATE when we have a remote id.
+            if ($remoteId && count($rel) > 0) {
+                $syncRes = HiddenLinksApiService::updateEntry(
+                    $domain->name,
+                    (string) $apiKey,
+                    (string) $remoteId,
+                    (string) $link->anchor_keyword,
+                    (string) $link->target_url,
+                    $rel
+                );
+                if (!$syncRes->successful()) {
+                    throw new \Exception("WP hidden-links rel sync failed ({$syncRes->status()}): " . $syncRes->body());
+                }
             }
 
             // ✅ STEP 4: Mark success

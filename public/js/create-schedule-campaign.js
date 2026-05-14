@@ -1962,16 +1962,20 @@ window.addEventListener("DOMContentLoaded", () => {
         function updateNormalKeywordProgress() {
             syncPostCountFromInput();
             const boxes = [...document.querySelectorAll(".keyword-url-box")];
-            let usedQty = 0;
+            let usedUrlQty = 0;
+            let usedKeywordQty = 0;
             boxes.forEach((box) => {
                 const target = parseInt(box.querySelector(".client-url-quantity")?.value || "0", 10) || 0;
                 const assigned = parseQtyLines(box.querySelector(".keywords-quantity-area")?.value || "");
-                usedQty += Math.max(target, assigned ? target : 0);
+                usedUrlQty += target;
+                usedKeywordQty += assigned;
             });
             const overallNode = ensureOverallProgressNode();
             if (overallNode) {
-                const remainingAll = Math.max(postCount - usedQty, 0);
-                overallNode.textContent = `Quantity used ${usedQty}/${postCount} | Remaining ${remainingAll}`;
+                const remainingUrlQty = Math.max(postCount - usedUrlQty, 0);
+                const remainingKeywordQty = Math.max(postCount - usedKeywordQty, 0);
+                overallNode.textContent =
+                    `URL ${usedUrlQty}/${postCount} | KW ${usedKeywordQty}/${postCount}`;
             }
         }
 
@@ -2109,6 +2113,13 @@ window.addEventListener("DOMContentLoaded", () => {
             }
         });
 
+        // Keep KW progress synced when user edits quantity textarea manually.
+        keywordUrlCon.addEventListener("input", (e) => {
+            if (e.target.classList.contains("keywords-quantity-area")) {
+                updateNormalKeywordProgress();
+            }
+        });
+
         // === Add new keyword box ===
         AddMoreBtn.addEventListener("click", (e) => {
             e.preventDefault();
@@ -2232,7 +2243,7 @@ window.addEventListener("DOMContentLoaded", () => {
             const remainingAll = Math.max(postCount - usedQty, 0);
             const overallNode = ensureMultiOverallProgressNode();
             if (overallNode) {
-                overallNode.textContent = `Quantity used ${usedQty}/${postCount} | Remaining ${remainingAll}`;
+                overallNode.textContent = `URL ${usedQty}/${postCount} | KW ${usedQty}/${postCount}`;
             }
         }
 
@@ -2495,6 +2506,72 @@ window.addEventListener("DOMContentLoaded", () => {
         updateMultiKeywordProgress();
 
 
+        // ============================================
+        // MULTI-BULK URL/KEYWORD SECTION
+        // ============================================
+        const multiBulkContainer = document.getElementById('multi-bulk-keyword-url-container');
+        if (multiBulkContainer) {
+            // Update line counts and progress
+            function updateMultiBulkProgress() {
+                syncPostCountFromInput();
+                const postQtyEl = document.getElementById('multi-bulk-post-qty');
+                if (postQtyEl) postQtyEl.textContent = postCount;
+
+                let filledPairs = 0;
+                let totalUrlLines = 0;
+                let totalKeywordLines = 0;
+
+                for (let i = 1; i <= 5; i++) {
+                    const urlTextarea = document.getElementById(`multi-bulk-url-${i}`);
+                    const keywordTextarea = document.getElementById(`multi-bulk-keyword-${i}`);
+
+                    if (urlTextarea && keywordTextarea) {
+                        const urlLines = urlTextarea.value.split('\n').filter(line => line.trim() !== '').length;
+                        const keywordLines = keywordTextarea.value.split('\n').filter(line => line.trim() !== '').length;
+
+                        // Update individual counts
+                        const urlCountEl = urlTextarea.closest('.multi-bulk-pair-card')?.querySelector('.multi-bulk-url-count');
+                        const keywordCountEl = keywordTextarea.closest('.multi-bulk-pair-card')?.querySelector('.multi-bulk-keyword-count');
+
+                        if (urlCountEl) urlCountEl.textContent = urlLines;
+                        if (keywordCountEl) keywordCountEl.textContent = keywordLines;
+
+                        if (urlLines > 0 && keywordLines > 0) {
+                            filledPairs++;
+                        }
+
+                        totalUrlLines += urlLines;
+                        totalKeywordLines += keywordLines;
+                    }
+                }
+
+                const filledPairsEl = document.getElementById('multi-bulk-filled-pairs');
+                const totalUrlLinesEl = document.getElementById('multi-bulk-total-url-lines');
+                const totalKeywordLinesEl = document.getElementById('multi-bulk-total-keyword-lines');
+
+                if (filledPairsEl) filledPairsEl.textContent = filledPairs;
+                if (totalUrlLinesEl) totalUrlLinesEl.textContent = totalUrlLines;
+                if (totalKeywordLinesEl) totalKeywordLinesEl.textContent = totalKeywordLines;
+            }
+
+            // Add event listeners to all multi-bulk textareas
+            for (let i = 1; i <= 5; i++) {
+                const urlTextarea = document.getElementById(`multi-bulk-url-${i}`);
+                const keywordTextarea = document.getElementById(`multi-bulk-keyword-${i}`);
+
+                if (urlTextarea) {
+                    urlTextarea.addEventListener('input', updateMultiBulkProgress);
+                }
+                if (keywordTextarea) {
+                    keywordTextarea.addEventListener('input', updateMultiBulkProgress);
+                }
+            }
+
+            // Initial update
+            updateMultiBulkProgress();
+        }
+
+
         let addKeywordBtn = document.getElementById("add-keywords-links");
         addKeywordBtn.addEventListener("click", (e) => {
             e.preventDefault();
@@ -2505,6 +2582,9 @@ window.addEventListener("DOMContentLoaded", () => {
             document.getElementById('keyWordsMethod').value = `${method}`;
             const noFollow = document.getElementById("no_follow")?.checked
                 ? document.getElementById("no_follow").value
+                : "";
+            const sponsored = document.getElementById("sponsored_link")?.checked
+                ? document.getElementById("sponsored_link").value
                 : "";
 
             let keyWordBox = document.querySelectorAll(".keyword-url-box");
@@ -2605,6 +2685,7 @@ window.addEventListener("DOMContentLoaded", () => {
                             media: media ? media : "-",
                             keyword: keywords[keywordIndex],
                             nofollow: noFollow,
+                            sponsored: sponsored,
                         });
 
                         repeatCount--;
@@ -2673,6 +2754,7 @@ window.addEventListener("DOMContentLoaded", () => {
                         keyword: bulkKeywordsVal[x],
                         media: bulkMediaVal[x] ? bulkMediaVal[x] : "-",
                         nofollow: noFollow,
+                        sponsored: sponsored,
                     });
                 }
 
@@ -2704,6 +2786,7 @@ window.addEventListener("DOMContentLoaded", () => {
                     // setting quantity
                     let quantity = item.querySelector('.multi-keyword-url-box-quantity').value;
                     singleBoxData.nofollow = noFollow;
+                    singleBoxData.sponsored = sponsored;
                     // check this
                     for (let z = 0; z < parseInt(quantity); z++) {
                         multiData.push(singleBoxData)
@@ -2723,6 +2806,90 @@ window.addEventListener("DOMContentLoaded", () => {
 
                 keywords_url_data = multiData
             }
+            if (method == "multi_bulk") {
+                syncPostCountFromInput();
+
+                const multiBulkData = [];
+                const pairs = [];
+
+                // Collect all 5 pairs
+                for (let i = 1; i <= 5; i++) {
+                    const urlTextarea = document.getElementById(`multi-bulk-url-${i}`);
+                    const keywordTextarea = document.getElementById(`multi-bulk-keyword-${i}`);
+
+                    if (urlTextarea && keywordTextarea) {
+                        const urls = urlTextarea.value.split('\n').filter(line => line.trim() !== '').map(line => line.trim());
+                        const keywords = keywordTextarea.value.split('\n').filter(line => line.trim() !== '').map(line => line.trim());
+
+                        if (urls.length > 0 || keywords.length > 0) {
+                            pairs.push({ pairIndex: i, urls, keywords });
+                        }
+                    }
+                }
+
+                // Validation
+                if (pairs.length === 0) {
+                    alert("Please fill at least Pair 1 with URLs and keywords.");
+                    return;
+                }
+
+                // Pair 1 must match postCount
+                const pair1 = pairs.find(p => p.pairIndex === 1);
+                if (!pair1) {
+                    alert("Pair 1 is required and must be filled first.");
+                    return;
+                }
+
+                if (pair1.urls.length !== postCount) {
+                    alert(`Pair 1 URLs must have exactly ${postCount} lines (one per post). Currently: ${pair1.urls.length}`);
+                    return;
+                }
+
+                if (pair1.keywords.length !== postCount) {
+                    alert(`Pair 1 Keywords must have exactly ${postCount} lines (one per post). Currently: ${pair1.keywords.length}`);
+                    return;
+                }
+
+                // Validate other pairs have matching URL/keyword counts
+                for (const pair of pairs) {
+                    if (pair.pairIndex !== 1) {
+                        if (pair.urls.length !== pair.keywords.length) {
+                            alert(`Pair ${pair.pairIndex}: URLs (${pair.urls.length}) and Keywords (${pair.keywords.length}) must have the same number of lines.`);
+                            return;
+                        }
+                    }
+                }
+
+                // Build the data structure
+                for (let postIndex = 0; postIndex < postCount; postIndex++) {
+                    const postData = {
+                        url: pair1.urls[postIndex],
+                        keyword: pair1.keywords[postIndex],
+                        media: "-",
+                        nofollow: noFollow,
+                        sponsored: sponsored
+                    };
+
+                    // Add additional pairs if available
+                    const additionalPairs = [];
+                    for (const pair of pairs) {
+                        if (pair.pairIndex !== 1 && postIndex < pair.urls.length) {
+                            additionalPairs.push({
+                                url: pair.urls[postIndex],
+                                keyword: pair.keywords[postIndex]
+                            });
+                        }
+                    }
+
+                    if (additionalPairs.length > 0) {
+                        postData.additional_links = additionalPairs;
+                    }
+
+                    multiBulkData.push(postData);
+                }
+
+                keywords_url_data = multiBulkData;
+            }
 
             let keywordsDataTable = document.getElementById(
                 "keywords-data-table"
@@ -2736,9 +2903,40 @@ window.addEventListener("DOMContentLoaded", () => {
             keywords_url_data.forEach((item, idx) => {
                 let tr = document.createElement("tr");
                 tr.className = "hover:bg-gray-50";
+
+                // Handle URL display
+                let urlDisplay = '';
+                if (Array.isArray(item.url)) {
+                    urlDisplay = item.url.join('<br>');
+                } else {
+                    urlDisplay = item.url;
+                    // Add additional links if present (multi-bulk)
+                    if (item.additional_links && Array.isArray(item.additional_links)) {
+                        const additionalUrls = item.additional_links.map(link => link.url).join('<br>');
+                        if (additionalUrls) {
+                            urlDisplay += '<br><span class="text-xs text-gray-500">[Additional]</span><br>' + additionalUrls;
+                        }
+                    }
+                }
+
+                // Handle Keyword display
+                let keywordDisplay = '';
+                if (Array.isArray(item.keyword)) {
+                    keywordDisplay = item.keyword.join('<br>');
+                } else {
+                    keywordDisplay = item.keyword;
+                    // Add additional keywords if present (multi-bulk)
+                    if (item.additional_links && Array.isArray(item.additional_links)) {
+                        const additionalKeywords = item.additional_links.map(link => link.keyword).join('<br>');
+                        if (additionalKeywords) {
+                            keywordDisplay += '<br><span class="text-xs text-gray-500">[Additional]</span><br>' + additionalKeywords;
+                        }
+                    }
+                }
+
                 tr.innerHTML = `
-                 <td class="border border-gray-200 font-sans !p-2"><div>${Array.isArray(item.url) ? (item.url).join('<br>') : item.url}</div></td>
-                 <td class="border border-gray-200 font-sans !p-2"><div>${Array.isArray(item.keyword) ? (item.keyword).join('<br>') : item.keyword}</div></td>
+                 <td class="border border-gray-200 font-sans !p-2"><div>${urlDisplay}</div></td>
+                 <td class="border border-gray-200 font-sans !p-2"><div>${keywordDisplay}</div></td>
                  <td class="border border-gray-200 font-sans !p-2"><div>${item.media != '' ? item.media : '-'}</div></td>
                 `;
                 keywordsDataTable.querySelector("tbody").append(tr);
@@ -3048,8 +3246,38 @@ window.addEventListener("DOMContentLoaded", () => {
             manualDomainCount.textContent = `${count}`;
         })
 
+        function getManualDomainAlertBox() {
+            let box = document.getElementById('manual-domain-inline-alert');
+            if (box) return box;
+            box = document.createElement('div');
+            box.id = 'manual-domain-inline-alert';
+            box.className = 'hidden !p-4 text-sm rounded bg-red-100 text-red-700 w-full !mb-3';
+            const host = document.getElementById('campaign-form');
+            if (host) host.insertBefore(box, host.firstChild);
+            return box;
+        }
+
+        function hideManualDomainAlert() {
+            const box = document.getElementById('manual-domain-inline-alert');
+            if (!box) return;
+            box.classList.add('hidden');
+            box.innerHTML = '';
+        }
+
+        function showManualDomainAlert(message, missingDomains = []) {
+            const box = getManualDomainAlertBox();
+            if (!box) return;
+            const listHtml = Array.isArray(missingDomains) && missingDomains.length
+                ? `<div class="!mt-2"><strong>Missing domains:</strong><br>${missingDomains.map((d) => String(d)).join('<br>')}</div>`
+                : '';
+            box.innerHTML = `<span class="font-medium">${message}</span>${listHtml}`;
+            box.classList.remove('hidden');
+            box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
+            hideManualDomainAlert();
 
             const selectedRadio = document.querySelector('input[name="sel_domains"]:checked');
             const campaignDomainHolder = document.getElementById('campaigns_domains_holder');
@@ -3096,7 +3324,7 @@ window.addEventListener("DOMContentLoaded", () => {
             ------------------------------*/
             else {
                 if (!manualDomainsArea) {
-                    alert('Manual domains field not found.');
+                    showManualDomainAlert('Manual domains field not found.');
                     return;
                 }
 
@@ -3106,7 +3334,7 @@ window.addEventListener("DOMContentLoaded", () => {
                     .filter(Boolean);
 
                 if (domains.length !== postCount) {
-                    alert(`Manual domains must be equal to postCount (${postCount})`);
+                    showManualDomainAlert(`Manual domains must be equal to post count (${postCount}).`);
                     return;
                 }
 
@@ -3129,7 +3357,10 @@ window.addEventListener("DOMContentLoaded", () => {
                     const res = await response.json();
 
                     if (!res.status) {
-                        alert(res.message || 'Domain validation failed.');
+                        showManualDomainAlert(
+                            res.message || 'Domain validation failed.',
+                            Array.isArray(res?.data?.missing) ? res.data.missing : []
+                        );
                         return;
                     }
 
@@ -3137,7 +3368,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
                 } catch (error) {
                     console.error('Domain validation error:', error);
-                    alert('Something went wrong while validating domains.');
+                    showManualDomainAlert('Something went wrong while validating domains.');
 
                 } finally {
                     icon?.classList.remove('hidden');

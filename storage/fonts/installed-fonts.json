@@ -1,0 +1,8 @@
+{
+    "outfit": {
+        "normal": "C:\\laravel\\pbn_automation_software\\storage\\fonts\/outfit_normal_fa93d533500c8b022fccb3e37d0cf27b",
+        "500": "C:\\laravel\\pbn_automation_software\\storage\\fonts\/outfit_500_dfe4418ccc133ca91f652f5405dec7c6",
+        "bold": "C:\\laravel\\pbn_automation_software\\storage\\fonts\/outfit_bold_8609ca962d9c4aa7038ca8c0e59ca698",
+        "800": "outfit_800_2eca1d5bf20ca94842f8515c44167423"
+    }
+}

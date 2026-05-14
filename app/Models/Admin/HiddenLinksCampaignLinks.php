@@ -14,11 +14,13 @@ class HiddenLinksCampaignLinks extends Model
         'target_url',
         'anchor_keyword',
         'nofollow',
+        'sponsored',
     ];
 
     protected $casts = [
         'sort_order' => 'integer',
         'nofollow'   => 'boolean',
+        'sponsored'  => 'boolean',
     ];
 
     public function campaign()

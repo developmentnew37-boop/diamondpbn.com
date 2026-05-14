@@ -155,10 +155,10 @@
                             </td>
 
                             @php $postUrl = \App\Support\ReportDisplay::externalLink($post->remote_url); @endphp
-                            <td class="border !px-2 !py-3 max-w-[14rem] align-top break-words">
+                            <td class="border !px-2 !py-3 max-w-[14rem] align-top">
                                 @if ($postUrl['href'] !== '')
                                     <a href="{{ $postUrl['href'] }}" target="_blank" rel="noopener"
-                                        class="text-blue-600 hover:underline break-all"
+                                        class="block w-full overflow-hidden text-ellipsis whitespace-nowrap text-blue-600 hover:underline"
                                         title="{{ $postUrl['title'] }}">{{ $postUrl['display'] }}</a>
                                 @else
                                     -

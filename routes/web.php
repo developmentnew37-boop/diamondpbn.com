@@ -7,6 +7,12 @@ Route::get('/', function () {
     return view('home');
 })->name('home');
 
+// Temporary route to check PHP configuration
+Route::get('/check-php-config', function () {
+    phpinfo();
+    exit;
+});
+
 // Route::get('/', function () {
 //     return view('welcome');
 // })->name('index'); 

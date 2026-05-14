@@ -8,6 +8,8 @@ use App\Models\Admin\DomainCategory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Auth;
+use Spatie\SimpleExcel\SimpleExcelWriter;
+use Illuminate\Support\Str;
 
 class DomainController extends Controller
 {
@@ -289,5 +291,58 @@ class DomainController extends Controller
         // END removing logic
 
         return back()->with('cus__success', 'Selected domain/domains are deleted successfully.');
+    }
+
+    /**
+     * Export domains by selected category as Excel.
+     */
+    public function extractByCategory(Request $request)
+    {
+        $validated = $request->validate([
+            'category_id' => 'required|integer|exists:domain_categories,id',
+        ]);
+
+        $categoryId = (int) $validated['category_id'];
+        $category = DomainCategory::query()
+            ->select(['id', 'name'])
+            ->findOrFail($categoryId);
+
+        $fileName = 'domains-' . Str::slug((string) $category->name) . '-' . now()->format('Ymd_His') . '.xlsx';
+
+        $writer = SimpleExcelWriter::streamDownload($fileName)->addHeader([
+            'Domain',
+            'Category',
+            'DA',
+            'TF',
+            'DR',
+            'SS',
+            'IP',
+            'API Key',
+            'Status',
+            'Created At',
+        ]);
+
+        Domain::query()
+            ->select(['id', 'name', 'da', 'tf', 'dr', 'ss', 'ip', 'api_key', 'status', 'created_at'])
+            ->where('domain_category_id', $categoryId)
+            ->orderBy('id')
+            ->chunkById(500, function ($domains) use ($writer, $category) {
+                foreach ($domains as $domain) {
+                    $writer->addRow([
+                        'Domain' => (string) ($domain->name ?? '-'),
+                        'Category' => (string) ($category->name ?? '-'),
+                        'DA' => (int) ($domain->da ?? 0),
+                        'TF' => (int) ($domain->tf ?? 0),
+                        'DR' => (int) ($domain->dr ?? 0),
+                        'SS' => (int) ($domain->ss ?? 0),
+                        'IP' => (string) ($domain->ip ?? '-'),
+                        'API Key' => (string) ($domain->api_key ?? '-'),
+                        'Status' => ((int) ($domain->status ?? 0) === 1) ? 'Connected' : 'Disconnected',
+                        'Created At' => optional($domain->created_at)->format('d M Y H:i'),
+                    ]);
+                }
+            }, 'id');
+
+        return $writer->toBrowser();
     }
 }

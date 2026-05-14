@@ -79,40 +79,74 @@ class BlogrollApiService
      * Update blogroll entry at given index. api_key in body.
      * URL: .../blogroll/update/{index}
      */
-    public static function updateEntry(string $domain, string $apiKey, int $index, string $keyword, string $link): \Illuminate\Http\Client\Response
+    public static function updateEntry(
+        string $domain,
+        string $apiKey,
+        int $index,
+        string $keyword,
+        string $link,
+        ?array $rel = null
+    ): \Illuminate\Http\Client\Response
     {
         $base     = self::baseUrl($domain);
         $endpoint = $base . '/wp-json/external/v1/blogroll/update/' . $index;
+        $payload = [
+            'api_key' => $apiKey,
+            'keyword' => $keyword,
+            'link'    => $link,
+        ];
+        if (is_array($rel)) {
+            $tokens = array_values($rel);
+            $payload['rel'] = $tokens;
+            $payload['rel_attr'] = implode(' ', $tokens);
+            $payload['nofollow'] = in_array('nofollow', $tokens, true) ? 1 : 0;
+            $payload['no_follow'] = in_array('nofollow', $tokens, true) ? 1 : 0;
+            $payload['sponsored'] = in_array('sponsored', $tokens, true) ? 1 : 0;
+            $payload['sponsor'] = in_array('sponsored', $tokens, true) ? 1 : 0;
+        }
 
         return Http::withoutVerifying()
             ->timeout(60)
             ->acceptJson()
             ->asJson()
-            ->patch($endpoint, [
-                'api_key' => $apiKey,
-                'keyword' => $keyword,
-                'link'    => $link,
-            ]);
+            ->patch($endpoint, $payload);
     }
 
     /**
      * Update blogroll entry by remote id (from GET /blogroll). POST .../blogroll/update/{id}.
      * Use this for bulk update and single update when task.remote_id is available.
      */
-    public static function updateEntryByRemoteId(string $domain, string $apiKey, string $remoteId, string $keyword, string $link): \Illuminate\Http\Client\Response
+    public static function updateEntryByRemoteId(
+        string $domain,
+        string $apiKey,
+        string $remoteId,
+        string $keyword,
+        string $link,
+        ?array $rel = null
+    ): \Illuminate\Http\Client\Response
     {
         $base    = self::baseUrl($domain);
         $endpoint = $base . '/wp-json/external/v1/blogroll/update/' . urlencode($remoteId);
+        $payload = [
+            'api_key' => $apiKey,
+            'keyword' => $keyword,
+            'link'    => $link,
+        ];
+        if (is_array($rel)) {
+            $tokens = array_values($rel);
+            $payload['rel'] = $tokens;
+            $payload['rel_attr'] = implode(' ', $tokens);
+            $payload['nofollow'] = in_array('nofollow', $tokens, true) ? 1 : 0;
+            $payload['no_follow'] = in_array('nofollow', $tokens, true) ? 1 : 0;
+            $payload['sponsored'] = in_array('sponsored', $tokens, true) ? 1 : 0;
+            $payload['sponsor'] = in_array('sponsored', $tokens, true) ? 1 : 0;
+        }
 
         return Http::withoutVerifying()
             ->timeout(60)
             ->acceptJson()
             ->asJson()
-            ->post($endpoint, [
-                'api_key' => $apiKey,
-                'keyword' => $keyword,
-                'link'    => $link,
-            ]);
+            ->post($endpoint, $payload);
     }
 
     /**

@@ -99,6 +99,31 @@
         .sortable-ghost {
             opacity: 0.5;
         }
+
+        /* Multi-bulk pairs: obvious horizontal scrollbar for clients */
+        .multi-bulk-x-scroll {
+            scrollbar-width: auto;
+            scrollbar-color: #94a3b8 #e2e8f0;
+        }
+
+        .multi-bulk-x-scroll::-webkit-scrollbar {
+            height: 12px;
+        }
+
+        .multi-bulk-x-scroll::-webkit-scrollbar-track {
+            background: #e2e8f0;
+            border-radius: 6px;
+        }
+
+        .multi-bulk-x-scroll::-webkit-scrollbar-thumb {
+            background: #94a3b8;
+            border-radius: 6px;
+            border: 2px solid #e2e8f0;
+        }
+
+        .multi-bulk-x-scroll::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
     </style>
 @endpush
 
@@ -1343,12 +1368,12 @@
         <div
             class="dy-key-set-overlay w-screen h-screen bg-black opacity-0 absolute top-0 left-0  duration-300 transition-all">
         </div>
-        <div class="dy-key-pop-box w-[80%] max-w-[850px] flex flex-col items-center !shadow-2xl bg-gray-50 border border-gray-300 z-2 rounded !mt-[70px] opacity-0 -translate-y-[20%] linear  duration-600 transition-all"
+        <div class="dy-key-pop-box w-[96%] sm:w-[90%] max-w-[min(96vw,1280px)] max-h-[calc(100vh-24px)] sm:max-h-none flex flex-col items-stretch !shadow-2xl bg-gray-50 border border-gray-300 z-2 rounded !mt-3 sm:!mt-[70px] opacity-0 -translate-y-[20%] linear  duration-600 transition-all min-w-0"
             id="dy-key-article-box">
             {{-- pop top bar --}}
-            <div class="w-full flex justify-between items-center !bg-gray-200 !p-3">
-                <h6>URL Keywords</h6>
-                <p>Post Quantity <span class="dy-post-count" id="PostQuantity">(0)</span></p>
+            <div class="w-full flex flex-wrap sm:flex-nowrap justify-between items-center !bg-gray-200 !p-3 gap-2">
+                <h6 class="text-sm sm:text-base">URL Keywords</h6>
+                <p class="text-sm">Post Quantity <span class="dy-post-count" id="PostQuantity">(0)</span></p>
                 <button type="button" class="cursor-pointer article-set-close" id='dy-key-close-btn'>
                     <span class="material-symbols-outlined">
                         close
@@ -1357,28 +1382,36 @@
             </div>
             <div class="w-full flex flex-col gap-3 !p-3 max-h-[560px] overflow-auto">
 
-                <div class="w-full border-b border-[var(--primary-color)] flex items-center gap-2">
+                <div class="w-full border-b border-[var(--primary-color)] flex flex-wrap items-stretch gap-1 sm:gap-2">
                     <label
-                        class="!p-3 bg-[var(--primary-color)] border border-[var(--primary-color)] duration-300 transition-all text-white border-b-0 text-sm text-center cursor-pointer keyword-tab-btn"
+                        class="!p-2 sm:!p-3 bg-[var(--primary-color)] border border-[var(--primary-color)] duration-300 transition-all text-white border-b-0 text-xs sm:text-sm text-center cursor-pointer keyword-tab-btn whitespace-nowrap"
                         id="add_keyword_url">
-                        Add Keyword & Url
+                        Keyword & Url
                         <input type="radio" name="keyword_data" id="add_keyword_url" class="keyword-method-inp"
                             value="normal" data-id="keyword-url-container" checked hidden>
                     </label>
                     <label
-                        class="!p-3 bg-gray-50 border border-gray-300 border-b-0 text-sm text-center duration-300 transition-all cursor-pointer keyword-tab-btn"
+                        class="!p-2 sm:!p-3 bg-gray-50 border border-gray-300 border-b-0 text-xs sm:text-sm text-center duration-300 transition-all cursor-pointer keyword-tab-btn whitespace-nowrap"
                         id="add_bulk_keyword_url">
-                        Add Bulk Keyword & Url
+                        Bulk
                         <input type="radio" name="keyword_data" id="add_bulk_keyword_url" class="keyword-method-inp"
                             value="bulk" data-id="bulk-keyword-url-container" hidden>
                     </label>
                     <label
-                        class="!p-3 bg-gray-50 border border-gray-300 border-b-0 text-sm text-center duration-300 transition-all cursor-pointer keyword-tab-btn"
+                        class="!p-2 sm:!p-3 bg-gray-50 border border-gray-300 border-b-0 text-xs sm:text-sm text-center duration-300 transition-all cursor-pointer keyword-tab-btn whitespace-nowrap"
                         id="add_multi_level_keyword_url">
-                        Add Multi Level Keyword & Url
+                        Multi Level
                         <input type="radio" name="keyword_data" id="add_multi_level_keyword_url"
                             class="keyword-method-inp" value="multiple" data-id="multi-level-keyword-url-container"
                             hidden>
+                    </label>
+                    <label
+                        class="!p-2 sm:!p-3 bg-gray-50 border border-gray-300 border-b-0 text-xs sm:text-sm text-center duration-300 transition-all cursor-pointer keyword-tab-btn whitespace-nowrap"
+                        id="add_multi_bulk_keyword_url">
+                        Multi-bulk
+                        <input type="radio" name="keyword_data" id="add_multi_bulk_keyword_url"
+                            class="keyword-method-inp" value="multi_bulk"
+                            data-id="multi-bulk-keyword-url-container" hidden>
                     </label>
                 </div>
                 {{-- border-b border-b-[var(--primary-color)] --}}
@@ -1576,14 +1609,87 @@
 
                     </div>
                 </div>
+                {{-- multi-bulk url & keyword section --}}
+                <div class="w-full flex flex-col gap-3 max-h-[min(70vh,720px)] overflow-hidden overflow-y-auto bg-gray-100 keyword-tab-sec hidden min-w-0"
+                    id="multi-bulk-keyword-url-container">
+                    <div
+                        class="w-full flex flex-col gap-3 rounded border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 !p-3 sm:!p-4">
+                        <p class="text-sm text-gray-700">
+                            Add up to 5 URL/Keyword pairs. Pair 1 must match full post quantity. Pair 2-5 can be shorter and apply from website 1 onward.
+                        </p>
+                        <div class="flex flex-wrap gap-2 text-xs sm:text-sm">
+                            <span class="rounded bg-white border border-blue-200 !px-2 !py-1">
+                                Post Quantity: <strong id="multi-bulk-post-qty">0</strong>
+                            </span>
+                            <span class="rounded bg-white border border-blue-200 !px-2 !py-1">
+                                Filled Pairs: <strong id="multi-bulk-filled-pairs">0</strong>/5
+                            </span>
+                            <span class="rounded bg-white border border-blue-200 !px-2 !py-1">
+                                Total URL Lines: <strong id="multi-bulk-total-url-lines">0</strong>
+                            </span>
+                            <span class="rounded bg-white border border-blue-200 !px-2 !py-1">
+                                Total Keyword Lines: <strong id="multi-bulk-total-keyword-lines">0</strong>
+                            </span>
+                        </div>
+                    </div>
+                    {{-- Horizontal scroll: one wide "pair" column at a time; client scrolls X to see Pair 1–5 --}}
+                    <div class="w-full min-w-0 rounded border border-dashed border-gray-300 bg-white/60 !px-2 !py-2">
+                        <p class="text-xs sm:text-sm text-gray-700 !mb-2">
+                            <span class="font-semibold text-[var(--primary-color)]">How to use:</span>
+                            Scroll <strong>left ↔ right</strong> (scrollbar under the pairs, or trackpad / touch swipe) to open
+                            <strong>Pair 1</strong> through <strong>Pair 5</strong>. Each block is one pair: URLs on top, keywords below.
+                        </p>
+                        <div
+                            class="multi-bulk-x-scroll w-full overflow-x-auto overflow-y-visible pb-2 scroll-smooth snap-x snap-mandatory [-webkit-overflow-scrolling:touch]">
+                            <div class="flex flex-nowrap gap-4 w-max min-h-0 !py-1 !pr-1">
+                            @for ($pairIndex = 1; $pairIndex <= 5; $pairIndex++)
+                                <div
+                                    class="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md duration-300 !p-4 flex flex-col gap-3 multi-bulk-pair-card flex-shrink-0 snap-start w-[min(92vw,440px)] sm:w-[400px] max-w-[440px] min-w-[280px]">
+                                    <div class="flex items-center justify-between">
+                                        <h6 class="text-sm font-semibold text-[var(--primary-color)]">Pair {{ $pairIndex }}</h6>
+                                        <span
+                                            class="text-[11px] rounded bg-indigo-100 text-indigo-700 !px-2 !py-[2px]">#{{ $pairIndex }}</span>
+                                    </div>
+                                    <div class="flex flex-col gap-1">
+                                        <label for="multi-bulk-url-{{ $pairIndex }}" class="text-sm">
+                                            Client Url {{ $pairIndex }}
+                                        </label>
+                                        <div class="text-xs text-gray-500">
+                                            Lines: <span class="font-semibold multi-bulk-url-count">0</span>
+                                        </div>
+                                        <textarea id="multi-bulk-url-{{ $pairIndex }}"
+                                            class="bg-gray-50 !p-3 text-sm outline-none border border-gray-300 rounded w-full min-w-0 resize-y multi-bulk-url focus:border-[var(--primary-color)]"
+                                            rows="10" placeholder="One URL per line"></textarea>
+                                    </div>
+                                    <div class="flex flex-col gap-1">
+                                        <label for="multi-bulk-keyword-{{ $pairIndex }}"
+                                            class="text-sm after:content-['*'] after:ml-1 after:text-[var(--primary-color)]">
+                                            Client Keyword {{ $pairIndex }}
+                                        </label>
+                                        <div class="text-xs text-gray-500">
+                                            Lines: <span class="font-semibold multi-bulk-keyword-count">0</span>
+                                        </div>
+                                        <textarea id="multi-bulk-keyword-{{ $pairIndex }}"
+                                            class="bg-gray-50 !p-3 text-sm outline-none border border-gray-300 rounded w-full min-w-0 resize-y multi-bulk-keyword focus:border-[var(--primary-color)]"
+                                            rows="10" placeholder="One keyword per line"></textarea>
+                                    </div>
+                                </div>
+                            @endfor
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
 
             </div>
-            <div class="w-full flex justify-between items-center !bg-gray-200 !px-3 !py-2">
-                <div class="flex gap-1 items-center">
+            <div class="w-full flex flex-col sm:flex-row gap-2 sm:gap-0 justify-between sm:items-center !bg-gray-200 !px-3 !py-2">
+                <div class="flex flex-wrap gap-1 items-center">
                     <input type="checkbox" name="no_follow" id="no_follow" value="1">
                     <label for="no_follow" class="text-sm">No Follow</label>
                     <p class="text-[12px]">(Check here to get Nofollow Link)</p>
+                    <input type="checkbox" name="sponsored_link" id="sponsored_link" value="1" class="!ml-3">
+                    <label for="sponsored_link" class="text-sm">Sponsor</label>
+                    <p class="text-[12px]">(Check here to add Sponsored rel)</p>
 
                 </div>
                 <a href="#" type="button" id="add-keywords-links"

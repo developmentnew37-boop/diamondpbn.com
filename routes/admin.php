@@ -15,6 +15,7 @@ use App\Http\Controllers\Admin\DomainCategoryController;
 use App\Http\Controllers\Admin\DomainController;
 use App\Http\Controllers\Admin\DomainSetController;
 use App\Http\Controllers\Admin\HiddenLinkCampaignController;
+use App\Http\Controllers\Admin\InvoiceController;
 use App\Http\Controllers\Admin\ProfileController;
 use App\Http\Controllers\Admin\ScheduleCampaignController;
 use App\Http\Controllers\Admin\ScheduleSidebarCampaignController;
@@ -168,6 +169,7 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     /** redirect to domain list page base on domain category **/
 
     Route::post('/domain/redirect/list', [DomainController::class, 'redirect__func'])->name('redirect.to.list');
+    Route::get('/domain/extract', [DomainController::class, 'extractByCategory'])->name('domain.extract');
 
     /** ends here **/
 
@@ -264,6 +266,8 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
 
     Route::post('/campaign/bulk-purge-local', [campaignController::class, 'bulkPurgeLocal'])->name('campaign.bulk.purge.local');
 
+    Route::post('/campaign/bulk-retry-failed', [campaignController::class, 'bulkRetryFailed'])->name('campaign.bulk.retry.failed');
+
     Route::resource('/campaign', campaignController::class);
     /* sidebar campaign */
     Route::get('/sidebar/campaign/retry-task/{id}', [SidebarCampaignController::class, 'retryTask'])->name('sidebar.campaign.retry.task');
@@ -275,6 +279,8 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     Route::post('/sidebar/campaign/{id}/purge-local', [SidebarCampaignController::class, 'purgeLocalOnly'])->name('sidebar.campaign.purge.local');
 
     Route::post('/sidebar/campaign/bulk-purge-local', [SidebarCampaignController::class, 'bulkPurgeLocal'])->name('sidebar.campaign.bulk.purge.local');
+    Route::post('/sidebar/campaign/bulk-retry-failed', [SidebarCampaignController::class, 'bulkRetryFailed'])->name('sidebar.campaign.bulk.retry.failed');
+    Route::get('/sidebar/campaign/extract-domains', [SidebarCampaignController::class, 'extractDomains'])->name('sidebar.campaign.extract.domains');
 
     Route::resource('/sidebar/campaign', SidebarCampaignController::class)->names('sidebar.campaign');
 
@@ -287,6 +293,8 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     Route::post('/hidden/link/campaign/bulk-delete', [HiddenLinkCampaignController::class, 'bulkDeleteCampaigns'])->name('hidden.link.campaign.bulk.delete');
 
     Route::post('/hidden/link/campaign/bulk-purge-local', [HiddenLinkCampaignController::class, 'bulkPurgeLocalCampaigns'])->name('hidden.link.campaign.bulk.purge.local');
+
+    Route::post('/hidden/link/campaign/bulk-retry-failed', [HiddenLinkCampaignController::class, 'bulkRetryFailed'])->name('hidden.link.campaign.bulk.retry.failed');
 
     Route::post('/hidden/link/campaign/{id}/purge-local', [HiddenLinkCampaignController::class, 'purgeLocalOnly'])->name('hidden.link.campaign.purge.local');
 
@@ -308,6 +316,8 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     Route::post('/campaign/post/schedule/{id}/purge-local', [ScheduleCampaignController::class, 'purgeLocalOnly'])->name('schedule.campaign.purge.local');
 
     Route::post('/campaign/post/schedule/bulk-purge-local', [ScheduleCampaignController::class, 'bulkPurgeLocal'])->name('schedule.campaign.bulk.purge.local');
+
+    Route::post('/campaign/post/schedule/bulk-retry-failed', [ScheduleCampaignController::class, 'bulkRetryFailed'])->name('schedule.campaign.bulk.retry.failed');
 
     Route::resource('/campaign/post/schedule', ScheduleCampaignController::class)->names('schedule.campaign');
 
@@ -339,6 +349,8 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
 
     Route::post('/campaign/sidebar/schedule/bulk-purge-local', [ScheduleSidebarCampaignController::class, 'bulkPurgeLocal'])->name('schedule.sidebar.campaign.bulk.purge.local');
 
+    Route::post('/campaign/sidebar/schedule/bulk-retry-failed', [ScheduleSidebarCampaignController::class, 'bulkRetryFailed'])->name('schedule.sidebar.campaign.bulk.retry.failed');
+
     Route::resource('/campaign/sidebar/schedule', ScheduleSidebarCampaignController::class)->names('schedule.sidebar.campaign');
 
     /* sticky Sidebar campaign */
@@ -347,6 +359,10 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     Route::get('/sticky/campaign/', [StickyPostCampaignController::class, 'index'])->name('sticky.campaign.index');
     // Route::view('/article','admin.article.articles')->name('articles
     // Route::view('/article/category','admin.article.category.category')->name('articles.category');
+
+    /* Invoice Generator Routes */
+    Route::get('/invoice/generator', [InvoiceController::class, 'create'])->name('invoice.generator');
+    Route::post('/invoice/generate-pdf', [InvoiceController::class, 'generatePdf'])->name('invoice.generate');
 
     // Domain routes here...
 });

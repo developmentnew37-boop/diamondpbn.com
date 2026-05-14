@@ -99,11 +99,18 @@ class PublishScheduledSidebarBlogrollJob implements ShouldQueue
             }
 
             $endpoint = rtrim($base, '/') . '/wp-json/external/v1/blogroll/add';
+            $nofollow = (bool) ($link->nofollow ?? false);
 
             $payload = [
                 'keyword' => (string) $link->anchor_keyword,
                 'link'    => (string) $link->target_url,
                 'api_key' => (string) $apiKey,
+                // Send both keys for compatibility across remote plugin versions.
+                'nofollow' => $nofollow ? 1 : 0,
+                'no_follow' => $nofollow ? 1 : 0,
+                // Some remote blogroll plugins read string rel attributes.
+                'rel' => $nofollow ? 'no-follow' : 'follow',
+                'rel_attr' => $nofollow ? 'no-follow' : '',
             ];
 
             /* =====================================================

@@ -12,10 +12,12 @@ class SidebarCampaignLink extends Model
         'target_url',
         'anchor_keyword',
         'nofollow',
+        'sponsored',
     ];
 
     protected $casts = [
         'nofollow' => 'boolean',
+        'sponsored' => 'boolean',
     ];
 
     public function campaign()

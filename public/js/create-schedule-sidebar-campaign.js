@@ -753,14 +753,16 @@ window.addEventListener("DOMContentLoaded", () => {
         function updateKeywordProgress() {
             const count = getSidebarCount();
             const boxes = [...document.querySelectorAll(".keyword-url-box")];
-            let usedQty = 0;
+            let usedUrlQty = 0;
+            let usedKeywordQty = 0;
             boxes.forEach((box) => {
                 const target = parseInt(box.querySelector(".client-url-quantity")?.value || "0", 10) || 0;
                 const assigned = parseQtyLines(box.querySelector(".keywords-quantity-area")?.value || "");
-                usedQty += Math.max(target, assigned ? target : 0);
+                usedUrlQty += target;
+                usedKeywordQty += assigned;
             });
             const node = ensureOverallProgressNode();
-            if (node) node.textContent = `Quantity used ${usedQty}/${count} | Remaining ${Math.max(count - usedQty, 0)}`;
+            if (node) node.textContent = `URL ${usedUrlQty}/${count} | KW ${usedKeywordQty}/${count}`;
         }
 
         // ✅ PATCH: do NOT pass sidebarCount into listeners (it freezes at 10). Read fresh count inside.
@@ -873,6 +875,13 @@ window.addEventListener("DOMContentLoaded", () => {
                 e.target.closest(".keyword-url-box").remove();
                 updateBoxCount();
                 updateBorders();
+                updateKeywordProgress();
+            }
+        });
+
+        // Keep KW progress synced when user edits quantity textarea manually.
+        keywordUrlCon.addEventListener("input", (e) => {
+            if (e.target.classList.contains("keywords-quantity-area")) {
                 updateKeywordProgress();
             }
         });
@@ -1294,11 +1303,40 @@ window.addEventListener("DOMContentLoaded", () => {
             });
         }
 
+        function getManualDomainAlertBox() {
+            let box = document.getElementById('manual-domain-inline-alert');
+            if (box) return box;
+            box = document.createElement('div');
+            box.id = 'manual-domain-inline-alert';
+            box.className = 'hidden !p-4 text-sm rounded bg-red-100 text-red-700 w-full !mb-3';
+            const host = document.getElementById('sidebar-campaign');
+            if (host) host.insertBefore(box, host.firstChild);
+            return box;
+        }
+
+        function hideManualDomainAlert() {
+            const box = document.getElementById('manual-domain-inline-alert');
+            if (!box) return;
+            box.classList.add('hidden');
+            box.innerHTML = '';
+        }
+
+        function showManualDomainAlert(message, missingDomains = []) {
+            const box = getManualDomainAlertBox();
+            if (!box) return;
+            const listHtml = Array.isArray(missingDomains) && missingDomains.length
+                ? `<div class="!mt-2"><strong>Missing domains:</strong><br>${missingDomains.map((d) => String(d)).join('<br>')}</div>`
+                : '';
+            box.innerHTML = `<span class="font-medium">${message}</span>${listHtml}`;
+            box.classList.remove('hidden');
+            box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
         // ***** manual domain script here ******//
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
-            e.preventDefault();
+            hideManualDomainAlert();
 
             const selectedRadio = document.querySelector('input[name="sel_domains"]:checked'); // 
             const campaignDomainHolder = document.getElementById('campaigns_domains_holder');
@@ -1348,7 +1386,7 @@ window.addEventListener("DOMContentLoaded", () => {
             ------------------------------*/
             else {
                 if (!manualDomainsArea) {
-                    alert('Manual domains field not found.');
+                    showManualDomainAlert('Manual domains field not found.');
                     return;
                 }
 
@@ -1357,7 +1395,7 @@ window.addEventListener("DOMContentLoaded", () => {
                     .map(d => d.trim())
                     .filter(Boolean);
                 if (domains.length !== sidebarCount) {
-                    alert(`Manual domains must be equal to sidebar count (${sidebarCount})`);
+                    showManualDomainAlert(`Manual domains must be equal to sidebar count (${sidebarCount}).`);
                     return;
                 }
 
@@ -1378,10 +1416,12 @@ window.addEventListener("DOMContentLoaded", () => {
                     });
 
                     const res = await response.json();
-                    console.log(res)
 
                     if (!res.status) {
-                        alert(res.message || 'Domain validation failed.');
+                        showManualDomainAlert(
+                            res.message || 'Domain validation failed.',
+                            Array.isArray(res?.data?.missing) ? res.data.missing : []
+                        );
                         return;
                     }
 
@@ -1389,7 +1429,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
                 } catch (error) {
                     console.error('Domain validation error:', error);
-                    alert('Something went wrong while validating domains.');
+                    showManualDomainAlert('Something went wrong while validating domains.');
 
                 } finally {
                     icon?.classList.remove('hidden');

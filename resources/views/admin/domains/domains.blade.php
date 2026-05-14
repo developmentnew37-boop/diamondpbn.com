@@ -124,12 +124,25 @@
                                     <option value="">select category</option>
                                     @if (isset($domainCategories) && count($domainCategories) > 0)
                                         @foreach ($domainCategories as $domainCategory)
-                                            <option value="{{ $domainCategory->id }}">{{ $domainCategory->name }}</option>
+                                            <option value="{{ $domainCategory->id }}" @selected((string) request('category_id') === (string) $domainCategory->id)>
+                                                {{ $domainCategory->name }}
+                                            </option>
                                         @endforeach
                                     @endif
                                 </select>
                             </div>
-                            <div class="w-3/5">
+                            <div class="w-auto">
+                                <form method="GET" action="{{ route('admin.domain.extract') }}">
+                                    <input type="hidden" name="category_id" value="{{ request('category_id') }}">
+                                    <button type="submit"
+                                        class="flex !p-3 !px-4 text-sm font-medium justify-center transition-all bg-emerald-600 hover:bg-emerald-700 text-white rounded cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                                        @disabled(!request()->filled('category_id'))
+                                        title="{{ request()->filled('category_id') ? 'Download Excel for selected category' : 'Please select a category first' }}">
+                                        Extract Domains
+                                    </button>
+                                </form>
+                            </div>
+                            <div class="flex-1 min-w-[260px]">
                                 {{-- {{ route('admin.domain.category.delete') }} --}}
                                 <form action="{{ route('admin.domain.delete') }}"
                                     class="w-full flex flex-wrap justify-start items-center gap-1" method="post">

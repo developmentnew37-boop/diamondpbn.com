@@ -56,32 +56,32 @@
 
         {{-- filters thing here --}}
 
-        <div class="flex flex-wrap items-center content-card w-full">
+        <div class="flex flex-col gap-3 content-card w-full min-w-0">
 
-            <div class="w-[65%] flex flex-wrap gap-2">
+            {{-- <div class="w-full flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-start">
 
-                <div class="w-1/5">
+                <div class="w-full sm:w-auto shrink-0">
                     <select name="" id="domain-category"
-                        class="bg-gray-100  border border-gray-200 !w-full !p-3 text-sm w-full rounded outline-none focus:border-orange-600">
+                        class="bg-white border border-gray-300 h-11 !px-3 text-sm w-full sm:w-[92px] rounded-md outline-none focus:border-orange-600">
                         <option value="">select</option>
-                        {{-- @if (isset($domainCategories) && count($domainCategories) > 0)
+                       @if (isset($domainCategories) && count($domainCategories) > 0)
                             @foreach ($domainCategories as $domainCategory)
                                 <option value="{{ $domainCategory->id }}">{{ $domainCategory->name }}</option>
                             @endforeach
-                        @endif --}}
+                        @endif 
                     </select>
                 </div>
-                <div class="w-3/5">
-                    <form action="#" class="w-full flex flex-wrap justify-start items-center gap-1" method="post">
+                <div class="w-full sm:w-auto sm:min-w-0">
+                    <form action="#" class="w-full flex flex-col gap-2 sm:flex-row sm:flex-nowrap sm:items-center sm:gap-2" method="post">
                         @csrf
                         <select name="actions" id=""
-                            class="bg-gray-100 border border-gray-200 !w-2/5 !p-3 text-sm w-full rounded outline-none focus:border-orange-600">
+                            class="bg-white border border-gray-300 h-11 !px-3 text-sm w-full sm:w-[240px] md:w-[340px] lg:w-[420px] rounded-md outline-none focus:border-orange-600">
                             <option value="">Bulk actions</option>
                             <option value="1">Delete</option>
                         </select>
                         <input type="hidden" name="bulk_ids" id="valHolders">
                         <button type="submit"
-                            class="flex !p-3  !px-4 text-sm font-normal justify-center duration:600 transition-all bg-[var(--sidebar-bg)] hover:bg-[var(--primary-color)] text-white rounded cursor-pointer">
+                            class="h-11 !px-5 text-sm font-medium inline-flex items-center justify-center transition-all bg-[var(--sidebar-bg)] hover:bg-[var(--primary-color)] text-white rounded-md cursor-pointer shadow-sm shrink-0 w-full sm:w-auto">
                             Apply
                         </button>
                     </form>
@@ -89,25 +89,25 @@
 
                 </div>
 
-            </div>
-            <div class="w-[35%] flex flex-wrap gap-3 justify-end items-center">
+            </div> --}}
+            <div class="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[320px_minmax(320px,420px)] gap-3 items-stretch justify-start min-w-0">
 
                 @include('admin.campaigns.partials.campaign-owner-filter')
 
                 {{-- Search Box --}}
 
-                <div class="relative flex-1 min-w-[200px] max-w-[50%] max-h-12 overflow-hidden">
+                <div class="relative w-full min-w-0">
                     <form method="GET" action="{{ url()->current() }}" class="relative w-full">
 
                         {{-- keep other parameters --}}
-                        @foreach (request()->except('search') as $key => $value)
+                        @foreach (request()->except(['search', 'page']) as $key => $value)
                             @continue(is_array($value))
                             <input type="hidden" name="{{ $key }}" value="{{ $value }}">
                         @endforeach
 
                         <input type="search" name="search" placeholder="search here" id="search_category"
                             value="{{ request('search') }}"
-                            class="bg-gray-100 shadow border border-gray-200 !p-3 !pr-[50px] max-h-12 text-sm w-full rounded outline-none">
+                            class="bg-gray-100 shadow border border-gray-200 h-12 !px-3 !pl-3 !pr-[50px] text-sm leading-normal w-full rounded outline-none">
 
                         <button type="submit"
                             class="w-12 h-12 flex items-center justify-center bg-[var(--sidebar-bg)] absolute top-0 right-0 rounded-r">
@@ -136,12 +136,18 @@
         <h2 class="text-xl capitalize !mb-4 bg-[var(--primary-color)] text-white w-fit !p-2 rounded">Sidebar Campaigns
         </h2>
         <form id="schedule-sidebar-bulk-purge-local-form" action="{{ route('admin.schedule.sidebar.campaign.bulk.purge.local') }}" method="POST" class="hidden">@csrf</form>
+        <form id="schedule-sidebar-bulk-retry-failed-form" action="{{ route('admin.schedule.sidebar.campaign.bulk.retry.failed') }}" method="POST" class="hidden">@csrf</form>
         <div class="w-full flex flex-wrap items-center gap-2 !mb-2">
             <button type="button" id="schedule-sidebar-bulk-purge-local-btn"
                 class="!px-3 !py-2 rounded bg-orange-600 text-white text-sm hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed">
                 Bulk remove locally only
             </button>
-            <span class="text-sm text-gray-500">Select with checkboxes; remote blogroll is not changed.</span>
+            <button type="button" id="schedule-sidebar-bulk-retry-failed-btn"
+                class="!px-3 !py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Retry all failed tasks in selected campaigns">
+                Bulk Retry Failed Tasks
+            </button>
+            <span class="text-sm text-gray-500">Select campaigns with checkboxes, then retry failed tasks or remove local records.</span>
         </div>
 
         <div class="overflow-x-auto !mt-3 w-full">
@@ -374,24 +380,61 @@
     <script src="{{ asset('js/copy.js') }}"></script>
     <script>
         (function () {
-            var form = document.getElementById('schedule-sidebar-bulk-purge-local-form');
-            var btn = document.getElementById('schedule-sidebar-bulk-purge-local-btn');
-            if (!form || !btn) return;
-            btn.addEventListener('click', function () {
+            var purgeForm = document.getElementById('schedule-sidebar-bulk-purge-local-form');
+            var purgeBtn = document.getElementById('schedule-sidebar-bulk-purge-local-btn');
+            var retryForm = document.getElementById('schedule-sidebar-bulk-retry-failed-form');
+            var retryBtn = document.getElementById('schedule-sidebar-bulk-retry-failed-btn');
+
+            if (!purgeForm || !purgeBtn || !retryForm || !retryBtn) return;
+
+            // Bulk purge local handler
+            purgeBtn.addEventListener('click', function () {
                 var ids = Array.prototype.slice.call(document.querySelectorAll('.campaign-bulk-cb:checked')).map(function (cb) { return cb.value; });
-                if (ids.length === 0) { alert('Please select at least one campaign.'); return; }
-                if (!confirm('Remove ' + ids.length + ' campaign(s) from this dashboard only? Remote blogroll links will NOT be deleted.')) return;
-                Array.prototype.slice.call(form.querySelectorAll('input[name="campaign_ids[]"]')).forEach(function (n) { n.remove(); });
+                if (ids.length === 0) {
+                    alert('Please select at least one campaign.');
+                    return;
+                }
+                if (!confirm('Remove ' + ids.length + ' campaign(s) from this dashboard only? Remote blogroll links will NOT be deleted.')) {
+                    return;
+                }
+                Array.prototype.slice.call(purgeForm.querySelectorAll('input[name="campaign_ids[]"]')).forEach(function (n) { n.remove(); });
                 ids.forEach(function (id) {
                     var inp = document.createElement('input');
                     inp.type = 'hidden';
                     inp.name = 'campaign_ids[]';
                     inp.value = id;
-                    form.appendChild(inp);
+                    purgeForm.appendChild(inp);
                 });
-                form.submit();
+                purgeForm.submit();
             });
-            function sync() { btn.disabled = document.querySelectorAll('.campaign-bulk-cb:checked').length === 0; }
+
+            // Bulk retry failed tasks handler
+            retryBtn.addEventListener('click', function () {
+                var ids = Array.prototype.slice.call(document.querySelectorAll('.campaign-bulk-cb:checked')).map(function (cb) { return cb.value; });
+                if (ids.length === 0) {
+                    alert('Please select at least one campaign.');
+                    return;
+                }
+                if (!confirm('Retry all failed tasks in ' + ids.length + ' selected campaign(s)? This will queue all failed tasks for republishing.')) {
+                    return;
+                }
+                Array.prototype.slice.call(retryForm.querySelectorAll('input[name="campaign_ids[]"]')).forEach(function (n) { n.remove(); });
+                ids.forEach(function (id) {
+                    var inp = document.createElement('input');
+                    inp.type = 'hidden';
+                    inp.name = 'campaign_ids[]';
+                    inp.value = id;
+                    retryForm.appendChild(inp);
+                });
+                retryForm.submit();
+            });
+
+            function syncButtons() {
+                var hasChecked = document.querySelectorAll('.campaign-bulk-cb:checked').length > 0;
+                purgeBtn.disabled = !hasChecked;
+                retryBtn.disabled = !hasChecked;
+            }
+
             function syncSelectAllHeader() {
                 var boxes = document.querySelectorAll('.campaign-bulk-cb');
                 var selAll = document.getElementById('bulk-checkBox-selector');
@@ -401,18 +444,26 @@
                 selAll.checked = allOn;
                 selAll.indeterminate = anyOn && !allOn;
             }
+
             document.querySelectorAll('.campaign-bulk-cb').forEach(function (cb) {
-                cb.addEventListener('change', function () { sync(); syncSelectAllHeader(); });
+                cb.addEventListener('change', function () {
+                    syncButtons();
+                    syncSelectAllHeader();
+                });
             });
+
             var selAll = document.getElementById('bulk-checkBox-selector');
             if (selAll) {
                 selAll.addEventListener('change', function () {
                     selAll.indeterminate = false;
-                    document.querySelectorAll('.campaign-bulk-cb').forEach(function (cb) { cb.checked = selAll.checked; });
-                    sync();
+                    document.querySelectorAll('.campaign-bulk-cb').forEach(function (cb) {
+                        cb.checked = selAll.checked;
+                    });
+                    syncButtons();
                 });
             }
-            sync();
+
+            syncButtons();
             syncSelectAllHeader();
         })();
     </script>

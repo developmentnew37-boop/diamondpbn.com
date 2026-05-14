@@ -124,7 +124,7 @@
                             <td class="border !px-2 !py-2">{{ $p->remote_status ?? '-' }}</td>
                             <td class="border !px-2 !py-2">{{ $p->remote_id ?? '-' }}</td>
                             <td class="border !px-2 !py-2">
-                                <div class="flex flex-wrap gap-1 justify-center items-center">
+                                <div class="flex  gap-1 justify-center items-center">
                                     @if($p->remote_url)
                                         <a href="{{ $p->remote_url }}" target="_blank"
                                             class="flex items-center justify-center rounded w-8 h-8 bg-green-500 text-white hover:bg-green-600"

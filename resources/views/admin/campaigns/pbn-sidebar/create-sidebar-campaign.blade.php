@@ -846,6 +846,8 @@
                 <div class="flex flex-wrap gap-1 items-center">
                     <input type="checkbox" name="no_follow" id="no_follow" value="1">
                     <label for="no_follow" class="text-sm">No Follow</label>
+                    <input type="checkbox" name="sponsored_link" id="sponsored_link" value="1" class="!ml-3">
+                    <label for="sponsored_link" class="text-sm">Sponsor</label>
                     <p class="text-[12px]">(Check here to get Nofollow Link)</p>
 
                 </div>

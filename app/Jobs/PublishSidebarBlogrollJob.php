@@ -96,11 +96,28 @@ class PublishSidebarBlogrollJob implements ShouldQueue
             }
 
             $endpoint = rtrim($base, '/') . '/wp-json/external/v1/blogroll/add';
+            $nofollow = (bool) ($link->nofollow ?? false);
+            $sponsored = (bool) ($link->sponsored ?? false);
+            $rel = [];
+            if ($nofollow) {
+                $rel[] = 'nofollow';
+            }
+            if ($sponsored) {
+                $rel[] = 'sponsored';
+            }
+            $relString = implode(' ', $rel);
 
             $payload = [
                 'keyword' => (string) $link->anchor_keyword,
                 'link'    => (string) $link->target_url,
                 'api_key' => (string) $apiKey, // ✅ if your API requires it
+                // Send both keys for compatibility across remote plugin versions.
+                'nofollow' => $nofollow ? 1 : 0,
+                'no_follow' => $nofollow ? 1 : 0,
+                'sponsored' => $sponsored ? 1 : 0,
+                'sponsor' => $sponsored ? 1 : 0,
+                'rel' => $rel,
+                'rel_attr' => $relString,
             ];
 
             // 🌐 STEP 3: Send request

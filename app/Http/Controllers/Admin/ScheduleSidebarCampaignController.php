@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Cache;
 use Spatie\SimpleExcel\SimpleExcelWriter;
 use Illuminate\Support\Str;
 use App\Jobs\BulkUpdateScheduleSidebarBlogrollJob;
+use App\Jobs\BulkRetryScheduleSidebarCampaignTasksJob;
 use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
 use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
 use App\Http\Controllers\Admin\Concerns\ValidatesBulkCampaignIds;
@@ -917,6 +918,30 @@ class ScheduleSidebarCampaignController extends Controller
         return redirect()
             ->route('admin.schedule.sidebar.campaign.index')
             ->with('cus__success', $n . ' campaign(s) removed from this dashboard only. Remote blogroll links were not deleted.');
+    }
+
+    /**
+     * Bulk retry all failed tasks across selected schedule sidebar campaigns.
+     */
+    public function bulkRetryFailed(Request $request)
+    {
+        $ids = $this->validatedBulkCampaignIds($request);
+        if ($ids === []) {
+            return back()->with('cus__error', 'No campaigns selected.');
+        }
+
+        $allowed = $this->campaignIdsOwnedByCurrentAdmin($ids, ScheduleSidebarCampaign::class);
+        if ($allowed === []) {
+            return back()->with('cus__error', 'No campaigns found or you do not have permission.');
+        }
+
+        BulkRetryScheduleSidebarCampaignTasksJob::dispatch($allowed);
+
+        $n = count($allowed);
+
+        return redirect()
+            ->route('admin.schedule.sidebar.campaign.index')
+            ->with('cus__success', 'Bulk retry queued for ' . $n . ' schedule sidebar campaign(s). All failed tasks will be retried in the background. Run the queue worker to process them.');
     }
 
     /**

@@ -76,11 +76,31 @@ class HiddenLinksApiService
      * POST .../hidden-links/update/{remote_id}. Body: keyword, link. Auth: X-External-API-Key header.
      * Uses remote_id in path per API (not array index). Timeout 120s for single update.
      */
-    public static function updateEntry(string $domain, string $apiKey, string $remoteId, string $keyword, string $link): \Illuminate\Http\Client\Response
+    public static function updateEntry(
+        string $domain,
+        string $apiKey,
+        string $remoteId,
+        string $keyword,
+        string $link,
+        ?array $rel = null
+    ): \Illuminate\Http\Client\Response
     {
         $base    = self::baseUrl($domain);
         $remoteId = trim((string) $remoteId);
         $endpoint = $base . '/wp-json/external/v1/hidden-links/update/' . $remoteId;
+        $payload = [
+            'keyword' => $keyword,
+            'link'    => $link,
+        ];
+        if (is_array($rel)) {
+            $tokens = array_values($rel);
+            $payload['rel'] = $tokens;
+            $payload['rel_attr'] = implode(' ', $tokens);
+            $payload['nofollow'] = in_array('nofollow', $tokens, true) ? 1 : 0;
+            $payload['no_follow'] = in_array('nofollow', $tokens, true) ? 1 : 0;
+            $payload['sponsored'] = in_array('sponsored', $tokens, true) ? 1 : 0;
+            $payload['sponsor'] = in_array('sponsored', $tokens, true) ? 1 : 0;
+        }
 
         return Http::withoutVerifying()
             ->timeout(120)
@@ -89,10 +109,7 @@ class HiddenLinksApiService
             ->withHeaders([
                 'X-External-API-Key' => $apiKey,
             ])
-            ->post($endpoint, [
-                'keyword' => $keyword,
-                'link'    => $link,
-            ]);
+            ->post($endpoint, $payload);
     }
 
     /**

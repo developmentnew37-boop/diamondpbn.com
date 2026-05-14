@@ -418,7 +418,15 @@ class PublishCampaignPostJob implements ShouldQueue
 
         $pairIndex = 0;
         $nofollow  = (bool) ($ca->nofollow ?? false);
-        $relAttr   = $nofollow ? 'nofollow noopener' : 'noopener';
+        $sponsored = (bool) ($ca->sponsored ?? false);
+        $relTokens = [];
+        if ($nofollow) {
+            $relTokens[] = 'nofollow';
+        }
+        if ($sponsored) {
+            $relTokens[] = 'sponsored';
+        }
+        $relPart = count($relTokens) > 0 ? ' rel="' . implode(' ', $relTokens) . '"' : '';
 
         for ($p = 0; $p < $paraCount && $pairIndex < $anchorCount; $p++) {
 
@@ -451,7 +459,7 @@ class PublishCampaignPostJob implements ShouldQueue
 
                 [$kw, $url] = $pairs[$pairIndex++];
 
-                $anchor = '<a href="' . e($url) . '" target="_blank" rel="' . $relAttr . '">' . e($kw) . '</a>';
+                $anchor = '<a href="' . e($url) . '" target="_blank"' . $relPart . '>' . e($kw) . '</a>';
 
                 // 🔥 Find a SAFE insertion point in HTML (not inside tag, not inside word)
                 $safePos = $this->findSafeHtmlInsertPos($inner, $target);
@@ -491,7 +499,7 @@ class PublishCampaignPostJob implements ShouldQueue
             while ($pairIndex < $anchorCount) {
                 [$kw, $url] = $pairs[$pairIndex++];
 
-                $anchor = '<a href="' . e($url) . '" target="_blank" rel="' . $relAttr . '">' . e($kw) . '</a>';
+                $anchor = '<a href="' . e($url) . '" target="_blank"' . $relPart . '>' . e($kw) . '</a>';
 
                 $inner .= ' ' . $anchor;
             }

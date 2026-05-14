@@ -8,55 +8,55 @@
         $hasStickyPost = (bool) ($campaign->is_sticky_campaign ?? false);
     @endphp
 
-    <div class="w-full flex flex-wrap justify-between items-start content-card">
+    <div class="w-full flex flex-col gap-4 items-stretch content-card min-w-0 max-w-full px-3 py-4 sm:px-6 sm:py-6">
         @csrf
 
         {{-- HEADER --}}
-        <div class="w-full flex md:flex-row flex-col gap-3 items-center">
-            <div class="flex sm:w-1/2 w-full justify-center md:justify-start">
-                <h2 class="md:text-lg text-sm capitalize bg-[var(--primary-color)] text-white !p-3 rounded">
+        <div class="w-full flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4 min-w-0">
+            <div class="w-full sm:flex-1 sm:min-w-0 flex justify-center sm:justify-start">
+                <h2 class="md:text-lg text-sm capitalize bg-[var(--primary-color)] text-white text-center sm:text-left w-full sm:w-fit max-w-full !p-3 rounded break-words">
                     {{ $campaign->campaign_no }} {{ $hasStickyPost ? 'Schedule Sticky Post' : 'Scheduled' }} Campaign Report
                 </h2>
             </div>
 
-            <div class="flex sm:w-1/2 w-full gap-3 justify-center md:justify-end">
+            <div class="w-full sm:w-auto shrink-0 flex justify-center sm:justify-end">
                 <a href="{{ route('admin.schedule.campaign.report.export', [$campaign->campaign_no, $campaign->report_token]) }}"
-                class="!px-5 !py-3 bg-green-600 text-white rounded hover:bg-green-700">
+                class="inline-flex !px-5 !py-3 bg-green-600 text-white rounded hover:bg-green-700 whitespace-nowrap w-full sm:w-auto justify-center">
                 Export Excel
             </a>
             </div>
         </div>
 
         {{-- STATS --}}
-        <div class="w-full flex flex-col !my-6">
-            <div class="flex flex-wrap gap-4">
+        <div class="w-full flex flex-col !my-4 sm:!my-6 min-w-0">
+            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 w-full">
 
-                <div class="flex-1 min-w-[220px] bg-white rounded-xl shadow-sm !p-5 border-l-4 border-blue-500">
+                <div class="bg-white rounded-xl shadow-sm !p-5 border-l-4 border-blue-500 min-w-0">
                     <div class="text-sm text-gray-500">Total Posts</div>
-                    <div class="mt-1 text-3xl font-bold text-gray-800">{{ $stats->total }}</div>
+                    <div class="mt-1 text-3xl font-bold text-gray-800 tabular-nums">{{ $stats->total }}</div>
                 </div>
 
-                <div class="flex-1 min-w-[220px] bg-white rounded-xl shadow-sm !p-5 border-l-4 border-green-500">
+                <div class="bg-white rounded-xl shadow-sm !p-5 border-l-4 border-green-500 min-w-0">
                     <div class="text-sm text-gray-500">Success</div>
-                    <div class="mt-1 text-3xl font-bold text-green-600">{{ $stats->success }}</div>
+                    <div class="mt-1 text-3xl font-bold text-green-600 tabular-nums">{{ $stats->success }}</div>
                 </div>
 
-                <div class="flex-1 min-w-[220px] bg-white rounded-xl shadow-sm !p-5 border-l-4 border-yellow-500">
+                <div class="bg-white rounded-xl shadow-sm !p-5 border-l-4 border-yellow-500 min-w-0">
                     <div class="text-sm text-gray-500">Queued</div>
-                    <div class="mt-1 text-3xl font-bold text-yellow-600">{{ $stats->queued }}</div>
+                    <div class="mt-1 text-3xl font-bold text-yellow-600 tabular-nums">{{ $stats->queued }}</div>
                 </div>
 
-                <div class="flex-1 min-w-[220px] bg-white rounded-xl shadow-sm !p-5 border-l-4 border-red-500">
+                <div class="bg-white rounded-xl shadow-sm !p-5 border-l-4 border-red-500 min-w-0">
                     <div class="text-sm text-gray-500">Failed</div>
-                    <div class="mt-1 text-3xl font-bold text-red-600">{{ $stats->failed }}</div>
+                    <div class="mt-1 text-3xl font-bold text-red-600 tabular-nums">{{ $stats->failed }}</div>
                 </div>
 
             </div>
         </div>
 
         {{-- TABLE --}}
-        <div class="overflow-x-auto w-full">
-            <table class="display w-full border border-gray-200 text-sm whitespace-nowrap searchable-table">
+        <div class="overflow-x-auto !mt-3 w-full max-w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
+            <table class="display w-full min-w-[980px] border border-gray-200 text-sm whitespace-nowrap searchable-table">
                 <thead>
                     <tr class="bg-gray-800 text-white">
                         <th class="border !px-2 !py-3">Sno</th>
@@ -111,7 +111,7 @@
                             <td class="border !px-2 !py-3 max-w-[18rem] align-top">
                                 @if ($blogLink['href'] !== '')
                                     <a href="{{ $blogLink['href'] }}" target="_blank" rel="noopener"
-                                        class="text-blue-600 hover:underline"
+                                        class="block w-full overflow-hidden text-ellipsis whitespace-nowrap text-blue-600 hover:underline"
                                         title="{{ $blogLink['title'] }}">{{ $blogLink['display'] }}</a>
                                 @else
                                     -

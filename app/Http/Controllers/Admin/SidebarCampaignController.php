@@ -14,6 +14,7 @@ use App\Models\Admin\SidebarCampaignLink;
 use App\Models\Admin\SidebarCampaignTask;
 use Illuminate\Support\Facades\DB;
 use App\Jobs\BulkUpdateSidebarBlogrollJob;
+use App\Jobs\BulkRetrySidebarCampaignTasksJob;
 use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
 use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
 use App\Http\Controllers\Admin\Concerns\ValidatesBulkCampaignIds;
@@ -46,6 +47,11 @@ class SidebarCampaignController extends Controller
             'filter_user' => 'nullable|string|max:20',
         ]);
 
+        $domainCategories = DomainCategory::query()
+            ->select(['id', 'name'])
+            ->orderBy('name')
+            ->get();
+
         // ✅ Remove empty search from URL
         if ($request->has('search') && trim($request->search) === '') {
             return redirect()->to(
@@ -55,7 +61,7 @@ class SidebarCampaignController extends Controller
             );
         }
 
-        $limit = 20;
+        $limit = 100;
         $search = trim((string) $request->input('search', ''));
 
         // ✅ Sidebar campaigns base query
@@ -91,7 +97,7 @@ class SidebarCampaignController extends Controller
         // ✅ Paginate
         $campaigns = $query
             ->orderByDesc('id')
-            ->simplePaginate($limit)
+            ->paginate($limit)
             ->appends($request->query());
 
         // ✅ Offset for serial numbers
@@ -99,8 +105,70 @@ class SidebarCampaignController extends Controller
 
         return view(
             'admin.campaigns.pbn-sidebar.sidebar-campaign',
-            array_merge(compact('campaigns', 'offset'), $ownerData)
+            array_merge(compact('campaigns', 'offset', 'domainCategories'), $ownerData)
         );
+    }
+
+    /**
+     * Export domains by selected category into Excel.
+     */
+    public function extractDomains(Request $request)
+    {
+        $validated = $request->validate([
+            'domain_category_id' => 'required|integer|exists:domain_categories,id',
+        ]);
+
+        $categoryId = (int) $validated['domain_category_id'];
+        $category = DomainCategory::query()
+            ->select(['id', 'name'])
+            ->findOrFail($categoryId);
+
+        $fileName = 'domains-' . Str::slug((string) $category->name) . '-' . now()->format('Ymd_His') . '.xlsx';
+
+        $writer = SimpleExcelWriter::streamDownload($fileName)->addHeader([
+            'Domain',
+            'Category',
+            'DA',
+            'DR',
+            'TF',
+            'SS',
+            'IP',
+            'Status',
+            'Created At',
+        ]);
+
+        Domain::query()
+            ->select([
+                'id',
+                'name',
+                'domain_category_id',
+                'da',
+                'dr',
+                'tf',
+                'ss',
+                'ip',
+                'status',
+                'created_at',
+            ])
+            ->where('domain_category_id', $categoryId)
+            ->orderBy('id')
+            ->chunkById(500, function ($domains) use ($writer, $category) {
+                foreach ($domains as $domain) {
+                    $writer->addRow([
+                        'Domain' => (string) ($domain->name ?? '-'),
+                        'Category' => (string) ($category->name ?? '-'),
+                        'DA' => (int) ($domain->da ?? 0),
+                        'DR' => (int) ($domain->dr ?? 0),
+                        'TF' => (int) ($domain->tf ?? 0),
+                        'SS' => (int) ($domain->ss ?? 0),
+                        'IP' => (string) ($domain->ip ?? '-'),
+                        'Status' => ((int) ($domain->status ?? 0) === 1) ? 'Connected' : 'Not Connected',
+                        'Created At' => optional($domain->created_at)->format('d M Y H:i'),
+                    ]);
+                }
+            }, 'id');
+
+        return $writer->toBrowser();
     }
 
 
@@ -240,6 +308,7 @@ class SidebarCampaignController extends Controller
                     'target_url'          => trim((string)$row['url']),
                     'anchor_keyword'      => trim((string)$row['keyword']),
                     'nofollow'            => !empty($row['nofollow']),
+                    'sponsored'           => !empty($row['sponsored']),
                     'created_at'          => $now,
                     'updated_at'          => $now,
                 ];
@@ -660,7 +729,17 @@ class SidebarCampaignController extends Controller
         $keyword = trim($request->keyword);
         $link    = trim($request->link);
 
-        $res = BlogrollApiService::updateEntryByRemoteId($domain->name, $domain->api_key, $task->remote_id, $keyword, $link);
+        $res = BlogrollApiService::updateEntryByRemoteId(
+            $domain->name,
+            $domain->api_key,
+            $task->remote_id,
+            $keyword,
+            $link,
+            array_values(array_filter([
+                ($task->linkRow->nofollow ?? false) ? 'nofollow' : null,
+                ($task->linkRow->sponsored ?? false) ? 'sponsored' : null,
+            ]))
+        );
         if (!$res->successful()) {
             return back()->with('cus__error', 'Remote update failed: ' . $res->body());
         }
@@ -804,6 +883,30 @@ class SidebarCampaignController extends Controller
         return redirect()
             ->route('admin.sidebar.campaign.index')
             ->with('cus__success', $n . ' campaign(s) removed from this dashboard only. Remote blogroll links were not deleted.');
+    }
+
+    /**
+     * Bulk retry all failed tasks across selected sidebar campaigns.
+     */
+    public function bulkRetryFailed(Request $request)
+    {
+        $ids = $this->validatedBulkCampaignIds($request);
+        if ($ids === []) {
+            return back()->with('cus__error', 'No campaigns selected.');
+        }
+
+        $allowed = $this->campaignIdsOwnedByCurrentAdmin($ids, SidebarCampaign::class);
+        if ($allowed === []) {
+            return back()->with('cus__error', 'No campaigns found or you do not have permission.');
+        }
+
+        BulkRetrySidebarCampaignTasksJob::dispatch($allowed);
+
+        $n = count($allowed);
+
+        return redirect()
+            ->route('admin.sidebar.campaign.index')
+            ->with('cus__success', 'Bulk retry queued for ' . $n . ' sidebar campaign(s). All failed tasks will be retried in the background. Run the queue worker to process them.');
     }
 
     /**

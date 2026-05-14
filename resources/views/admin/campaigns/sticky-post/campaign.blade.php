@@ -5,9 +5,9 @@
 @section('main-content')
 
     {{-- bread-crumbs --}}
-    <div class="page-header w-full max-w-full min-w-0">
-        <div class="w-full flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-            <div class="w-full sm:w-1/2 flex flex-col gap-2 min-w-0">
+    <div class="page-header">
+        <div class="w-full flex flex-wrap items-center">
+            <div class="w-1/2 flex flex-col gap-2 flex-wrap">
                 <h2 class="page-title">Dashboards</h2>
                 <div class="breadcrumb">
                     <div class="breadcrumb-item">
@@ -20,7 +20,7 @@
 
                 </div>
             </div>
-            <div class="w-full sm:w-1/2 flex flex-wrap justify-start sm:justify-end items-center">
+            <div class="w-1/2 flex flex-wrap justify-end items-center">
                 @if (Auth::guard('admin')->user()->canCreateCampaigns())
                 <a href="{{ route('admin.sticky.campaign.create') }}"
                     class="flex !p-2 !py-3 text-[16px] font-normal w-fit justify-center duration:300 bg-[var(--primary-color)] 
@@ -55,13 +55,11 @@
 
         {{-- filters thing here --}}
 
-        <div
-            class="flex flex-col gap-4 lg:flex-row lg:flex-nowrap lg:items-center lg:justify-between content-card w-full min-w-0 campaign-list-toolbar">
+        <div class="flex flex-wrap items-center content-card w-full">
 
-            <div
-                class="w-full lg:w-auto lg:flex-1 lg:min-w-0 flex flex-col gap-2 sm:flex-row sm:flex-wrap md:flex-nowrap sm:items-center lg:items-center">
+            <div class="w-[65%] flex flex-wrap gap-2">
 
-                <div class="w-full sm:w-40 shrink-0 md:shrink-0">
+                <div class="w-1/5">
                     <select name="" id="domain-category"
                         class="bg-gray-100  border border-gray-200 !w-full !p-3 text-sm w-full rounded outline-none focus:border-orange-600">
                         <option value="">select</option>
@@ -72,19 +70,17 @@
                         @endif --}}
                     </select>
                 </div>
-                <div class="w-full sm:flex-1 sm:min-w-0 md:min-w-[12rem]">
-                    <form action="#"
-                        class="w-full flex flex-col gap-2 sm:flex-row sm:flex-wrap md:flex-nowrap sm:items-center sm:gap-2"
-                        method="post">
+                <div class="w-3/5">
+                    <form action="#" class="w-full flex flex-wrap justify-start items-center gap-1" method="post">
                         @csrf
                         <select name="actions" id=""
-                            class="bg-gray-100 border border-gray-200 !p-3 text-sm w-full sm:flex-1 sm:min-w-0 md:min-w-[9rem] rounded outline-none focus:border-orange-600">
+                            class="bg-gray-100 border border-gray-200 !w-2/5 !p-3 text-sm w-full rounded outline-none focus:border-orange-600">
                             <option value="">Bulk actions</option>
                             <option value="1">Delete</option>
                         </select>
                         <input type="hidden" name="bulk_ids" id="valHolders">
                         <button type="submit"
-                            class="flex !p-3 !px-4 text-sm font-normal justify-center duration:600 transition-all bg-[var(--sidebar-bg)] hover:bg-[var(--primary-color)] text-white rounded cursor-pointer shrink-0 w-full sm:w-auto">
+                            class="flex !p-3  !px-4 text-sm font-normal justify-center duration:600 transition-all bg-[var(--sidebar-bg)] hover:bg-[var(--primary-color)] text-white rounded cursor-pointer">
                             Apply
                         </button>
                     </form>
@@ -93,12 +89,11 @@
                 </div>
 
             </div>
-            <div
-                class="w-full lg:w-auto lg:max-w-none flex flex-col gap-3 sm:flex-row sm:flex-wrap md:flex-nowrap sm:items-center sm:gap-3 lg:justify-end lg:shrink-0 min-w-0">
+            <div class="w-[35%] flex flex-wrap gap-3 justify-end">
 
                 {{-- Search Box --}}
 
-                <div class="relative w-full sm:flex-1 sm:min-w-[12rem] sm:max-w-md max-h-12 overflow-hidden min-w-0">
+                <div class="relative w-1/2 max-h-12 overflow-hidden">
                     <form method="GET" action="{{ url()->current() }}" class="relative w-full">
 
                         {{-- keep other parameters --}}
@@ -145,8 +140,8 @@
             <span class="text-sm text-gray-500">Select with checkboxes; remote posts are not changed.</span>
         </div>
 
-        <div class="overflow-x-auto !mt-3 w-full max-w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
-            <table class="display w-full min-w-[1000px] border border-gray-200 border-collapse text-sm whitespace-nowrap searchable-table">
+        <div class="overflow-x-auto !mt-3 w-full">
+            <table class="display w-full border border-gray-200 border-collapse text-sm whitespace-nowrap searchable-table">
                 <thead>
                     <tr class="bg-gray-800 text-white">
                         <th><input type="checkbox" name="" id="bulk-checkBox-selector" class="scale-125 "></th>
@@ -273,7 +268,7 @@
 
                             {{-- actions --}}
                             <td class="border border-gray-200 font-sans !px-2 !py-3">
-                                <div class="flex gap-2 justify-center">
+                                <div class="flex flex-wrap gap-2 justify-center">
                                     {{-- {{ route('admin.campaigns.report', $campaign->id) }} --}}
                                     <a href="{{ route('admin.campaign.show', $campaign->id) }}"
                                         class="bg-green-500 flex items-center justify-center rounded w-7 h-7 hover:bg-green-600">

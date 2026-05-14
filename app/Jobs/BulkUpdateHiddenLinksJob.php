@@ -57,7 +57,17 @@ class BulkUpdateHiddenLinksJob implements ShouldQueue
                 continue;
             }
 
-            $res = HiddenLinksApiService::updateEntry($domain->name, $domain->api_key, $task->remote_id, $keyword, $link);
+            $res = HiddenLinksApiService::updateEntry(
+                $domain->name,
+                $domain->api_key,
+                $task->remote_id,
+                $keyword,
+                $link,
+                array_values(array_filter([
+                    ($task->linkRow->nofollow ?? false) ? 'nofollow' : null,
+                    ($task->linkRow->sponsored ?? false) ? 'sponsored' : null,
+                ]))
+            );
 
             if ($res->successful()) {
                 $task->linkRow->update([

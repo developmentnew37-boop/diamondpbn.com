@@ -16,6 +16,7 @@ use App\Models\Admin\CampaignPost;
 use App\Models\Admin\Campaign;
 use Illuminate\Support\Facades\DB;
 use App\Jobs\BulkUpdateCampaignPostsJob;
+use App\Jobs\BulkRetryCampaignPostsJob;
 use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
 use App\Http\Controllers\Admin\Concerns\ValidatesBulkCampaignIds;
 use App\Jobs\DeleteCampaignJob;
@@ -101,30 +102,57 @@ class campaignController extends Controller
     public function create()
     {
         $campaignId = 'CMP-' . now()->format('YmdHis') . '-' . random_int(1000, 9999);
-        // // domain + article category
-        $domainCategory = DomainCategory::all();
-        $articleCategory =  ArticleCategory::all();
-        // // ** now fetching the user the articles ** //
-        // $articleSet = ArticleSet::withCount('articles')->where('admin_id', auth('admin')->id())->get();
-        // $articleSet = ArticleSet::with('articles')->where('admin_id', auth('admin')->id())->get();
-        $articleSet = ArticleSet::withCount([
-            'articles' => function ($q) {
-                $q->whereNot('status', 1);
-            }
-        ])
-            ->where('admin_id', auth('admin')->id())
-            ->get();
-        // ** now providing user domain sets
-        $domainSets = DomainSet::where('admin_id', Auth::guard('admin')->id())->get();
-        // ** article languages with article count
-        $articleLanguages = ArticleLanguage::withCount(['Article' => function ($query) {
-            $query->where('status', 0)
-                ->whereNull('deleted_at')
-                ->whereNull('lock_at')
-                ->where('status', '!=', '1');
-        }])->having('article_count', '>', 0)->get();
+        $adminId = auth('admin')->id();
+
+        // Cache the create campaign data for 10 minutes to improve performance
+        $cacheKey = 'campaign_create_data_' . $adminId;
+
+        $data = cache()->remember($cacheKey, 600, function () use ($adminId) {
+            // Optimize: Load only necessary columns
+            $domainCategory = DomainCategory::select('id', 'name')->get();
+            $articleCategory = ArticleCategory::select('id', 'name')->get();
+
+            // Article sets with count - using proper many-to-many relationship through pivot table
+            // Note: Removed admin_id filter to allow admins/super admins to access all article sets
+            $articleSet = DB::table('article_sets')
+                ->leftJoin('article_set_items', 'article_sets.id', '=', 'article_set_items.article_set_id')
+                ->leftJoin('articles', function($join) {
+                    $join->on('article_set_items.article_id', '=', 'articles.id')
+                         ->where('articles.status', '!=', 1)
+                         ->whereNull('articles.deleted_at')
+                         ->whereNull('articles.lock_at');
+                })
+                ->select('article_sets.id', 'article_sets.name', DB::raw('COUNT(articles.id) as articles_count'))
+                ->groupBy('article_sets.id', 'article_sets.name')
+                ->get();
+
+            // Optimize: Load only necessary columns
+            // Note: Removed admin_id filter to allow admins/super admins to access all domain sets
+            $domainSets = DomainSet::select('id', 'name')->get();
+
+            // Optimize: Use direct join query for article languages
+            // Note: Removed admin_id filter to allow admins/super admins to access all articles
+            $articleLanguages = DB::table('article_languages')
+                ->leftJoin('articles', function($join) {
+                    $join->on('article_languages.id', '=', 'articles.article_language_id')
+                         ->where('articles.status', 0)
+                         ->whereNull('articles.deleted_at')
+                         ->whereNull('articles.lock_at');
+                })
+                ->select('article_languages.id', 'article_languages.name', DB::raw('COUNT(articles.id) as article_count'))
+                ->groupBy('article_languages.id', 'article_languages.name')
+                ->having('article_count', '>', 0)
+                ->get();
+
+            return compact('domainCategory', 'articleCategory', 'articleSet', 'domainSets', 'articleLanguages');
+        });
+
         $is_sticky = 0;
-        return view('admin.campaigns.pbn-post.create-campaign', compact('campaignId', 'domainCategory', 'articleCategory', 'articleSet', 'domainSets', 'articleLanguages', 'is_sticky'));
+
+        return view('admin.campaigns.pbn-post.create-campaign', array_merge(
+            compact('campaignId', 'is_sticky'),
+            $data
+        ));
     }
 
     /**
@@ -304,6 +332,7 @@ class campaignController extends Controller
                     'keyword_type'             => $kwType,
                     'url_type'                 => $urlType,
                     'nofollow'                 => ! empty($row['nofollow']),
+                    'sponsored'                => ! empty($row['sponsored']),
                 ]);
 
                 $campaignArticleIds[$i] = $ca->id;
@@ -1242,10 +1271,14 @@ class campaignController extends Controller
                     $mediaVal = isset($row['media']) ? trim((string) $row['media']) : '';
                     $mediaVal = $mediaVal === '' ? null : $mediaVal;
                     $nofollow = ! empty($row['nofollow']);
+                    $sponsored = array_key_exists('sponsored', $row)
+                        ? ! empty($row['sponsored'])
+                        : (bool) ($ca->sponsored ?? false);
 
                     CampaignArticle::where('id', $ca->id)->update([
                         'media'    => $mediaVal,
                         'nofollow' => $nofollow,
+                        'sponsored' => $sponsored,
                     ]);
                 }
             });
@@ -1291,7 +1324,7 @@ class campaignController extends Controller
 
     /**
      * @param  array<int, int>  $orderedArticleIds
-     * @return array<int, array{quantity: int, media: ?string, nofollow: bool, rows: array<int, array{url: string, keyword: string}>}>
+     * @return array<int, array{quantity: int, media: ?string, nofollow: bool, sponsored: bool, rows: array<int, array{url: string, keyword: string}>}>
      */
     private function buildMultiLevelBoxesForEdit(array $orderedArticleIds): array
     {
@@ -1315,6 +1348,7 @@ class campaignController extends Controller
                 'quantity' => $groupQty,
                 'media'    => $groupPayload['media'],
                 'nofollow' => $groupPayload['nofollow'],
+                'sponsored' => $groupPayload['sponsored'],
                 'rows'     => $groupPayload['rows'],
             ];
         };
@@ -1347,7 +1381,7 @@ class campaignController extends Controller
     }
 
     /**
-     * @return array{media: ?string, nofollow: bool, rows: array<int, array{url: string, keyword: string}>}
+     * @return array{media: ?string, nofollow: bool, sponsored: bool, rows: array<int, array{url: string, keyword: string}>}
      */
     private function articleRowPayloadForEdit(CampaignArticle $ca): array
     {
@@ -1386,12 +1420,13 @@ class campaignController extends Controller
         return [
             'media'    => $media,
             'nofollow' => (bool) $ca->nofollow,
+            'sponsored' => (bool) ($ca->sponsored ?? false),
             'rows'     => $rows,
         ];
     }
 
     /**
-     * @param  array{media: ?string, nofollow: bool, rows: array<int, array{url: string, keyword: string}>}  $payload
+     * @param  array{media: ?string, nofollow: bool, sponsored: bool, rows: array<int, array{url: string, keyword: string}>}  $payload
      */
     private function signatureForMultiLevelPayload(array $payload): string
     {
@@ -1399,6 +1434,7 @@ class campaignController extends Controller
             [
                 'm'    => $payload['media'],
                 'nf'   => $payload['nofollow'],
+                'sp'   => $payload['sponsored'],
                 'rows' => $payload['rows'],
             ],
             JSON_UNESCAPED_UNICODE
@@ -1538,5 +1574,29 @@ class campaignController extends Controller
         return redirect()
             ->route('admin.campaign.index')
             ->with('cus__success', $n . ' campaign(s) removed from this dashboard only. Remote posts were not deleted.');
+    }
+
+    /**
+     * Bulk retry all failed posts across selected campaigns.
+     */
+    public function bulkRetryFailed(Request $request)
+    {
+        $ids = $this->validatedBulkCampaignIds($request);
+        if ($ids === []) {
+            return back()->with('cus__error', 'No campaigns selected.');
+        }
+
+        $allowed = $this->campaignIdsOwnedByCurrentAdmin($ids, Campaign::class);
+        if ($allowed === []) {
+            return back()->with('cus__error', 'No campaigns found or you do not have permission.');
+        }
+
+        BulkRetryCampaignPostsJob::dispatch($allowed);
+
+        $n = count($allowed);
+
+        return redirect()
+            ->route('admin.campaign.index')
+            ->with('cus__success', 'Bulk retry queued for ' . $n . ' campaign(s). All failed posts will be retried in the background. Run the queue worker to process them.');
     }
 }

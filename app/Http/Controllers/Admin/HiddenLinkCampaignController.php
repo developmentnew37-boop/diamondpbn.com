@@ -16,6 +16,7 @@ use App\Models\Admin\HiddenLinksCampaign;
 use App\Jobs\PublishHiddenLinksJob;
 use App\Jobs\BulkUpdateHiddenLinksJob;
 use App\Jobs\BulkDeleteHiddenLinksJob;
+use App\Jobs\BulkRetryHiddenLinksCampaignTasksJob;
 use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
 use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
 use App\Http\Controllers\Admin\Concerns\ValidatesBulkCampaignIds;
@@ -249,6 +250,7 @@ class HiddenLinkCampaignController extends Controller
                     'target_url'                => trim($row['url']),
                     'anchor_keyword'            => trim($row['keyword']),
                     'nofollow'                  => !empty($row['nofollow']),
+                    'sponsored'                 => !empty($row['sponsored']),
                 ]);
 
                 $linkIds[$idx] = $link->id;
@@ -882,6 +884,30 @@ class HiddenLinkCampaignController extends Controller
     }
 
     /**
+     * Bulk retry all failed tasks across selected hidden links campaigns.
+     */
+    public function bulkRetryFailed(Request $request)
+    {
+        $ids = $this->validatedBulkCampaignIds($request);
+        if ($ids === []) {
+            return back()->with('cus__error', 'No campaigns selected.');
+        }
+
+        $allowed = $this->campaignIdsOwnedByCurrentAdmin($ids, HiddenLinksCampaign::class);
+        if ($allowed === []) {
+            return back()->with('cus__error', 'No campaigns found or you do not have permission.');
+        }
+
+        BulkRetryHiddenLinksCampaignTasksJob::dispatch($allowed);
+
+        $n = count($allowed);
+
+        return redirect()
+            ->route('admin.hidden.link.campaign.index')
+            ->with('cus__success', 'Bulk retry queued for ' . $n . ' hidden links campaign(s). All failed tasks will be retried in the background. Run the queue worker to process them.');
+    }
+
+    /**
      * Show form to edit single task (keyword/link). Increased timeout in service (120s).
      */
     public function editTask(string $id)
@@ -925,7 +951,17 @@ class HiddenLinkCampaignController extends Controller
         $keyword = trim($request->keyword);
         $link    = trim($request->link);
 
-        $res = HiddenLinksApiService::updateEntry($domain->name, $domain->api_key, $task->remote_id, $keyword, $link);
+        $res = HiddenLinksApiService::updateEntry(
+            $domain->name,
+            $domain->api_key,
+            $task->remote_id,
+            $keyword,
+            $link,
+            array_values(array_filter([
+                ($task->linkRow->nofollow ?? false) ? 'nofollow' : null,
+                ($task->linkRow->sponsored ?? false) ? 'sponsored' : null,
+            ]))
+        );
         if (!$res->successful()) {
             return back()->with('cus__error', 'Remote update failed: ' . $res->body());
         }

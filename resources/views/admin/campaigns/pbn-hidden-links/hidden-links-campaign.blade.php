@@ -83,6 +83,7 @@
             {{-- Separate forms (no nesting with per-row forms in the table). IDs submitted via JS. --}}
             <form id="bulk-delete-campaigns-form" action="{{ route('admin.hidden.link.campaign.bulk.delete') }}" method="POST" class="hidden">@csrf</form>
             <form id="bulk-purge-local-campaigns-form" action="{{ route('admin.hidden.link.campaign.bulk.purge.local') }}" method="POST" class="hidden">@csrf</form>
+            <form id="hidden-links-bulk-retry-failed-form" action="{{ route('admin.hidden.link.campaign.bulk.retry.failed') }}" method="POST" class="hidden">@csrf</form>
             <button type="button" id="bulk-delete-campaigns-btn"
                 class="!px-3 !py-2 rounded bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Removes links from remote sites, then deletes data">
@@ -93,7 +94,12 @@
                 title="Only removes rows in this app; remote links stay">
                 Bulk remove locally only
             </button>
-            <span class="text-sm text-gray-500">Select campaigns with checkboxes. Red = remote + database. Orange = this app only. Row icons work the same way.</span>
+            <button type="button" id="hidden-links-bulk-retry-failed-btn"
+                class="!px-3 !py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Retry all failed tasks in selected campaigns">
+                Bulk Retry Failed Tasks
+            </button>
+            <span class="text-sm text-gray-500">Select campaigns with checkboxes, then retry failed tasks, delete (remote + DB), or remove locally only.</span>
         </div>
 
         <div class="overflow-x-auto w-full">
@@ -290,8 +296,10 @@
         (function () {
             var formDelete = document.getElementById('bulk-delete-campaigns-form');
             var formPurge = document.getElementById('bulk-purge-local-campaigns-form');
+            var formRetry = document.getElementById('hidden-links-bulk-retry-failed-form');
             var bulkDeleteBtn = document.getElementById('bulk-delete-campaigns-btn');
             var bulkPurgeBtn = document.getElementById('bulk-purge-local-campaigns-btn');
+            var bulkRetryBtn = document.getElementById('hidden-links-bulk-retry-failed-btn');
             var selectAll = document.getElementById('select-all-campaigns');
             var checkboxes = document.querySelectorAll('.campaign-select-cb');
 
@@ -318,6 +326,7 @@
                 var any = selectedCampaignIds().length > 0;
                 if (bulkDeleteBtn) bulkDeleteBtn.disabled = !any;
                 if (bulkPurgeBtn) bulkPurgeBtn.disabled = !any;
+                if (bulkRetryBtn) bulkRetryBtn.disabled = !any;
             }
 
             if (bulkDeleteBtn && formDelete) {
@@ -347,6 +356,21 @@
                     }
                     fillFormWithCampaignIds(formPurge, ids);
                     formPurge.submit();
+                });
+            }
+
+            if (bulkRetryBtn && formRetry) {
+                bulkRetryBtn.addEventListener('click', function () {
+                    var ids = selectedCampaignIds();
+                    if (ids.length === 0) {
+                        alert('Please select at least one campaign.');
+                        return;
+                    }
+                    if (!confirm('Retry all failed tasks in ' + ids.length + ' selected campaign(s)? This will queue all failed tasks for republishing.')) {
+                        return;
+                    }
+                    fillFormWithCampaignIds(formRetry, ids);
+                    formRetry.submit();
                 });
             }
 

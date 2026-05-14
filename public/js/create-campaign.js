@@ -2228,18 +2228,22 @@ window.addEventListener("DOMContentLoaded", () => {
         function updateNormalKeywordProgress() {
             syncPostCountFromInput();
             const boxes = [...document.querySelectorAll(".keyword-url-box")];
-            let usedQty = 0;
+            let usedUrlQty = 0;
+            let usedKeywordQty = 0;
 
             boxes.forEach((box) => {
                 const target = parseInt(box.querySelector(".client-url-quantity")?.value || "0", 10) || 0;
                 const assigned = parseQtyLines(box.querySelector(".keywords-quantity-area")?.value || "");
-                usedQty += target;
+                usedUrlQty += target;
+                usedKeywordQty += assigned;
             });
 
             const overallNode = ensureOverallProgressNode();
             if (overallNode) {
-                const remainingAll = Math.max(postCount - usedQty, 0);
-                overallNode.textContent = `Quantity used ${usedQty}/${postCount} | Remaining ${remainingAll}`;
+                const remainingUrlQty = Math.max(postCount - usedUrlQty, 0);
+                const remainingKeywordQty = Math.max(postCount - usedKeywordQty, 0);
+                overallNode.textContent =
+                    `URL ${usedUrlQty}/${postCount} | KW ${usedKeywordQty}/${postCount}`;
             }
         }
 
@@ -2377,6 +2381,13 @@ window.addEventListener("DOMContentLoaded", () => {
             }
         });
 
+        // Keep KW progress synced when user edits quantity textarea manually.
+        keywordUrlCon.addEventListener("input", (e) => {
+            if (e.target.classList.contains("keywords-quantity-area")) {
+                updateNormalKeywordProgress();
+            }
+        });
+
         // === Add new keyword box ===
         AddMoreBtn.addEventListener("click", (e) => {
             e.preventDefault();
@@ -2501,7 +2512,7 @@ window.addEventListener("DOMContentLoaded", () => {
             const remainingAll = Math.max(postCount - usedQty, 0);
             const overallNode = ensureMultiOverallProgressNode();
             if (overallNode) {
-                overallNode.textContent = `Quantity used ${usedQty}/${postCount} | Remaining ${remainingAll}`;
+                overallNode.textContent = `URL ${usedQty}/${postCount} | KW ${usedQty}/${postCount}`;
             }
         }
 
@@ -2776,6 +2787,9 @@ window.addEventListener("DOMContentLoaded", () => {
             const noFollow = document.getElementById("no_follow")?.checked
                 ? document.getElementById("no_follow").value
                 : "";
+            const sponsored = document.getElementById("sponsored_link")?.checked
+                ? document.getElementById("sponsored_link").value
+                : "";
 
             let keyWordBox = document.querySelectorAll(".keyword-url-box");
             let keywords_url_data = [];
@@ -2875,6 +2889,7 @@ window.addEventListener("DOMContentLoaded", () => {
                             media: media ? media : "-",
                             keyword: keywords[keywordIndex],
                             nofollow: noFollow,
+                            sponsored: sponsored,
                         });
 
                         repeatCount--;
@@ -2943,6 +2958,7 @@ window.addEventListener("DOMContentLoaded", () => {
                         keyword: bulkKeywordsVal[x],
                         media: bulkMediaVal[x] ? bulkMediaVal[x] : "-",
                         nofollow: noFollow,
+                        sponsored: sponsored,
                     });
                 }
 
@@ -3011,6 +3027,7 @@ window.addEventListener("DOMContentLoaded", () => {
                     keyword: [],
                     media: "-",
                     nofollow: noFollow,
+                    sponsored: sponsored,
                 }));
 
                 usedPairs.forEach((pair) => {
@@ -3058,6 +3075,7 @@ window.addEventListener("DOMContentLoaded", () => {
                     // setting quantity
                     let quantity = item.querySelector('.multi-keyword-url-box-quantity').value;
                     singleBoxData.nofollow = noFollow;
+                    singleBoxData.sponsored = sponsored;
                     // check this
                     for (let z = 0; z < parseInt(quantity); z++) {
                         multiData.push(singleBoxData)
@@ -3377,10 +3395,40 @@ window.addEventListener("DOMContentLoaded", () => {
             manualDomainCount.textContent = `${count}`;
         })
 
+        function getManualDomainAlertBox() {
+            let box = document.getElementById('manual-domain-inline-alert');
+            if (box) return box;
+            box = document.createElement('div');
+            box.id = 'manual-domain-inline-alert';
+            box.className = 'hidden !p-4 text-sm rounded bg-red-100 text-red-700 w-full !mb-3';
+            const host = document.getElementById('campaign-form');
+            if (host) host.insertBefore(box, host.firstChild);
+            return box;
+        }
+
+        function hideManualDomainAlert() {
+            const box = document.getElementById('manual-domain-inline-alert');
+            if (!box) return;
+            box.classList.add('hidden');
+            box.innerHTML = '';
+        }
+
+        function showManualDomainAlert(message, missingDomains = []) {
+            const box = getManualDomainAlertBox();
+            if (!box) return;
+            const listHtml = Array.isArray(missingDomains) && missingDomains.length
+                ? `<div class="!mt-2"><strong>Missing domains:</strong><br>${missingDomains.map((d) => String(d)).join('<br>')}</div>`
+                : '';
+            box.innerHTML = `<span class="font-medium">${message}</span>${listHtml}`;
+            box.classList.remove('hidden');
+            box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             syncPostCountFromInput();
+            hideManualDomainAlert();
 
             const selectedArticlesInput = document.getElementById("selected_articles_val");
             const selectedArticles = (() => {
@@ -3456,7 +3504,7 @@ window.addEventListener("DOMContentLoaded", () => {
                     .filter(Boolean);
 
                 if (domains.length !== postCount) {
-                    alert(`Manual domains must be equal to postCount (${postCount})`);
+                    showManualDomainAlert(`Manual domains must be equal to post count (${postCount}).`);
                     return;
                 }
 
@@ -3479,7 +3527,10 @@ window.addEventListener("DOMContentLoaded", () => {
                     const res = await response.json();
 
                     if (!res.status) {
-                        alert(res.message || 'Domain validation failed.');
+                        showManualDomainAlert(
+                            res.message || 'Domain validation failed.',
+                            Array.isArray(res?.data?.missing) ? res.data.missing : []
+                        );
                         return;
                     }
 
@@ -3487,7 +3538,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
                 } catch (error) {
                     console.error('Domain validation error:', error);
-                    alert('Something went wrong while validating domains.');
+                    showManualDomainAlert('Something went wrong while validating domains.');
 
                 } finally {
                     icon?.classList.remove('hidden');

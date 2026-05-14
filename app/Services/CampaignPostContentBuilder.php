@@ -78,7 +78,15 @@ class CampaignPostContentBuilder
 
         $pairIndex = 0;
         $nofollow  = (bool) ($ca->nofollow ?? false);
-        $relAttr   = $nofollow ? 'nofollow noopener' : 'noopener';
+        $sponsored = (bool) ($ca->sponsored ?? false);
+        $relTokens = [];
+        if ($nofollow) {
+            $relTokens[] = 'nofollow';
+        }
+        if ($sponsored) {
+            $relTokens[] = 'sponsored';
+        }
+        $relPart = count($relTokens) > 0 ? ' rel="' . implode(' ', $relTokens) . '"' : '';
 
         for ($p = 0; $p < $paraCount && $pairIndex < $anchorCount; $p++) {
             $insertCount = $base + ($p < $remainder ? 1 : 0);
@@ -94,7 +102,7 @@ class CampaignPostContentBuilder
 
             for ($k = 0; $k < $insertCount && $pairIndex < $anchorCount; $k++) {
                 [$kw, $url] = $pairs[$pairIndex++];
-                $anchor   = '<a href="' . e($url) . '" target="_blank" rel="' . $relAttr . '">' . e($kw) . '</a>';
+                $anchor   = '<a href="' . e($url) . '" target="_blank"' . $relPart . '>' . e($kw) . '</a>';
                 $safePos  = self::findSafeHtmlInsertPos($inner, $target);
                 $inner    = substr($inner, 0, $safePos) . ' ' . $anchor . ' ' . substr($inner, $safePos);
                 $target   = $safePos + strlen($anchor) + 40;
@@ -111,7 +119,7 @@ class CampaignPostContentBuilder
             $inner   = preg_replace('/^<p\b[^>]*>|<\/p>$/i', '', $fallback);
             while ($pairIndex < $anchorCount) {
                 [$kw, $url] = $pairs[$pairIndex++];
-                $anchor = '<a href="' . e($url) . '" target="_blank" rel="' . $relAttr . '">' . e($kw) . '</a>';
+                $anchor = '<a href="' . e($url) . '" target="_blank"' . $relPart . '>' . e($kw) . '</a>';
                 $inner .= ' ' . $anchor;
             }
             $paragraphs[0] = $openTag . $inner . '</p>';

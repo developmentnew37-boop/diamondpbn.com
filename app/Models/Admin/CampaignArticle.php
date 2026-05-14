@@ -20,6 +20,7 @@ class CampaignArticle extends Model
         'url_type',
         'media',
         'nofollow',
+        'sponsored',
     ];
 
     public function campaign()

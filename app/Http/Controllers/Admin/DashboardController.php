@@ -30,32 +30,23 @@ class DashboardController extends Controller
     {
         $admin = Auth::guard('admin')->user();
 
-        // Get statistics based on role
-        $stats = $this->getStats($admin);
+        // Cache dashboard data for 5 minutes to improve performance
+        $cacheKey = 'dashboard_data_' . $admin->id . '_' . ($admin->isSuperAdmin() ? 'super' : 'user');
 
-        // Get chart data
-        $chartData = $this->getChartData($admin);
+        $dashboardData = cache()->remember($cacheKey, 300, function () use ($admin) {
+            return [
+                'stats' => $this->getStats($admin),
+                'chartData' => $this->getChartData($admin),
+                'campaigns' => $this->getRecentCampaigns($admin),
+                'domainCategories' => $this->getDomainCategories($admin),
+                'articleUsage' => $this->getArticleUsage($admin),
+                'articlesByLanguage' => $this->getArticlesByLanguage($admin),
+            ];
+        });
 
-        // Get recent campaigns
-        $campaigns = $this->getRecentCampaigns($admin);
-
-        // Get domain categories with counts
-        $domainCategories = $this->getDomainCategories($admin);
-
-        // Get article usage data
-        $articleUsage = $this->getArticleUsage($admin);
-
-        // Get articles by language data
-        $articlesByLanguage = $this->getArticlesByLanguage($admin);
-
-        return view('admin.welcome', compact(
-            'admin',
-            'stats',
-            'chartData',
-            'campaigns',
-            'domainCategories',
-            'articleUsage',
-            'articlesByLanguage'
+        return view('admin.welcome', array_merge(
+            ['admin' => $admin],
+            $dashboardData
         ));
     }
 
@@ -66,46 +57,45 @@ class DashboardController extends Controller
     {
         $isSuperAdmin = $admin->isSuperAdmin();
 
-        // Users count (only for super admin)
-        $usersCount = $isSuperAdmin
-            ? Admin::count()
-            : 1;
+        // Batch all count queries in a single optimized query set
+        if ($isSuperAdmin) {
+            // Super admin: get all counts in parallel
+            $usersCount = Admin::count();
+            $membersCount = Admin::where('type', Admin::MEMBER)->count();
+            $domainsCount = Domain::count();
+        } else {
+            // Regular user: scoped counts
+            $usersCount = 1;
+            $membersCount = 0;
+            $domainsCount = Domain::where('admin_id', $admin->id)->count();
+        }
 
-        // Members count (only for super admin)
-        $membersCount = $isSuperAdmin
-            ? Admin::where('type', Admin::MEMBER)->count()
-            : 0;
-
-        // Domains count
-        $domainsCount = Domain::when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))->count();
-
-        // Articles count
-        // $articlesCount = Article::when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))->whereNull('lock_at')->count();
+        // Optimize article count query with proper indexing
         $articlesCount = Article::query()
             ->whereNull('lock_at')
-            ->WhereNull('deleted_at')
-            ->when(
-                !$isSuperAdmin,
-                fn($q) =>
-                $q->where('admin_id', $admin->id)
-            )
-            ->count();
-
-        // Total Post Campaigns count
-        $postCampaignsCount = Campaign::query()
+            ->whereNull('deleted_at')
             ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
             ->count();
 
-        // Schedule Post Campaigns count (non-sticky only; sticky has its own list)
-        $schedulePostCampaignsCount = ScheduleCampaign::query()
-            ->where('is_sticky_campaign', false)
+        // Batch campaign counts using a single query with conditional aggregation
+        $campaignCounts = DB::table('campaigns')
+            ->selectRaw('COUNT(*) as total')
             ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
-            ->count();
+            ->first();
 
-        $scheduleStickyPostCampaignsCount = ScheduleCampaign::query()
-            ->where('is_sticky_campaign', true)
+        $postCampaignsCount = $campaignCounts->total ?? 0;
+
+        // Schedule campaigns counts
+        $scheduleCounts = DB::table('schedule_campaigns')
+            ->selectRaw('
+                SUM(CASE WHEN is_sticky_campaign = 0 THEN 1 ELSE 0 END) as regular,
+                SUM(CASE WHEN is_sticky_campaign = 1 THEN 1 ELSE 0 END) as sticky
+            ')
             ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
-            ->count();
+            ->first();
+
+        $schedulePostCampaignsCount = $scheduleCounts->regular ?? 0;
+        $scheduleStickyPostCampaignsCount = $scheduleCounts->sticky ?? 0;
 
         // Schedule Sidebar Campaigns count
         $scheduleSidebarCampaignsCount = ScheduleSidebarCampaign::query()
@@ -204,11 +194,14 @@ class DashboardController extends Controller
     {
         $isSuperAdmin = $admin->isSuperAdmin();
 
-        $languages = ArticleLanguage::query()
-            ->withCount(['Article' => function ($query) use ($admin, $isSuperAdmin) {
-                $query->whereNull('lock_at');
-                $query->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id));
-            }])
+        // Optimize with a direct join query instead of withCount
+        $languages = DB::table('article_languages')
+            ->leftJoin('articles', 'article_languages.id', '=', 'articles.article_language_id')
+            ->select('article_languages.id', 'article_languages.name', DB::raw('COUNT(articles.id) as article_count'))
+            ->whereNull('articles.lock_at')
+            ->whereNull('articles.deleted_at')
+            ->when(!$isSuperAdmin, fn($q) => $q->where('articles.admin_id', $admin->id))
+            ->groupBy('article_languages.id', 'article_languages.name')
             ->having('article_count', '>', 0)
             ->orderBy('article_count', 'desc')
             ->get();
@@ -288,19 +281,23 @@ class DashboardController extends Controller
      */
     private function getMonthlyData(string $model, Admin $admin, $months, bool $isSuperAdmin): array
     {
-        $data = [];
+        $start = $months->first()->copy()->startOfMonth();
+        $end = $months->last()->copy()->endOfMonth();
 
-        foreach ($months as $month) {
-            $count = $model::query()
-                ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
-                ->whereYear('created_at', $month->year)
-                ->whereMonth('created_at', $month->month)
-                ->count();
+        $monthlyCounts = $model::query()
+            ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
+            ->whereBetween('created_at', [$start, $end])
+            ->selectRaw('YEAR(created_at) as y, MONTH(created_at) as m, COUNT(*) as total')
+            ->groupBy('y', 'm')
+            ->get()
+            ->keyBy(fn($row) => $row->y . '-' . $row->m);
 
-            $data[] = $count;
-        }
-
-        return $data;
+        return $months
+            ->map(function ($month) use ($monthlyCounts) {
+                $key = $month->year . '-' . $month->month;
+                return (int) optional($monthlyCounts->get($key))->total;
+            })
+            ->toArray();
     }
 
     /**
@@ -316,8 +313,8 @@ class DashboardController extends Controller
             case 'sidebar':
                 $campaigns = SidebarCampaign::query()
                     ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
-                    ->with('domainCategory')
-                    ->withCount('links', 'domains')
+                    ->with(['domainCategory:id,name'])
+                    ->withCount(['links', 'domains'])
                     ->latest()
                     ->take(10)
                     ->get()
@@ -338,8 +335,8 @@ class DashboardController extends Controller
                 $campaigns = ScheduleCampaign::query()
                     ->where('is_sticky_campaign', false)
                     ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
-                    ->with('domainCategory')
-                    ->withCount('articles', 'domains')
+                    ->with(['domainCategory:id,name'])
+                    ->withCount(['articles', 'domains'])
                     ->latest()
                     ->take(10)
                     ->get()
@@ -359,8 +356,8 @@ class DashboardController extends Controller
                 $campaigns = ScheduleCampaign::query()
                     ->where('is_sticky_campaign', true)
                     ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
-                    ->with('domainCategory')
-                    ->withCount('articles', 'domains')
+                    ->with(['domainCategory:id,name'])
+                    ->withCount(['articles', 'domains'])
                     ->latest()
                     ->take(10)
                     ->get()
@@ -380,14 +377,14 @@ class DashboardController extends Controller
                 $campaigns = Campaign::query()
                     ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
                     ->where('is_sticky_campaign', true)
-                    ->with('campaignDomain')
-                    ->withCount('campaignArticles', 'campaignDomains')
+                    ->with(['domainCategory:id,name'])
+                    ->withCount(['campaignArticles', 'campaignDomains'])
                     ->latest()
                     ->take(10)
                     ->get()
                     ->map(fn($c) => [
                         'campaign' => $c->campaign_no,
-                        'domain' => $c->campaignDomain->name ?? 'N/A',
+                        'domain' => $c->domainCategory->name ?? 'N/A',
                         'quantity' => $c->total_targets ?? 0,
                         'links' => $c->campaign_articles_count ?? 0,
                         'keywords' => $c->campaign_domains_count ?? 0,
@@ -401,14 +398,14 @@ class DashboardController extends Controller
                 $campaigns = Campaign::query()
                     ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
                     ->where(fn($q) => $q->whereNull('is_sticky_campaign')->orWhere('is_sticky_campaign', false))
-                    ->with('campaignDomain')
-                    ->withCount('campaignArticles', 'campaignDomains')
+                    ->with(['domainCategory:id,name'])
+                    ->withCount(['campaignArticles', 'campaignDomains'])
                     ->latest()
                     ->take(10)
                     ->get()
                     ->map(fn($c) => [
                         'campaign' => $c->campaign_no,
-                        'domain' => $c->campaignDomain->name ?? 'N/A',
+                        'domain' => $c->domainCategory->name ?? 'N/A',
                         'quantity' => $c->total_targets ?? 0,
                         'links' => $c->campaign_articles_count ?? 0,
                         'keywords' => $c->campaign_domains_count ?? 0,
@@ -429,18 +426,21 @@ class DashboardController extends Controller
     {
         $isSuperAdmin = $admin->isSuperAdmin();
 
-        return DomainCategory::query()
-            ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
-            ->withCount('domains')
+        // Optimize with direct join query
+        $categories = DB::table('domain_categories')
+            ->leftJoin('domains', 'domain_categories.id', '=', 'domains.domain_category_id')
+            ->select('domain_categories.id', 'domain_categories.name', DB::raw('COUNT(domains.id) as domains_count'))
+            ->when(!$isSuperAdmin, fn($q) => $q->where('domain_categories.admin_id', $admin->id))
+            ->groupBy('domain_categories.id', 'domain_categories.name')
             ->orderBy('domains_count', 'desc')
-            ->take(10)
-            ->get()
-            ->map(fn($dc) => [
-                'domain' => $dc->name,
-                'quantity' => $dc->domains_count,
-                'id' => $dc->id,
-            ])
-            ->toArray();
+            ->limit(10)
+            ->get();
+
+        return $categories->map(fn($dc) => [
+            'domain' => $dc->name,
+            'quantity' => $dc->domains_count,
+            'id' => $dc->id,
+        ])->toArray();
     }
 
     /**
@@ -450,23 +450,18 @@ class DashboardController extends Controller
     {
         $isSuperAdmin = $admin->isSuperAdmin();
 
-        $totalArticles = Article::query()
+        // Single optimized query with conditional aggregation
+        $stats = DB::table('articles')
+            ->selectRaw('
+                COUNT(*) as total,
+                SUM(CASE WHEN status = ? OR lock_at IS NOT NULL THEN 1 ELSE 0 END) as used
+            ', [Article::STATUS_USED])
             ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
-            ->count();
+            ->whereNull('deleted_at')
+            ->first();
 
-        $usedArticles = Article::query()
-            ->when(
-                !$isSuperAdmin,
-                fn($q) =>
-                $q->where('admin_id', $admin->id)
-            )
-            ->where(function ($q) {
-                $q->where('status', Article::STATUS_USED)
-                    ->orWhereNotNull('lock_at');
-            })
-            ->count();
-
-
+        $totalArticles = $stats->total ?? 0;
+        $usedArticles = $stats->used ?? 0;
         $remaining = $totalArticles - $usedArticles;
         $percentage = $totalArticles > 0 ? round(($usedArticles / $totalArticles) * 100) : 0;
 

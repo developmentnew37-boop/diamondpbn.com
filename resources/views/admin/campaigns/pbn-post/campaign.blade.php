@@ -140,13 +140,19 @@
         <h2 class="text-xl capitalize !mb-4 bg-[var(--primary-color)] text-white w-fit !p-2 rounded">Post Campaigns
         </h2>
         <form id="pbn-bulk-purge-local-form" action="{{ route('admin.campaign.bulk.purge.local') }}" method="POST" class="hidden">@csrf</form>
+        <form id="pbn-bulk-retry-failed-form" action="{{ route('admin.campaign.bulk.retry.failed') }}" method="POST" class="hidden">@csrf</form>
         <div class="w-full flex flex-wrap items-center gap-2 !mb-2">
             <button type="button" id="pbn-bulk-purge-local-btn"
                 class="!px-3 !py-2 rounded bg-orange-600 text-white text-sm hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Remove selected campaigns from this app only; remote posts stay">
                 Bulk remove locally only
             </button>
-            <span class="text-sm text-gray-500">Select rows with checkboxes, then remove local records only (no remote API calls).</span>
+            <button type="button" id="pbn-bulk-retry-failed-btn"
+                class="!px-3 !py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Retry all failed posts in selected campaigns">
+                Bulk Retry Failed Posts
+            </button>
+            <span class="text-sm text-gray-500">Select campaigns with checkboxes, then retry all failed posts or remove local records.</span>
         </div>
 
         {{-- table code here --}}
@@ -361,10 +367,15 @@
     <script src="{{ asset('js/copy.js') }}"></script>
     <script>
         (function () {
-            var form = document.getElementById('pbn-bulk-purge-local-form');
-            var btn = document.getElementById('pbn-bulk-purge-local-btn');
-            if (!form || !btn) return;
-            btn.addEventListener('click', function () {
+            var purgeForm = document.getElementById('pbn-bulk-purge-local-form');
+            var purgeBtn = document.getElementById('pbn-bulk-purge-local-btn');
+            var retryForm = document.getElementById('pbn-bulk-retry-failed-form');
+            var retryBtn = document.getElementById('pbn-bulk-retry-failed-btn');
+
+            if (!purgeForm || !purgeBtn || !retryForm || !retryBtn) return;
+
+            // Bulk purge local handler
+            purgeBtn.addEventListener('click', function () {
                 var ids = Array.prototype.slice.call(document.querySelectorAll('.campaign-bulk-cb:checked')).map(function (cb) { return cb.value; });
                 if (ids.length === 0) {
                     alert('Please select at least one campaign.');
@@ -373,19 +384,44 @@
                 if (!confirm('Remove ' + ids.length + ' campaign(s) from this dashboard only? Remote posts will NOT be deleted.')) {
                     return;
                 }
-                Array.prototype.slice.call(form.querySelectorAll('input[name="campaign_ids[]"]')).forEach(function (n) { n.remove(); });
+                Array.prototype.slice.call(purgeForm.querySelectorAll('input[name="campaign_ids[]"]')).forEach(function (n) { n.remove(); });
                 ids.forEach(function (id) {
                     var inp = document.createElement('input');
                     inp.type = 'hidden';
                     inp.name = 'campaign_ids[]';
                     inp.value = id;
-                    form.appendChild(inp);
+                    purgeForm.appendChild(inp);
                 });
-                form.submit();
+                purgeForm.submit();
             });
-            function syncPurgeBtn() {
-                btn.disabled = document.querySelectorAll('.campaign-bulk-cb:checked').length === 0;
+
+            // Bulk retry failed posts handler
+            retryBtn.addEventListener('click', function () {
+                var ids = Array.prototype.slice.call(document.querySelectorAll('.campaign-bulk-cb:checked')).map(function (cb) { return cb.value; });
+                if (ids.length === 0) {
+                    alert('Please select at least one campaign.');
+                    return;
+                }
+                if (!confirm('Retry all failed posts in ' + ids.length + ' selected campaign(s)? This will queue all failed posts for republishing.')) {
+                    return;
+                }
+                Array.prototype.slice.call(retryForm.querySelectorAll('input[name="campaign_ids[]"]')).forEach(function (n) { n.remove(); });
+                ids.forEach(function (id) {
+                    var inp = document.createElement('input');
+                    inp.type = 'hidden';
+                    inp.name = 'campaign_ids[]';
+                    inp.value = id;
+                    retryForm.appendChild(inp);
+                });
+                retryForm.submit();
+            });
+
+            function syncButtons() {
+                var hasChecked = document.querySelectorAll('.campaign-bulk-cb:checked').length > 0;
+                purgeBtn.disabled = !hasChecked;
+                retryBtn.disabled = !hasChecked;
             }
+
             function syncSelectAllHeader() {
                 var boxes = document.querySelectorAll('.campaign-bulk-cb');
                 var selAll = document.getElementById('bulk-checkBox-selector');
@@ -395,12 +431,14 @@
                 selAll.checked = allOn;
                 selAll.indeterminate = anyOn && !allOn;
             }
+
             document.querySelectorAll('.campaign-bulk-cb').forEach(function (cb) {
                 cb.addEventListener('change', function () {
-                    syncPurgeBtn();
+                    syncButtons();
                     syncSelectAllHeader();
                 });
             });
+
             var selAll = document.getElementById('bulk-checkBox-selector');
             if (selAll) {
                 selAll.addEventListener('change', function () {
@@ -408,10 +446,11 @@
                     document.querySelectorAll('.campaign-bulk-cb').forEach(function (cb) {
                         cb.checked = selAll.checked;
                     });
-                    syncPurgeBtn();
+                    syncButtons();
                 });
             }
-            syncPurgeBtn();
+
+            syncButtons();
             syncSelectAllHeader();
         })();
     </script>

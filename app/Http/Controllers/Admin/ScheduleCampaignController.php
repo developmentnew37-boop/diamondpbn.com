@@ -18,6 +18,7 @@ use App\Models\Admin\ScheduleCampaignDate;
 use App\Support\WordPressApiFetchedPost;
 use App\Services\CampaignKeywordPairValidator;
 use App\Jobs\BulkUpdateScheduleCampaignPostsJob;
+use App\Jobs\BulkRetryScheduleCampaignPostsJob;
 use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
 use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
 use App\Http\Controllers\Admin\Concerns\ValidatesBulkCampaignIds;
@@ -1318,6 +1319,30 @@ class ScheduleCampaignController extends Controller
         return redirect()
             ->route('admin.schedule.campaign.index')
             ->with('cus__success', $n . ' campaign(s) removed from this dashboard only. Remote posts were not deleted.');
+    }
+
+    /**
+     * Bulk retry all failed posts across selected schedule campaigns.
+     */
+    public function bulkRetryFailed(Request $request)
+    {
+        $ids = $this->validatedBulkCampaignIds($request);
+        if ($ids === []) {
+            return back()->with('cus__error', 'No campaigns selected.');
+        }
+
+        $allowed = $this->campaignIdsOwnedByCurrentAdmin($ids, ScheduleCampaign::class);
+        if ($allowed === []) {
+            return back()->with('cus__error', 'No campaigns found or you do not have permission.');
+        }
+
+        BulkRetryScheduleCampaignPostsJob::dispatch($allowed);
+
+        $n = count($allowed);
+
+        return redirect()
+            ->route('admin.schedule.campaign.index')
+            ->with('cus__success', 'Bulk retry queued for ' . $n . ' schedule campaign(s). All failed posts will be retried in the background. Run the queue worker to process them.');
     }
 
     /**

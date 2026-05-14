@@ -4,13 +4,13 @@
 
 @section('main-content')
 
-    <div class="w-full content-card">
+    <div class="w-full content-card min-w-0 !p-3 sm:!p-4 lg:!p-6">
 
         {{-- Header --}}
-        <div class="w-full flex flex-col sm:flex-row items-center sm:justify-between gap-3 !mb-6">
+        <div class="w-full flex flex-col gap-3 md:flex-row md:items-center md:justify-between !mb-6 min-w-0">
 
             <h2
-                class="text-sm sm:text-base md:text-lg capitalize
+                class="w-full md:w-auto text-sm sm:text-base md:text-lg capitalize break-words
                    bg-[var(--primary-color)] text-white
                    !px-4 !py-2 rounded">
                 {{ $campaign->campaign_no }} Sidebar Campaign Report
@@ -20,38 +20,38 @@
                 'campaign_no' => $campaign->campaign_no,
                 'token' => $campaign->report_token,
             ]) }}"
-                class="!px-5 !py-3 bg-green-600 text-white rounded hover:bg-green-700">
+                class="w-full sm:w-auto text-center !px-5 !py-3 bg-green-600 text-white rounded hover:bg-green-700 shrink-0">
                 Export Excel
             </a>
         </div>
 
         {{-- Stats --}}
-        <div class="flex flex-wrap gap-4 !mb-6">
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 !mb-6">
 
-            <div class="flex-1 min-w-[220px] bg-white rounded-xl shadow-sm !p-5 border-l-4 border-blue-500">
+            <div class="w-full min-w-0 bg-white rounded-xl shadow-sm !p-5 border-l-4 border-blue-500">
                 <div class="text-sm text-gray-500">Total Links</div>
                 <div class="text-3xl font-bold text-gray-800">{{ $stats->total }}</div>
             </div>
 
-            <div class="flex-1 min-w-[220px] bg-white rounded-xl shadow-sm !p-5 border-l-4 border-green-500">
+            <div class="w-full min-w-0 bg-white rounded-xl shadow-sm !p-5 border-l-4 border-green-500">
                 <div class="text-sm text-gray-500">Success</div>
                 <div class="text-3xl font-bold text-green-600">{{ $stats->success }}</div>
             </div>
 
-            <div class="flex-1 min-w-[220px] bg-white rounded-xl shadow-sm !p-5 border-l-4 border-yellow-500">
+            <div class="w-full min-w-0 bg-white rounded-xl shadow-sm !p-5 border-l-4 border-yellow-500">
                 <div class="text-sm text-gray-500">Queued</div>
                 <div class="text-3xl font-bold text-yellow-600">{{ $stats->queued }}</div>
             </div>
 
-            <div class="flex-1 min-w-[220px] bg-white rounded-xl shadow-sm !p-5 border-l-4 border-red-500">
+            <div class="w-full min-w-0 bg-white rounded-xl shadow-sm !p-5 border-l-4 border-red-500">
                 <div class="text-sm text-gray-500">Failed</div>
                 <div class="text-3xl font-bold text-red-600">{{ $stats->failed }}</div>
             </div>
         </div>
 
         {{-- Table --}}
-        <div class="overflow-x-auto">
-            <table class="display w-full border border-gray-200 text-sm whitespace-nowrap">
+        <div class="overflow-x-auto w-full max-w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
+            <table class="display w-full min-w-[960px] border border-gray-200 text-sm whitespace-nowrap">
 
                 <thead>
                     <tr class="bg-gray-800 text-white">
@@ -83,7 +83,13 @@
                             </td>
 
                             <td class="border !px-2 !py-3 font-medium">
-                                <a href="https://{{ $domain }}" class="text-sm text-blue-600">{{ $domain }}</a>
+                                @if ($domain !== '-')
+                                    <a href="https://{{ $domain }}" target="_blank" class="text-sm text-blue-600 hover:underline">
+                                        {{ $domain }}
+                                    </a>
+                                @else
+                                    -
+                                @endif
                             </td>
 
                             <td class="border !px-2 !py-3">

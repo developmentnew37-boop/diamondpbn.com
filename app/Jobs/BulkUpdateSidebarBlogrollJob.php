@@ -64,7 +64,11 @@ class BulkUpdateSidebarBlogrollJob implements ShouldQueue
                 $domain->api_key,
                 $task->remote_id,
                 $keyword,
-                $link
+                $link,
+                array_values(array_filter([
+                    ($task->linkRow->nofollow ?? false) ? 'nofollow' : null,
+                    ($task->linkRow->sponsored ?? false) ? 'sponsored' : null,
+                ]))
             );
 
             if ($res->successful()) {

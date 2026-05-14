@@ -27,7 +27,8 @@
 
     <div class="w-full min-h-screen bg-[#F4F7FE] flex items-center justify-center !px-3 sm:!px-6 !py-10">
         <div
-            class="w-full max-w-[420px] bg-white rounded-xl !py-6 sm:!py-8 !px-4 sm:!px-6 text-lg flex flex-col justify-center gap-3 shadow-sm border border-gray-100">
+            class="w-full max-w-md mx-auto bg-white rounded-xl !py-6 sm:!py-8 !px-4 sm:!px-6 text-lg flex flex-col gap-3 shadow-sm border border-gray-100"
+            style="width:100%; max-width:420px;">
             <div class="w-full flex justify-center">
                 <a href="javascript:void(0)"><img src="{{ asset('logo.png') }}" alt="logo"
                         class="w-40 !mb-2  block" />
