@@ -265,7 +265,7 @@ class ScheduleCampaignController extends Controller
             'article_niche'         => 'nullable|integer|exists:article_categories,id',
             'sel_articles_opt'      => 'required|in:own_article,system_article,language_article',
             'selected_articles_val' => 'required|string',
-            'keywordmethod'         => 'nullable|in:normal,bulk,multiple',
+            'keywordmethod'         => 'nullable|in:normal,bulk,multiple,multi_bulk',
             'keywordsDataHolder'    => 'required|string',
             'campaigns_domains'     => 'required|string',
         ]);
@@ -284,7 +284,7 @@ class ScheduleCampaignController extends Controller
         }
 
         $method     = (string) ($request->keywordmethod ?? 'normal');
-        $isMultiple = ($method === 'multiple');
+        $isMultiple = ($method === 'multiple' || $method === 'multi_bulk');
 
         if (count($articleIds) !== $postQty || count($domainIds) !== $postQty || count($keywords) !== $postQty) {
             return back()
@@ -400,6 +400,19 @@ class ScheduleCampaignController extends Controller
                 if ($isMultiple) {
                     $kwArr  = is_array($kwVal)  ? $kwVal  : (is_null($kwVal)  ? [] : [$kwVal]);
                     $urlArr = is_array($urlVal) ? $urlVal : (is_null($urlVal) ? [] : [$urlVal]);
+
+                    // Handle multi-bulk additional_links
+                    if ($method === 'multi_bulk' && isset($row['additional_links']) && is_array($row['additional_links'])) {
+                        foreach ($row['additional_links'] as $additionalLink) {
+                            if (isset($additionalLink['keyword'])) {
+                                $kwArr[] = $additionalLink['keyword'];
+                            }
+                            if (isset($additionalLink['url'])) {
+                                $urlArr[] = $additionalLink['url'];
+                            }
+                        }
+                    }
+
                     $kwArr  = array_values(array_filter(array_map(fn($v) => trim((string)$v), $kwArr)));
                     $urlArr = array_values(array_filter(array_map(fn($v) => trim((string)$v), $urlArr)));
                     $kwStore  = json_encode($kwArr, JSON_UNESCAPED_UNICODE);
@@ -543,6 +556,19 @@ class ScheduleCampaignController extends Controller
                 if ($isMultiple) {
                     $kwArr  = is_array($kwVal)  ? $kwVal  : (is_null($kwVal)  ? [] : [$kwVal]);
                     $urlArr = is_array($urlVal) ? $urlVal : (is_null($urlVal) ? [] : [$urlVal]);
+
+                    // Handle multi-bulk additional_links
+                    if ($method === 'multi_bulk' && isset($row['additional_links']) && is_array($row['additional_links'])) {
+                        foreach ($row['additional_links'] as $additionalLink) {
+                            if (isset($additionalLink['keyword'])) {
+                                $kwArr[] = $additionalLink['keyword'];
+                            }
+                            if (isset($additionalLink['url'])) {
+                                $urlArr[] = $additionalLink['url'];
+                            }
+                        }
+                    }
+
                     $kwArr  = array_values(array_filter(array_map(fn($v) => trim((string)$v), $kwArr)));
                     $urlArr = array_values(array_filter(array_map(fn($v) => trim((string)$v), $urlArr)));
                     $kwStore  = json_encode($kwArr, JSON_UNESCAPED_UNICODE);

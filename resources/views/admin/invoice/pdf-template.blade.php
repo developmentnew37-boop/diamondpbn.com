@@ -163,7 +163,10 @@ body {
 
 /* Invoice To */
 .invoice-to-section {
-    padding: 22px 55px 24px;
+    padding: 22px 55px 18px;
+    min-height: 60px;
+    max-height: 90px;
+    overflow: hidden;
 }
 
 .invoice-to-text {
@@ -176,6 +179,17 @@ body {
     font-size: 24pt;
     font-weight: normal;
     margin-left: 8px;
+}
+
+.client-address {
+    font-size: 9pt;
+    font-weight: normal;
+    margin-top: 4px;
+    margin-left: 0px;
+    color: #18202c;
+    line-height: 1.3;
+    max-width: 500px;
+    word-wrap: break-word;
 }
 
 /* Items Table - 90% WIDTH */
@@ -288,14 +302,14 @@ body {
 
 .payment-title {
     font-size: 16pt;
-    font-weight: bold;
+    font-weight: normal;
     margin-bottom: 4px;
     letter-spacing: 0.8px;
 }
 
 .payment-info {
     font-size: 9pt;
-    font-weight: bold;
+    font-weight: normal;
     line-height: 1.7;
 }
 
@@ -314,7 +328,7 @@ body {
     background: {{ $theme_color }};
     color: #ffffff;
     font-size: 14pt;
-    font-weight: bold;
+    font-weight: normal;
     display: inline-block;
     min-width: 240px;
     position: relative;
@@ -478,7 +492,14 @@ body {
 
     <!-- Invoice To -->
     <div class="invoice-to-section">
-        <span class="invoice-to-text">Invoice to:</span><span class="client-name">{{ $client_name }}</span>
+        <div style="display: inline-block; vertical-align: top;">
+            <div>
+                <span class="invoice-to-text">Invoice to:</span><span class="client-name">{{ $client_name }}</span>
+            </div>
+            @if(isset($client_address) && $client_address)
+            <div class="client-address">{{ $client_address }}</div>
+            @endif
+        </div>
     </div>
 
     <!-- Items Table with CSS Arrow -->

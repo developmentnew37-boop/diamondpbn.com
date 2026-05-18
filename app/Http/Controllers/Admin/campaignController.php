@@ -298,6 +298,18 @@ class campaignController extends Controller
                     $kwArr  = is_array($kwVal)  ? $kwVal  : (is_null($kwVal) ? [] : [$kwVal]);
                     $urlArr = is_array($urlVal) ? $urlVal : (is_null($urlVal) ? [] : [$urlVal]);
 
+                    // Handle multi-bulk additional_links
+                    if ($method === 'multi_bulk' && isset($row['additional_links']) && is_array($row['additional_links'])) {
+                        foreach ($row['additional_links'] as $additionalLink) {
+                            if (isset($additionalLink['keyword'])) {
+                                $kwArr[] = $additionalLink['keyword'];
+                            }
+                            if (isset($additionalLink['url'])) {
+                                $urlArr[] = $additionalLink['url'];
+                            }
+                        }
+                    }
+
                     // Optional: trim + remove empty
                     $kwArr  = array_values(array_filter(array_map(fn($v) => trim((string)$v), $kwArr), fn($v) => $v !== ''));
                     $urlArr = array_values(array_filter(array_map(fn($v) => trim((string)$v), $urlArr), fn($v) => $v !== ''));
