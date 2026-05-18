@@ -33,6 +33,21 @@ class CampaignPostContentBuilder
             $html  = trim((string) ($ca->article_body_snapshot ?? ''));
         }
 
+        // ✅ UTF-8 Sanitization - clean malformed bytes from article content
+        $title = cleanUtf8($title, [
+            'context' => 'content_builder',
+            'article_id' => $article?->id,
+            'field' => 'title',
+            'log' => false, // Already logged at model level
+        ]);
+
+        $html = cleanUtf8($html, [
+            'context' => 'content_builder',
+            'article_id' => $article?->id,
+            'field' => 'html',
+            'log' => false, // Already logged at model level
+        ]);
+
         if ($title === '' || $html === '') {
             throw new \Exception(
                 "Article content missing for campaign_post_id={$post->id} (link to library article removed; fill snapshots or restore article)."
@@ -98,14 +113,16 @@ class CampaignPostContentBuilder
             preg_match('/^<p\b[^>]*>/i', $paraHtml, $openTagMatch);
             $openTag = $openTagMatch[0] ?? '<p>';
             $inner   = preg_replace('/^<p\b[^>]*>|<\/p>$/i', '', $paraHtml);
-            $target  = (int) max(20, floor(strlen($inner) * 0.20));
+            // ✅ Use mb_strlen for character count, not byte count (critical for Chinese/Thai/Arabic)
+            $target  = (int) max(20, floor(mb_strlen($inner) * 0.20));
 
             for ($k = 0; $k < $insertCount && $pairIndex < $anchorCount; $k++) {
                 [$kw, $url] = $pairs[$pairIndex++];
                 $anchor   = '<a href="' . e($url) . '" target="_blank"' . $relPart . '>' . e($kw) . '</a>';
                 $safePos  = self::findSafeHtmlInsertPos($inner, $target);
-                $inner    = substr($inner, 0, $safePos) . ' ' . $anchor . ' ' . substr($inner, $safePos);
-                $target   = $safePos + strlen($anchor) + 40;
+                // ✅ Use mb_substr to avoid splitting multi-byte UTF-8 characters
+                $inner    = mb_substr($inner, 0, $safePos) . ' ' . $anchor . ' ' . mb_substr($inner, $safePos);
+                $target   = $safePos + mb_strlen($anchor) + 40;
             }
 
             $paragraphs[$p] = $openTag . $inner . '</p>';
@@ -127,12 +144,17 @@ class CampaignPostContentBuilder
 
         $html = implode("\n", $paragraphs);
 
+        // ✅ Auto-wrap RTL content with direction attribute for proper WordPress display
+        $html = wrapRtlContent($html, $title);
+
         return [$title, $html];
     }
 
     public static function findSafeHtmlInsertPos(string $html, int $start): int
     {
-        $len   = strlen($html);
+        // Note: This function works with byte positions for HTML parsing
+        // The $start parameter should be a character position, so we convert it
+        $len   = mb_strlen($html);
         if ($len === 0) {
             return 0;
         }
@@ -141,26 +163,26 @@ class CampaignPostContentBuilder
         $isBoundary = fn ($ch) => in_array($ch, [' ', "\n", "\t", '.', ',', ';', ':', '!', '?', ')', '('], true);
 
         $insideTagAt = function (int $pos) use ($html): bool {
-            $before = substr($html, 0, $pos);
-            $lastLt = strrpos($before, '<');
+            $before = mb_substr($html, 0, $pos);
+            $lastLt = mb_strrpos($before, '<');
             if ($lastLt === false) {
                 return false;
             }
-            $lastGt = strrpos($before, '>');
+            $lastGt = mb_strrpos($before, '>');
             return $lastGt === false || $lastLt > $lastGt;
         };
 
         for ($d = 0; $d < 200; $d++) {
             $right = $start + $d;
             if ($right < $len && !$insideTagAt($right)) {
-                $ch = substr($html, $right, 1);
+                $ch = mb_substr($html, $right, 1);
                 if ($ch !== '' && $isBoundary($ch)) {
                     return min($right + 1, $len);
                 }
             }
             $left = $start - $d;
             if ($left > 0 && !$insideTagAt($left)) {
-                $ch = substr($html, $left, 1);
+                $ch = mb_substr($html, $left, 1);
                 if ($ch !== '' && $isBoundary($ch)) {
                     return min($left + 1, $len);
                 }

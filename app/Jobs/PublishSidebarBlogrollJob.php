@@ -107,9 +107,22 @@ class PublishSidebarBlogrollJob implements ShouldQueue
             }
             $relString = implode(' ', $rel);
 
+            // ✅ UTF-8 Sanitization - clean malformed bytes
+            $keyword = cleanUtf8((string) $link->anchor_keyword, [
+                'context' => 'sidebar_blogroll_api',
+                'task_id' => $task->id,
+                'field' => 'keyword',
+            ]);
+
+            $targetUrl = cleanUtf8((string) $link->target_url, [
+                'context' => 'sidebar_blogroll_api',
+                'task_id' => $task->id,
+                'field' => 'link',
+            ]);
+
             $payload = [
-                'keyword' => (string) $link->anchor_keyword,
-                'link'    => (string) $link->target_url,
+                'keyword' => $keyword,
+                'link'    => $targetUrl,
                 'api_key' => (string) $apiKey, // ✅ if your API requires it
                 // Send both keys for compatibility across remote plugin versions.
                 'nofollow' => $nofollow ? 1 : 0,
@@ -120,12 +133,13 @@ class PublishSidebarBlogrollJob implements ShouldQueue
                 'rel_attr' => $relString,
             ];
 
-            // 🌐 STEP 3: Send request
+            // 🌐 STEP 3: Send request with UTF-8 safe headers
             $res = Http::withoutVerifying()
                 ->timeout(180)
                 ->acceptJson()
-                ->asJson()
-                ->post($endpoint, $payload);
+                ->contentType('application/json; charset=utf-8')
+                ->withBody(safeJsonEncode($payload), 'application/json; charset=utf-8')
+                ->post($endpoint);
 
             if (!$res->successful()) {
                 throw new \Exception("WP blogroll API failed ({$res->status()}): " . $res->body());

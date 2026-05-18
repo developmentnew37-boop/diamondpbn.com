@@ -32,6 +32,21 @@ class WpScheduledPostContentBuilder
             $html = trim((string) ($ca->article_body_snapshot ?? ''));
         }
 
+        // ✅ UTF-8 Sanitization - clean malformed bytes from article content
+        $title = cleanUtf8($title, [
+            'context' => 'wp_scheduled_content_builder',
+            'article_id' => $article?->id,
+            'field' => 'title',
+            'log' => false, // Already logged at model level
+        ]);
+
+        $html = cleanUtf8($html, [
+            'context' => 'wp_scheduled_content_builder',
+            'article_id' => $article?->id,
+            'field' => 'html',
+            'log' => false, // Already logged at model level
+        ]);
+
         if ($title === '' || $html === '') {
             throw new \Exception(
                 "Article content missing for post_id={$post->id} (library article removed; snapshots required)."
@@ -84,45 +99,52 @@ class WpScheduledPostContentBuilder
                 }
                 [$kw, $url] = $pairs[$pairIndex++];
                 $anchor = '<a href="' . e($url) . '" target="_blank" rel="' . $relAttr . '">' . e($kw) . '</a>';
-                $target = random_int((int) (strlen($inner) * 0.1), (int) (strlen($inner) * 0.3));
+                // ✅ Use mb_strlen for character count, not byte count (critical for Chinese/Thai/Arabic)
+                $target = random_int((int) (mb_strlen($inner) * 0.1), (int) (mb_strlen($inner) * 0.3));
                 $safePos = self::findSafeHtmlInsertPos($inner, $target);
-                $inner = substr($inner, 0, $safePos) . ' ' . $anchor . ' ' . substr($inner, $safePos);
+                // ✅ Use mb_substr to avoid splitting multi-byte UTF-8 characters
+                $inner = mb_substr($inner, 0, $safePos) . ' ' . $anchor . ' ' . mb_substr($inner, $safePos);
                 $paragraphs[$p] = $openTag . $inner . '</p>';
             }
         }
 
         $html = implode("\n", $paragraphs);
+
+        // ✅ Auto-wrap RTL content with direction attribute for proper WordPress display
+        $html = wrapRtlContent($html, $title);
+
         return [$title, $html];
     }
 
     private static function findSafeHtmlInsertPos(string $html, int $start): int
     {
-        $len = strlen($html);
+        // ✅ Use mb_strlen for character-based length (critical for Chinese/Thai/Arabic)
+        $len = mb_strlen($html);
         if ($len === 0) {
             return 0;
         }
         $start = max(0, min($start, $len));
         $isBoundary = fn (string $ch): bool => in_array($ch, [' ', "\n", "\t", '.', ',', ';', ':', '!', '?', ')', '('], true);
         $insideTagAt = function (int $pos) use ($html): bool {
-            $before = substr($html, 0, $pos);
-            $lastLt = strrpos($before, '<');
+            $before = mb_substr($html, 0, $pos);
+            $lastLt = mb_strrpos($before, '<');
             if ($lastLt === false) {
                 return false;
             }
-            $lastGt = strrpos($before, '>');
+            $lastGt = mb_strrpos($before, '>');
             return $lastGt === false || $lastLt > $lastGt;
         };
         for ($d = 0; $d < 200; $d++) {
             $right = $start + $d;
             if ($right < $len && !$insideTagAt($right)) {
-                $ch = substr($html, $right, 1);
+                $ch = mb_substr($html, $right, 1);
                 if ($ch !== '' && $isBoundary($ch)) {
                     return min($right + 1, $len);
                 }
             }
             $left = $start - $d;
             if ($left > 0 && !$insideTagAt($left)) {
-                $ch = substr($html, $left, 1);
+                $ch = mb_substr($html, $left, 1);
                 if ($ch !== '' && $isBoundary($ch)) {
                     return min($left + 1, $len);
                 }

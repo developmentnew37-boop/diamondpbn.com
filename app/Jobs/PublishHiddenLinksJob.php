@@ -124,10 +124,23 @@ class PublishHiddenLinksJob implements ShouldQueue
             }
             $relString = implode(' ', $rel);
 
+            // ✅ UTF-8 Sanitization - clean malformed bytes
+            $keyword = cleanUtf8((string) $link->anchor_keyword, [
+                'context' => 'hidden_links_api',
+                'task_id' => $task->id,
+                'field' => 'keyword',
+            ]);
+
+            $targetUrl = cleanUtf8((string) $link->target_url, [
+                'context' => 'hidden_links_api',
+                'task_id' => $task->id,
+                'field' => 'link',
+            ]);
+
             // ✅ Payload you gave
             $payload = [
-                'keyword' => (string) $link->anchor_keyword,
-                'link'    => (string) $link->target_url,
+                'keyword' => $keyword,
+                'link'    => $targetUrl,
                 'api_key' => (string) $apiKey,
                 'nofollow' => $nofollow ? 1 : 0,
                 'no_follow' => $nofollow ? 1 : 0,
@@ -137,12 +150,13 @@ class PublishHiddenLinksJob implements ShouldQueue
                 'rel_attr' => $relString,
             ];
 
-            // 🌐 STEP 3: Send request
+            // 🌐 STEP 3: Send request with UTF-8 safe headers
             $res = Http::withoutVerifying()
                 ->timeout(180)
                 ->acceptJson()
-                ->asJson()
-                ->post($endpoint, $payload);
+                ->contentType('application/json; charset=utf-8')
+                ->withBody(safeJsonEncode($payload), 'application/json; charset=utf-8')
+                ->post($endpoint);
 
             if (!$res->successful()) {
                 throw new \Exception("WP hidden-links API failed ({$res->status()}): " . $res->body());

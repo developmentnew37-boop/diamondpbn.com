@@ -80,6 +80,23 @@ class PublishCampaignPostJob implements ShouldQueue
             // 🧠 STEP 2: Build content
             [$title, $content] = CampaignPostContentBuilder::build($post);
 
+            // ✅ UTF-8 Sanitization - clean malformed bytes before WordPress API posting
+            $title = cleanUtf8($title, [
+                'context' => 'campaign_api_post',
+                'article_id' => $post->campaignArticle?->article_id,
+                'post_id' => $post->id,
+                'field' => 'title',
+                'language' => $post->campaignArticle?->article?->language?->name,
+            ]);
+
+            $content = cleanUtf8($content, [
+                'context' => 'campaign_api_post',
+                'article_id' => $post->campaignArticle?->article_id,
+                'post_id' => $post->id,
+                'field' => 'content',
+                'language' => $post->campaignArticle?->article?->language?->name,
+            ]);
+
             // 🌐 STEP 3: Send to WordPress
             $remote = $this->postToWordPress($post, $title, $content);
 
@@ -443,17 +460,15 @@ class PublishCampaignPostJob implements ShouldQueue
             $inner = preg_replace('/^<p\b[^>]*>|<\/p>$/i', '', $paraHtml);
 
             // If paragraph is too short in real text, skip it (try next paragraphs)
-            // $plainLen = mb_strlen(trim(strip_tags($inner)));
-            $plainLen = mb_strlen(trim(strip_tags($inner))); // new
+            $plainLen = mb_strlen(trim(strip_tags($inner)));
             // if ($plainLen < 40 && $paraCount > 1) {
             //     // Try next paragraph, DO NOT consume anchors here
             //     continue;
             // }
 
-            // Start around 40% into the paragraph (not at start)
-            // $target = (int) max(20, floor(strlen($inner) * 0.40));
-
-            $target = (int) max(20, floor(strlen($inner) * 0.20)); // new one
+            // Start around 20% into the paragraph (not at start)
+            // ✅ Use mb_strlen for character count, not byte count (critical for Chinese/Thai/Arabic)
+            $target = (int) max(20, floor(mb_strlen($inner) * 0.20));
 
             for ($k = 0; $k < $insertCount && $pairIndex < $anchorCount; $k++) {
 
@@ -464,13 +479,13 @@ class PublishCampaignPostJob implements ShouldQueue
                 // 🔥 Find a SAFE insertion point in HTML (not inside tag, not inside word)
                 $safePos = $this->findSafeHtmlInsertPos($inner, $target);
 
-                // Insert with spaces around it
-                $inner = substr($inner, 0, $safePos)
+                // ✅ Use mb_substr to avoid splitting multi-byte UTF-8 characters (Chinese, Thai, Arabic)
+                $inner = mb_substr($inner, 0, $safePos)
                     . ' ' . $anchor . ' '
-                    . substr($inner, $safePos);
+                    . mb_substr($inner, $safePos);
 
                 // Move forward for next insertion in the same paragraph
-                $target = $safePos + strlen($anchor) + 40;
+                $target = $safePos + mb_strlen($anchor) + 40;
             }
 
             $paragraphs[$p] = $openTag . $inner . '</p>';
@@ -579,7 +594,8 @@ class PublishCampaignPostJob implements ShouldQueue
 
     private function findSafeHtmlInsertPos(string $html, int $start): int
     {
-        $len = strlen($html);
+        // ✅ Use mb_strlen for character-based length (critical for Chinese/Thai/Arabic)
+        $len = mb_strlen($html);
         if ($len === 0) return 0;
 
         $start = max(0, min($start, $len));
@@ -593,11 +609,11 @@ class PublishCampaignPostJob implements ShouldQueue
 
         // check if position is inside an HTML tag
         $insideTagAt = function (int $pos) use ($html) {
-            $before = substr($html, 0, $pos);
-            $lastLt = strrpos($before, '<');
+            $before = mb_substr($html, 0, $pos);
+            $lastLt = mb_strrpos($before, '<');
             if ($lastLt === false) return false;
 
-            $lastGt = strrpos($before, '>');
+            $lastGt = mb_strrpos($before, '>');
             return $lastGt === false || $lastLt > $lastGt;
         };
 
@@ -606,7 +622,7 @@ class PublishCampaignPostJob implements ShouldQueue
 
             $right = $start + $d;
             if ($right < $len && !$insideTagAt($right)) {
-                $ch = substr($html, $right, 1); // ✅ SAFE
+                $ch = mb_substr($html, $right, 1); // ✅ UTF-8 SAFE
                 if ($ch !== '' && $isBoundary($ch)) {
                     return min($right + 1, $len);
                 }
@@ -614,7 +630,7 @@ class PublishCampaignPostJob implements ShouldQueue
 
             $left = $start - $d;
             if ($left > 0 && !$insideTagAt($left)) {
-                $ch = substr($html, $left, 1); // ✅ SAFE
+                $ch = mb_substr($html, $left, 1); // ✅ UTF-8 SAFE
                 if ($ch !== '' && $isBoundary($ch)) {
                     return min($left + 1, $len);
                 }
@@ -647,15 +663,17 @@ class PublishCampaignPostJob implements ShouldQueue
             'content'   => $content,
             'status'    => 'publish',
             'post_type' => 'post',
-            'is_sticky' => $post->is_sticky,   // ✅ ADD THIS LINE
+            'is_sticky' => $post->is_sticky,
             'api_key'   => (string) $post->campaignDomain->domain->api_key,
         ];
 
-        $res = Http::withoutVerifying() // keep if you must for bad SSL domains
+        // ✅ UTF-8 Safe: Use proper headers and ensure payload is clean
+        $res = Http::withoutVerifying()
             ->timeout(180)
             ->acceptJson()
-            ->asJson()
-            ->post($endpoint, $payload);
+            ->contentType('application/json; charset=utf-8')
+            ->withBody(safeJsonEncode($payload), 'application/json; charset=utf-8')
+            ->post($endpoint);
 
         if (!$res->successful()) {
             throw new \Exception("WP API failed ({$res->status()}): " . $res->body());

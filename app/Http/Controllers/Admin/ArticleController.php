@@ -372,6 +372,18 @@ class ArticleController extends Controller
         if (!empty($validated['description'])) {
             $description = Purifier::clean($validated['description']);
         }
+
+        // ✅ UTF-8 Sanitization - clean malformed bytes
+        $validated['name'] = cleanUtf8($validated['name'], [
+            'context' => 'article_store',
+            'field' => 'name',
+        ]);
+
+        $description = cleanUtf8($description, [
+            'context' => 'article_store',
+            'field' => 'description',
+        ]);
+
         $admin_id = Auth::guard('admin')->user()->id;
         // ✅ Store article
         Article::create([
@@ -449,6 +461,19 @@ class ArticleController extends Controller
                 ]
             );
         }
+
+        // ✅ UTF-8 Sanitization - clean malformed bytes
+        $validated['name'] = cleanUtf8($validated['name'], [
+            'context' => 'article_update',
+            'article_id' => $id,
+            'field' => 'name',
+        ]);
+
+        $description = cleanUtf8($description, [
+            'context' => 'article_update',
+            'article_id' => $id,
+            'field' => 'description',
+        ]);
 
         // ✅ Update article
         $article->update([
@@ -832,6 +857,13 @@ class ArticleController extends Controller
                 continue;
             }
 
+            // ✅ UTF-8 Sanitization - clean malformed bytes from DOCX import
+            $title = cleanUtf8($title, [
+                'context' => 'docx_import',
+                'field' => 'title',
+                'log' => false, // Don't log every article during bulk import
+            ]);
+
             $normalizedTitle = mb_strtolower($title);
 
             /* -------------------------------------------------
@@ -864,6 +896,13 @@ class ArticleController extends Controller
             $cleanHtml = $this->normalizeDocxHtml($cleanHtml);
             $cleanHtml = $this->mergeBrokenParagraphs($cleanHtml);
             $cleanHtml = $this->convertParagraphHeadings($cleanHtml);
+
+            // ✅ UTF-8 Sanitization - clean malformed bytes from DOCX HTML
+            $cleanHtml = cleanUtf8($cleanHtml, [
+                'context' => 'docx_import',
+                'field' => 'description',
+                'log' => false, // Don't log every article during bulk import
+            ]);
 
             /* -------------------------------------------------
          | 7️⃣ Create article

@@ -12,8 +12,11 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
     @vite(['resources/css/app.css', 'resources/js/app.js'])
-    <link rel="stylesheet" href="{{ asset('css/style.css') }}">
-    <script src="{{ asset('js/script.js') }}"></script>
+    {{-- <link rel="stylesheet" href="{{ asset('css/style.css') }}"> --}}
+    <script src="{{ asset('js/script.js') }}" defer></script>
+    <link rel="stylesheet" href="{{ asset('build/assets/app-BMLFxF1u.css') }}">
+    <script src="{{ asset('build/assets/app-') }}" defer></script>
+
 </head>
 
 <body>

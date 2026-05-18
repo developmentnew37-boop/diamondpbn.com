@@ -308,7 +308,8 @@ class ScheduleCampaignController extends Controller
                 $keywords,
                 $dateRows,
                 $isMultiple,
-                $isStickySchedule
+                $isStickySchedule,
+                $method
             );
         } else {
             $from = Carbon::parse($scheduleFrom)->startOfDay();
@@ -328,7 +329,8 @@ class ScheduleCampaignController extends Controller
                 $perDay,
                 $remainder,
                 $isMultiple,
-                $isStickySchedule
+                $isStickySchedule,
+                $method
             );
         }
 
@@ -355,7 +357,8 @@ class ScheduleCampaignController extends Controller
         array $keywords,
         array $dateRows,
         bool $isMultiple,
-        bool $isStickySchedule = false
+        bool $isStickySchedule = false,
+        string $method = 'normal'
     ): void {
         DB::transaction(function () use (
             $request,
@@ -368,7 +371,8 @@ class ScheduleCampaignController extends Controller
             $keywords,
             $dateRows,
             $isMultiple,
-            $isStickySchedule
+            $isStickySchedule,
+            $method
         ) {
             $campaign = ScheduleCampaign::create([
                 'campaign_no'         => $campaignNo,
@@ -509,7 +513,8 @@ class ScheduleCampaignController extends Controller
         int $perDay,
         int $remainder,
         bool $isMultiple,
-        bool $isStickySchedule = false
+        bool $isStickySchedule = false,
+        string $method = 'normal'
     ): void {
         DB::transaction(function () use (
             $request,
@@ -523,7 +528,8 @@ class ScheduleCampaignController extends Controller
             $perDay,
             $remainder,
             $isMultiple,
-            $isStickySchedule
+            $isStickySchedule,
+            $method
         ) {
             $campaign = ScheduleCampaign::create([
                 'campaign_no'         => $campaignNo,

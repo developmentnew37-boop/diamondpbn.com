@@ -59,6 +59,17 @@ class Article extends Model
     protected static function booted()
     {
         static::creating(function ($article) {
+            // ✅ UTF-8 Sanitization - clean malformed bytes before saving
+            $article->name = cleanUtf8($article->name, [
+                'context' => 'article_create',
+                'field' => 'name',
+            ]);
+
+            $article->description = cleanUtf8($article->description, [
+                'context' => 'article_create',
+                'field' => 'description',
+            ]);
+
             $article->name_normalized = mb_strtolower(trim((string) $article->name));
 
             if (empty($article->slug)) {
@@ -72,8 +83,22 @@ class Article extends Model
         });
 
         static::updating(function ($article) {
+            // ✅ UTF-8 Sanitization - clean malformed bytes before updating
             if ($article->isDirty('name')) {
+                $article->name = cleanUtf8($article->name, [
+                    'context' => 'article_update',
+                    'article_id' => $article->id,
+                    'field' => 'name',
+                ]);
                 $article->name_normalized = mb_strtolower(trim((string) $article->name));
+            }
+
+            if ($article->isDirty('description')) {
+                $article->description = cleanUtf8($article->description, [
+                    'context' => 'article_update',
+                    'article_id' => $article->id,
+                    'field' => 'description',
+                ]);
             }
 
             // ✅ ALWAYS regenerate slug if name changed

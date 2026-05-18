@@ -3,7 +3,8 @@
     "allow": [
       "Bash(php artisan *)",
       "Bash(php -m)",
-      "Bash(php -i)"
+      "Bash(php -i)",
+      "Bash(git log *)"
     ]
   }
 }

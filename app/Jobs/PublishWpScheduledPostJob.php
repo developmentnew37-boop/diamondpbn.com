@@ -63,6 +63,24 @@ class PublishWpScheduledPostJob implements ShouldQueue
 
         try {
             [$title, $content] = WpScheduledPostContentBuilder::build($post);
+
+            // ✅ UTF-8 Sanitization - clean malformed bytes before WordPress API posting
+            $title = cleanUtf8($title, [
+                'context' => 'wp_scheduled_api_post',
+                'article_id' => $post->campaignArticle?->article_id,
+                'post_id' => $post->id,
+                'field' => 'title',
+                'language' => $post->campaignArticle?->article?->language?->name,
+            ]);
+
+            $content = cleanUtf8($content, [
+                'context' => 'wp_scheduled_api_post',
+                'article_id' => $post->campaignArticle?->article_id,
+                'post_id' => $post->id,
+                'field' => 'content',
+                'language' => $post->campaignArticle?->article?->language?->name,
+            ]);
+
             $remote = $this->postToWordPress($post, $title, $content);
 
             DB::transaction(function () use ($post, $remote, $title) {
@@ -161,7 +179,13 @@ class PublishWpScheduledPostJob implements ShouldQueue
             'api_key'       => (string) $post->campaignDomain->domain->api_key,
         ];
 
-        $res = Http::withoutVerifying()->timeout(180)->acceptJson()->asJson()->post($endpoint, $payload);
+        // ✅ UTF-8 Safe: Use proper headers and ensure payload is clean
+        $res = Http::withoutVerifying()
+            ->timeout(180)
+            ->acceptJson()
+            ->contentType('application/json; charset=utf-8')
+            ->withBody(safeJsonEncode($payload), 'application/json; charset=utf-8')
+            ->post($endpoint);
         if (!$res->successful()) throw new \Exception("WP API failed ({$res->status()}): " . $res->body());
         $json = $res->json();
         if (!is_array($json)) throw new \Exception("WP API non-JSON: " . $res->body());

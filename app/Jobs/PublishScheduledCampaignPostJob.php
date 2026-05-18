@@ -88,6 +88,23 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
                 // 🧠 STEP 2: Build title + content WITH KEYWORDS
                 [$title, $content] = $this->buildContent($post);
 
+                // ✅ UTF-8 Sanitization - clean malformed bytes before WordPress API posting
+                $title = cleanUtf8($title, [
+                    'context' => 'wp_api_post',
+                    'article_id' => $post->campaignArticle?->article_id,
+                    'post_id' => $post->id,
+                    'field' => 'title',
+                    'language' => $post->campaignArticle?->article?->language?->name,
+                ]);
+
+                $content = cleanUtf8($content, [
+                    'context' => 'wp_api_post',
+                    'article_id' => $post->campaignArticle?->article_id,
+                    'post_id' => $post->id,
+                    'field' => 'content',
+                    'language' => $post->campaignArticle?->article?->language?->name,
+                ]);
+
                 // 🌐 STEP 3: Publish to WordPress
                 $remote = $this->postToWordPress($post, $title, $content);
 
@@ -110,7 +127,7 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
                     // No schedule in payload → API returns slug permalink
                     $fresh->remote_url = $json['remote_url'] ?? $json['link'] ?? $json['permalink'] ?? $json['url'] ?? null;
 
-                    $fresh->remote_response = json_encode($json, JSON_UNESCAPED_UNICODE);
+                    $fresh->remote_response = safeJsonEncode($json);
                     $fresh->published_at    = ($fresh->remote_status === 'publish') ? now() : null;
 
                     // When we mark failed (e.g. remote returned draft/other), store reason so UI shows it
@@ -309,17 +326,19 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
 
                     $anchor = '<a href="' . e($url) . '" target="_blank" rel="' . $relAttr . '">' . e($kw) . '</a>';
 
-                    // random safe insertion point (25%–65%)
+                    // random safe insertion point (10%–30%)
+                    // ✅ Use mb_strlen for character count, not byte count (critical for Chinese/Thai/Arabic)
                     $target = random_int(
-                        (int) (strlen($inner) * 0.1),
-                        (int) (strlen($inner) * 0.3)
+                        (int) (mb_strlen($inner) * 0.1),
+                        (int) (mb_strlen($inner) * 0.3)
                     );
 
                     $safePos = $this->findSafeHtmlInsertPos($inner, $target);
 
-                    $inner = substr($inner, 0, $safePos)
+                    // ✅ Use mb_substr to avoid splitting multi-byte UTF-8 characters
+                    $inner = mb_substr($inner, 0, $safePos)
                         . ' ' . $anchor . ' '
-                        . substr($inner, $safePos);
+                        . mb_substr($inner, $safePos);
 
                     $paragraphs[$p] = $openTag . $inner . '</p>';
                 }
@@ -338,7 +357,8 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
 
         private function findSafeHtmlInsertPos(string $html, int $start): int
         {
-            $len = strlen($html);
+            // ✅ Use mb_strlen for character-based length (critical for Chinese/Thai/Arabic)
+            $len = mb_strlen($html);
             if ($len === 0) return 0;
 
             $start = max(0, min($start, $len));
@@ -360,11 +380,11 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
             };
 
             $insideTagAt = function (int $pos) use ($html): bool {
-                $before = substr($html, 0, $pos);
-                $lastLt = strrpos($before, '<');
+                $before = mb_substr($html, 0, $pos);
+                $lastLt = mb_strrpos($before, '<');
                 if ($lastLt === false) return false;
 
-                $lastGt = strrpos($before, '>');
+                $lastGt = mb_strrpos($before, '>');
                 return $lastGt === false || $lastLt > $lastGt;
             };
 
@@ -372,7 +392,7 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
 
                 $right = $start + $d;
                 if ($right < $len && !$insideTagAt($right)) {
-                    $ch = substr($html, $right, 1); // ✅ UTF-8 SAFE
+                    $ch = mb_substr($html, $right, 1); // ✅ UTF-8 SAFE
                     if ($ch !== '' && $isBoundary($ch)) {
                         return min($right + 1, $len);
                     }
@@ -380,7 +400,7 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
 
                 $left = $start - $d;
                 if ($left > 0 && !$insideTagAt($left)) {
-                    $ch = substr($html, $left, 1); // ✅ UTF-8 SAFE
+                    $ch = mb_substr($html, $left, 1); // ✅ UTF-8 SAFE
                     if ($ch !== '' && $isBoundary($ch)) {
                         return min($left + 1, $len);
                     }
@@ -424,16 +444,14 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
                 'api_key'   => (string) $post->campaignDomain->domain->api_key,
                 'is_sticky' => (bool) ($post->campaign?->is_sticky_campaign ?? false),
             ];
-            // Log::info('Calling WordPress API', [
-            //     'endpoint' => $endpoint,
-            //     'payload' => $payload,
-            // ]);
 
+            // ✅ UTF-8 Safe: Use proper headers and ensure payload is clean
             $res = Http::withoutVerifying() // keep if you must for bad SSL domains
                 ->timeout(180)
                 ->acceptJson()
-                ->asJson()
-                ->post($endpoint, $payload);
+                ->contentType('application/json; charset=utf-8')
+                ->withBody(safeJsonEncode($payload), 'application/json; charset=utf-8')
+                ->post($endpoint);
 
             if (!$res->successful()) {
                 throw new \Exception("WP API failed ({$res->status()}): " . $res->body());
