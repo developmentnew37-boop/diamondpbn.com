@@ -32,9 +32,9 @@ class PublishCampaignPostJob implements ShouldQueue
 
     public function handle(): void
     {
-        $lockTtlSec  = 180; // 3 minutes
-        $maxAttempts = 5;
-        $baseBackoff = 60;
+        $lockTtlSec  = config('campaign.jobs.lock_ttl_seconds');
+        $maxAttempts = config('campaign.jobs.max_internal_retries');
+        $baseBackoff = config('campaign.jobs.base_backoff_seconds');
 
         $lockToken = (string) Str::uuid();
 
@@ -97,8 +97,28 @@ class PublishCampaignPostJob implements ShouldQueue
                 'language' => $post->campaignArticle?->article?->language?->name,
             ]);
 
+            // 🔍 DEBUG: Log what HTML we're sending to WordPress
+            \Log::info('📤 SENDING TO WORDPRESS', [
+                'campaign_post_id' => $post->id,
+                'campaign_article_id' => $post->campaign_article_id,
+                'raw_rel_attr' => $post->campaignArticle?->raw_rel_attr,
+                'title' => $title,
+                'content_length' => strlen($content),
+                'content_first_500' => substr($content, 0, 500),
+                'anchor_tags_count' => substr_count($content, '<a '),
+            ]);
+
             // 🌐 STEP 3: Send to WordPress
             $remote = $this->postToWordPress($post, $title, $content);
+
+            // 🔍 DEBUG: Log what WordPress returned
+            \Log::info('📥 WORDPRESS RESPONSE', [
+                'campaign_post_id' => $post->id,
+                'remote_post_id' => $remote['post_id'] ?? null,
+                'remote_url' => $remote['remote_url'] ?? null,
+                'http_status' => $remote['status'] ?? 'unknown',
+                'response_keys' => array_keys($remote),
+            ]);
 
             // ✅ STEP 4: Mark success
             DB::transaction(function () use ($post, $remote, $title) {
@@ -418,9 +438,35 @@ class PublishCampaignPostJob implements ShouldQueue
         preg_match_all('/<p\b[^>]*>.*?<\/p>/is', $html, $matches);
         $paragraphs = $matches[0] ?? [];
 
-        // Fallback: no <p> tags → wrap entire content
-        if (count($paragraphs) === 0) {
-            $paragraphs = ['<p>' . $html . '</p>'];
+        // Check if extracted paragraphs have meaningful content
+        $hasMeaningfulContent = false;
+        foreach ($paragraphs as $p) {
+            $stripped = trim(strip_tags($p));
+            if (mb_strlen($stripped) > 10) { // At least 10 chars of actual text
+                $hasMeaningfulContent = true;
+                break;
+            }
+        }
+
+        // Fallback: no <p> tags OR only empty <p> tags → split by <br> tags
+        if (count($paragraphs) === 0 || !$hasMeaningfulContent) {
+            // Split by <br> tags (br, BR, br/, etc.)
+            $parts = preg_split('/<br\s*\/?>/i', $html);
+            $paragraphs = [];
+            foreach ($parts as $part) {
+                $part = trim($part);
+                // Remove any empty <p></p> tags that might be in the part
+                $part = preg_replace('/<p\b[^>]*>\s*<\/p>/i', '', $part);
+                $part = trim($part);
+                if ($part !== '') {
+                    $paragraphs[] = '<p>' . $part . '</p>';
+                }
+            }
+
+            // Still no content? Wrap entire HTML as single paragraph
+            if (count($paragraphs) === 0) {
+                $paragraphs = ['<p>' . $html . '</p>'];
+            }
         }
 
         $paraCount   = count($paragraphs);

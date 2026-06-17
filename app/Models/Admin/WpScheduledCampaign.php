@@ -5,6 +5,29 @@ namespace App\Models\Admin;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
+/**
+ * WordPress Scheduled Campaign Model
+ *
+ * Represents a campaign that uses WordPress's native scheduling system
+ * to publish articles at future dates controlled by WordPress cron.
+ *
+ * @property int $id
+ * @property string $campaign_no
+ * @property int $domain_category_id
+ * @property int|null $article_category_id
+ * @property int $admin_id
+ * @property string $status
+ * @property int $total_targets
+ * @property int $completed_targets
+ * @property int $failed_targets
+ * @property string $report_token
+ * @property \Illuminate\Support\Carbon|null $schedule_from_date
+ * @property \Illuminate\Support\Carbon|null $schedule_to_date
+ * @property \Illuminate\Support\Carbon|null $started_at
+ * @property \Illuminate\Support\Carbon|null $finished_at
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ */
 class WpScheduledCampaign extends Model
 {
     protected $table = 'wp_scheduled_campaigns';

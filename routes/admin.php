@@ -9,7 +9,7 @@ use App\Http\Controllers\Admin\ArticleCategoryController;
 use App\Http\Controllers\Admin\ArticleController;
 use App\Http\Controllers\Admin\ArticleLanguageController;
 use App\Http\Controllers\Admin\ArticleSetController;
-use App\Http\Controllers\Admin\campaignController;
+use App\Http\Controllers\Admin\CampaignController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DomainCategoryController;
 use App\Http\Controllers\Admin\DomainController;
@@ -50,13 +50,13 @@ $noCampaignAuth = \App\Http\Middleware\Admin\CanCreateCampaigns::class;
 /* campaign report route*/ // route('admin.campaign.report)
 Route::get(
     '/campaign/report/{campaign_no}/{token}',
-    [campaignController::class, 'report']
+    [CampaignController::class, 'report']
 )->name('admin.campaign.report')->withoutMiddleware($noCampaignAuth);
 
 // Export campaign report (PUBLIC, token-protected)
 Route::get(
     '/campaign/report/{campaign_no}/{token}/export',
-    [campaignController::class, 'exportReport']
+    [CampaignController::class, 'exportReport']
 )->name('admin.campaign.report.export')->withoutMiddleware($noCampaignAuth);
 
 /* sidebar campaign report route*/ // route('admin.campaign.report)
@@ -120,7 +120,7 @@ Route::get(
 // export csv
 // Route::get(
 //     '/campaign/report/{campaign_no}/{token}/export-csv',
-//     [campaignController::class, 'exportReportCsv']
+//     [CampaignController::class, 'exportReportCsv']
 // )->name('admin.campaign.report.export.csv');
 
 
@@ -248,27 +248,27 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
 
     /* campaign report route ends here*/
 
-    Route::get('/campaign/retry/{id}', [campaignController::class, 'retry'])->name('campaign.retry');
+    Route::get('/campaign/retry/{id}', [CampaignController::class, 'retry'])->name('campaign.retry');
 
-    Route::get('/campaign/editpost/{id}',[campaignController::class,'editcampaignpost'])->name('campaign.edit.post'); // admin.campaign.blogpost
+    Route::get('/campaign/editpost/{id}',[CampaignController::class,'editcampaignpost'])->name('campaign.edit.post'); // admin.campaign.blogpost
 
-    Route::post('/campaign/updatecampaignpost/{id}',[campaignController::class,'updateCampaignPost'])->name('campaign.update.post'); // admin.campaign.blogpost
+    Route::post('/campaign/updatecampaignpost/{id}',[CampaignController::class,'updateCampaignPost'])->name('campaign.update.post'); // admin.campaign.blogpost
 
-    Route::get('/campaign/deleteCampaignPost/{id}',[campaignController::class,'deleteCampaignPost'])->name('campaign.delete.post'); // admin.campaign.blogpost
+    Route::get('/campaign/deleteCampaignPost/{id}',[CampaignController::class,'deleteCampaignPost'])->name('campaign.delete.post'); // admin.campaign.blogpost
 
-    Route::post('/campaign/bulk/update/{id}', [campaignController::class, 'bulkUpdateCampaignPosts'])->name('campaign.bulk.update');
+    Route::post('/campaign/bulk/update/{id}', [CampaignController::class, 'bulkUpdateCampaignPosts'])->name('campaign.bulk.update');
 
-    Route::post('/campaign/multi-keywords/{id}', [campaignController::class, 'multiLevelUpdateCampaignKeywords'])->name('campaign.multi.keywords.update');
+    Route::post('/campaign/multi-keywords/{id}', [CampaignController::class, 'multiLevelUpdateCampaignKeywords'])->name('campaign.multi.keywords.update');
 
-    Route::post('/campaign/update-post-keywords/{id}', [campaignController::class, 'updateCampaignPostKeywords'])->name('campaign.update.post.keywords');
+    Route::post('/campaign/update-post-keywords/{id}', [CampaignController::class, 'updateCampaignPostKeywords'])->name('campaign.update.post.keywords');
 
-    Route::post('/campaign/{id}/purge-local', [campaignController::class, 'purgeLocalOnly'])->name('campaign.purge.local');
+    Route::post('/campaign/{id}/purge-local', [CampaignController::class, 'purgeLocalOnly'])->name('campaign.purge.local');
 
-    Route::post('/campaign/bulk-purge-local', [campaignController::class, 'bulkPurgeLocal'])->name('campaign.bulk.purge.local');
+    Route::post('/campaign/bulk-purge-local', [CampaignController::class, 'bulkPurgeLocal'])->name('campaign.bulk.purge.local');
 
-    Route::post('/campaign/bulk-retry-failed', [campaignController::class, 'bulkRetryFailed'])->name('campaign.bulk.retry.failed');
+    Route::post('/campaign/bulk-retry-failed', [CampaignController::class, 'bulkRetryFailed'])->name('campaign.bulk.retry.failed');
 
-    Route::resource('/campaign', campaignController::class);
+    Route::resource('/campaign', CampaignController::class);
     /* sidebar campaign */
     Route::get('/sidebar/campaign/retry-task/{id}', [SidebarCampaignController::class, 'retryTask'])->name('sidebar.campaign.retry.task');
     Route::get('/sidebar/campaign/edit-task/{id}', [SidebarCampaignController::class, 'editSidebarTask'])->name('sidebar.campaign.edit.task');

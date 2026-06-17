@@ -15,12 +15,19 @@ class HiddenLinksCampaignLinks extends Model
         'anchor_keyword',
         'nofollow',
         'sponsored',
+        'ugc',
+        'noopener',
+        'noreferrer',
+        'raw_rel_attr',
     ];
 
     protected $casts = [
-        'sort_order' => 'integer',
-        'nofollow'   => 'boolean',
-        'sponsored'  => 'boolean',
+        'sort_order'  => 'integer',
+        'nofollow'    => 'boolean',
+        'sponsored'   => 'boolean',
+        'ugc'         => 'boolean',
+        'noopener'    => 'boolean',
+        'noreferrer'  => 'boolean',
     ];
 
     public function campaign()

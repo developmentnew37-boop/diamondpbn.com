@@ -57,16 +57,30 @@ class BulkUpdateHiddenLinksJob implements ShouldQueue
                 continue;
             }
 
+            // Build rel array - check for raw_rel_attr first
+            $rawRelAttr = trim((string)($task->linkRow->raw_rel_attr ?? ''));
+
+            if ($rawRelAttr !== '') {
+                // Use complete rel string (supports ANY custom values)
+                $rel = array_filter(array_map('trim', explode(' ', $rawRelAttr)));
+            } else {
+                // Build from boolean fields (backward compatibility)
+                $rel = array_values(array_filter([
+                    ($task->linkRow->nofollow ?? false) ? 'nofollow' : null,
+                    ($task->linkRow->sponsored ?? false) ? 'sponsored' : null,
+                    ($task->linkRow->ugc ?? false) ? 'ugc' : null,
+                    ($task->linkRow->noopener ?? false) ? 'noopener' : null,
+                    ($task->linkRow->noreferrer ?? false) ? 'noreferrer' : null,
+                ]));
+            }
+
             $res = HiddenLinksApiService::updateEntry(
                 $domain->name,
                 $domain->api_key,
                 $task->remote_id,
                 $keyword,
                 $link,
-                array_values(array_filter([
-                    ($task->linkRow->nofollow ?? false) ? 'nofollow' : null,
-                    ($task->linkRow->sponsored ?? false) ? 'sponsored' : null,
-                ]))
+                $rel
             );
 
             if ($res->successful()) {

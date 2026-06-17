@@ -52,9 +52,17 @@ class InvoiceController extends Controller
         $logoMime = null;
 
         if ($request->hasFile('logo')) {
+            // User uploaded a new logo
             $logoPath = $request->file('logo')->getRealPath();
             $logoBase64 = base64_encode(file_get_contents($logoPath));
             $logoMime = $request->file('logo')->getMimeType();
+        } else {
+            // No new logo uploaded, use default logo if exists
+            $defaultLogoPath = public_path('invoice-logo.png');
+            if (file_exists($defaultLogoPath)) {
+                $logoBase64 = base64_encode(file_get_contents($defaultLogoPath));
+                $logoMime = mime_content_type($defaultLogoPath);
+            }
         }
 
         // Reindex items array to start from 0 (fixes S.No bug)

@@ -21,7 +21,7 @@ class PublishScheduledSidebarBlogrollJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 5;
+    public int $tries = 1;
 
     public function __construct(public int $scheduleTaskId)
     {
@@ -30,9 +30,9 @@ class PublishScheduledSidebarBlogrollJob implements ShouldQueue
 
     public function handle(): void
     {
-        $lockTtlSec  = 180;
-        $maxAttempts = 5;
-        $baseBackoff = 60;
+        $lockTtlSec  = config('campaign.jobs.lock_ttl_seconds');
+        $maxAttempts = config('campaign.jobs.max_internal_retries');
+        $baseBackoff = config('campaign.jobs.base_backoff_seconds');
         $lockToken   = (string) Str::uuid();
 
         /* =====================================================
@@ -99,50 +99,134 @@ class PublishScheduledSidebarBlogrollJob implements ShouldQueue
             }
 
             $endpoint = rtrim($base, '/') . '/wp-json/external/v1/blogroll/add';
+
+            // ✅ Always read boolean fields (needed for payload)
             $nofollow = (bool) ($link->nofollow ?? false);
+            $sponsored = (bool) ($link->sponsored ?? false);
+            $ugc = (bool) ($link->ugc ?? false);
+            $noopener = (bool) ($link->noopener ?? false);
+            $noreferrer = (bool) ($link->noreferrer ?? false);
 
-            $payload = [
-                'keyword' => (string) $link->anchor_keyword,
-                'link'    => (string) $link->target_url,
-                'api_key' => (string) $apiKey,
-                // Send both keys for compatibility across remote plugin versions.
-                'nofollow' => $nofollow ? 1 : 0,
-                'no_follow' => $nofollow ? 1 : 0,
-                // Some remote blogroll plugins read string rel attributes.
-                'rel' => $nofollow ? 'no-follow' : 'follow',
-                'rel_attr' => $nofollow ? 'no-follow' : '',
-            ];
+            // ✅ Check if raw_rel_attr is available (from raw anchor mode)
+            $rawRelAttr = trim((string)($link->raw_rel_attr ?? ''));
 
-            /* =====================================================
-             | STEP 3: CALL WORDPRESS API
-             ===================================================== */
-            $res = Http::withoutVerifying()
-                ->timeout(180)
-                ->acceptJson()
-                ->asJson()
-                ->post($endpoint, $payload);
-
-            if (!$res->successful()) {
-                throw new \Exception(
-                    "WP blogroll API failed ({$res->status()}): " . $res->body()
-                );
+            if ($rawRelAttr !== '') {
+                // ✅ Use the complete rel string from raw HTML (supports ANY rel values)
+                $relString = $rawRelAttr;
+                $rel = array_filter(array_map('trim', explode(' ', $rawRelAttr)));
+            } else {
+                // ✅ Fall back to building from individual boolean fields (backward compatibility)
+                $rel = [];
+                if ($nofollow) {
+                    $rel[] = 'nofollow';
+                }
+                if ($sponsored) {
+                    $rel[] = 'sponsored';
+                }
+                if ($ugc) {
+                    $rel[] = 'ugc';
+                }
+                if ($noopener) {
+                    $rel[] = 'noopener';
+                }
+                if ($noreferrer) {
+                    $rel[] = 'noreferrer';
+                }
+                $relString = implode(' ', $rel);
             }
 
-            $json     = is_array($res->json()) ? $res->json() : ['raw' => $res->body()];
-            $remoteId = $json['data'][0]['id'] ?? null;
+            // ✅ Handle both single and JSON array types
+            $urlType = $link->target_url_type ?? 'single';
+            $kwType = $link->anchor_keyword_type ?? 'single';
+
+            $urls = [];
+            $keywords = [];
+
+            if ($urlType === 'json') {
+                $decoded = json_decode($link->target_url, true);
+                $urls = is_array($decoded) ? $decoded : [$link->target_url];
+            } else {
+                $urls = [$link->target_url];
+            }
+
+            if ($kwType === 'json') {
+                $decoded = json_decode($link->anchor_keyword, true);
+                $keywords = is_array($decoded) ? $decoded : [$link->anchor_keyword];
+            } else {
+                $keywords = [$link->anchor_keyword];
+            }
+
+            // ✅ Send multiple links to WordPress (one per keyword/URL pair)
+            $remoteIds = [];
+            $responses = [];
+
+            $pairCount = max(count($urls), count($keywords));
+            for ($i = 0; $i < $pairCount; $i++) {
+                $targetUrl = $urls[$i] ?? $urls[0] ?? '';
+                $keyword = $keywords[$i] ?? $keywords[0] ?? '';
+
+                $payload = [
+                    'keyword' => (string) $keyword,
+                    'link'    => (string) $targetUrl,
+                    'api_key' => (string) $apiKey,
+                    'nofollow' => $nofollow ? 1 : 0,
+                    'no_follow' => $nofollow ? 1 : 0,
+                    'sponsored' => $sponsored ? 1 : 0,
+                    'sponsor' => $sponsored ? 1 : 0,
+                    'ugc' => $ugc ? 1 : 0,
+                    'noopener' => $noopener ? 1 : 0,
+                    'noreferrer' => $noreferrer ? 1 : 0,
+                    'rel' => $rel,
+                    'rel_attr' => $relString,
+                ];
+
+                // 🐛 DEBUG: Log payload to verify rel attributes are sent correctly
+                \Log::info('Scheduled Sidebar Blogroll Payload Debug', [
+                    'task_id' => $task->id,
+                    'domain' => $domain->name,
+                    'rel_array' => $rel,
+                    'rel_string' => $relString,
+                    'full_payload' => $payload,
+                ]);
+
+                /* =====================================================
+                 | STEP 3: CALL WORDPRESS API
+                 ===================================================== */
+                $res = Http::withoutVerifying()
+                    ->timeout(180)
+                    ->acceptJson()
+                    ->asJson()
+                    ->post($endpoint, $payload);
+
+                if (!$res->successful()) {
+                    throw new \Exception(
+                        "WP blogroll API failed ({$res->status()}): " . $res->body()
+                    );
+                }
+
+                $json = is_array($res->json()) ? $res->json() : ['raw' => $res->body()];
+                $remoteId = $json['data'][0]['id'] ?? null;
+
+                $remoteIds[] = $remoteId;
+                $responses[] = $json;
+            }
+
+            // ✅ Store first remote ID (or JSON array of all IDs)
+            $finalRemoteId = count($remoteIds) === 1 ? $remoteIds[0] : json_encode($remoteIds);
+            $finalResponse = count($responses) === 1 ? $responses[0] : ['multiple' => $responses];
 
             /* =====================================================
              | STEP 4: MARK SUCCESS
              ===================================================== */
-            DB::transaction(function () use ($task, $json, $remoteId, $res) {
+            DB::transaction(function () use ($task, $finalResponse, $finalRemoteId) {
 
                 $fresh = ScheduleSidebarCampaignTask::lockForUpdate()->find($task->id);
                 if (!$fresh || $fresh->lock_token !== $task->lock_token) return;
 
                 $fresh->status          = 'success';
-                $fresh->remote_id       = $remoteId;
-                $fresh->http_status     = $res->status();
-                $fresh->remote_response = $json;
+                $fresh->remote_id       = $finalRemoteId;
+                $fresh->http_status     = 200;
+                $fresh->remote_response = $finalResponse;
                 $fresh->published_at    = now();
                 $fresh->locked_at       = null;
                 $fresh->lock_token      = null;

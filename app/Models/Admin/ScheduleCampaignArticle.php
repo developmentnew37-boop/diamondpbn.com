@@ -22,6 +22,11 @@ class ScheduleCampaignArticle extends Model
         'url_type',
         'media',
         'nofollow',
+        'sponsored',
+        'ugc',
+        'noopener',
+        'noreferrer',
+        'raw_rel_attr',
     ];
 
     /* =======================

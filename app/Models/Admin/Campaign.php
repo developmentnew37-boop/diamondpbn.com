@@ -5,6 +5,30 @@ namespace App\Models\Admin;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
+/**
+ * Campaign Model
+ *
+ * Represents a PBN (Private Blog Network) post campaign that publishes
+ * articles with keyword/URL pairs to multiple WordPress domains.
+ *
+ * @property int $id
+ * @property string $campaign_no
+ * @property int $domain_category_id
+ * @property int|null $article_category_id
+ * @property int $admin_id
+ * @property string|null $article_type
+ * @property string $status
+ * @property bool $is_sticky_campaign
+ * @property int $total_targets
+ * @property int $completed_targets
+ * @property int $failed_targets
+ * @property string $report_token
+ * @property \Illuminate\Support\Carbon|null $started_at
+ * @property \Illuminate\Support\Carbon|null $finished_at
+ * @property \Illuminate\Support\Carbon|null $last_bulk_updated_at
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ */
 class Campaign extends Model
 {
     //
@@ -40,18 +64,10 @@ class Campaign extends Model
         });
     }
 
-
-
-    public function campaignDomain()
-    {
-        return $this->belongsTo(DomainCategory::class, 'domain_category_id');
-    }
-
     public function domainCategory()
     {
         return $this->belongsTo(DomainCategory::class, 'domain_category_id');
     }
-
 
     public function campaignArticles()
     {

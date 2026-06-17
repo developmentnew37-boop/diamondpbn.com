@@ -17,8 +17,13 @@ class WpScheduledCampaignArticle extends Model
         'url',
         'keyword_type',
         'url_type',
-        'nofollow',
         'media',
+        'nofollow',
+        'sponsored',
+        'ugc',
+        'noopener',
+        'noreferrer',
+        'raw_rel_attr',
     ];
 
     public function campaign()

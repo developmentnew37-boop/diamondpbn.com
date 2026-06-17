@@ -21,6 +21,10 @@ class CampaignArticle extends Model
         'media',
         'nofollow',
         'sponsored',
+        'ugc',
+        'noopener',
+        'noreferrer',
+        'raw_rel_attr',
     ];
 
     public function campaign()

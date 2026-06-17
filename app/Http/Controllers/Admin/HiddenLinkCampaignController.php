@@ -57,7 +57,7 @@ class HiddenLinkCampaignController extends Controller
             );
         }
 
-        $limit = 20;
+        $limit = config('campaign.pagination.default_limit');
 
         $query = HiddenLinksCampaign::query()
             ->with('domainCategory')
@@ -251,6 +251,10 @@ class HiddenLinkCampaignController extends Controller
                     'anchor_keyword'            => trim($row['keyword']),
                     'nofollow'                  => !empty($row['nofollow']),
                     'sponsored'                 => !empty($row['sponsored']),
+                    'ugc'                       => !empty($row['ugc']),
+                    'noopener'                  => !empty($row['noopener']),
+                    'noreferrer'                => !empty($row['noreferrer']),
+                    'raw_rel_attr'              => trim($row['raw_rel_attr'] ?? ''),
                 ]);
 
                 $linkIds[$idx] = $link->id;

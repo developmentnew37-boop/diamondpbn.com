@@ -21,7 +21,7 @@ class PublishSidebarBlogrollJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 5; // ✅ keep 1 (we manage retries ourselves)
+    public int $tries = 1;
 
     public function __construct(public int $taskId)
     {
@@ -30,9 +30,9 @@ class PublishSidebarBlogrollJob implements ShouldQueue
 
     public function handle(): void
     {
-        $lockTtlSec  = 180; // 3 minutes
-        $maxAttempts = 5;
-        $baseBackoff = 60;  // seconds (1m, 2m, 4m, 8m...)
+        $lockTtlSec  = config('campaign.jobs.lock_ttl_seconds');
+        $maxAttempts = config('campaign.jobs.max_internal_retries');
+        $baseBackoff = config('campaign.jobs.base_backoff_seconds');
 
         $lockToken = (string) Str::uuid();
 
@@ -96,78 +96,152 @@ class PublishSidebarBlogrollJob implements ShouldQueue
             }
 
             $endpoint = rtrim($base, '/') . '/wp-json/external/v1/blogroll/add';
+
+            // ✅ Always read boolean fields (needed for payload)
             $nofollow = (bool) ($link->nofollow ?? false);
             $sponsored = (bool) ($link->sponsored ?? false);
-            $rel = [];
-            if ($nofollow) {
-                $rel[] = 'nofollow';
-            }
-            if ($sponsored) {
-                $rel[] = 'sponsored';
-            }
-            $relString = implode(' ', $rel);
+            $ugc = (bool) ($link->ugc ?? false);
+            $noopener = (bool) ($link->noopener ?? false);
+            $noreferrer = (bool) ($link->noreferrer ?? false);
 
-            // ✅ UTF-8 Sanitization - clean malformed bytes
-            $keyword = cleanUtf8((string) $link->anchor_keyword, [
-                'context' => 'sidebar_blogroll_api',
-                'task_id' => $task->id,
-                'field' => 'keyword',
-            ]);
+            // ✅ Check if raw_rel_attr is available (from raw anchor mode)
+            $rawRelAttr = trim((string)($link->raw_rel_attr ?? ''));
 
-            $targetUrl = cleanUtf8((string) $link->target_url, [
-                'context' => 'sidebar_blogroll_api',
-                'task_id' => $task->id,
-                'field' => 'link',
-            ]);
-
-            $payload = [
-                'keyword' => $keyword,
-                'link'    => $targetUrl,
-                'api_key' => (string) $apiKey, // ✅ if your API requires it
-                // Send both keys for compatibility across remote plugin versions.
-                'nofollow' => $nofollow ? 1 : 0,
-                'no_follow' => $nofollow ? 1 : 0,
-                'sponsored' => $sponsored ? 1 : 0,
-                'sponsor' => $sponsored ? 1 : 0,
-                'rel' => $rel,
-                'rel_attr' => $relString,
-            ];
-
-            // 🌐 STEP 3: Send request with UTF-8 safe headers
-            $res = Http::withoutVerifying()
-                ->timeout(180)
-                ->acceptJson()
-                ->contentType('application/json; charset=utf-8')
-                ->withBody(safeJsonEncode($payload), 'application/json; charset=utf-8')
-                ->post($endpoint);
-
-            if (!$res->successful()) {
-                throw new \Exception("WP blogroll API failed ({$res->status()}): " . $res->body());
+            if ($rawRelAttr !== '') {
+                // ✅ Use the complete rel string from raw HTML (supports ANY rel values)
+                $relString = $rawRelAttr;
+                $rel = array_filter(array_map('trim', explode(' ', $rawRelAttr)));
+            } else {
+                // ✅ Fall back to building from individual boolean fields (backward compatibility)
+                $rel = [];
+                if ($nofollow) {
+                    $rel[] = 'nofollow';
+                }
+                if ($sponsored) {
+                    $rel[] = 'sponsored';
+                }
+                if ($ugc) {
+                    $rel[] = 'ugc';
+                }
+                if ($noopener) {
+                    $rel[] = 'noopener';
+                }
+                if ($noreferrer) {
+                    $rel[] = 'noreferrer';
+                }
+                $relString = implode(' ', $rel);
             }
 
-            $json = $res->json();
-            $remoteId = null;
+            // ✅ Handle both single and JSON array types
+            $urlType = $link->target_url_type ?? 'single';
+            $kwType = $link->anchor_keyword_type ?? 'single';
 
-            if (
-                is_array($json)
-                && isset($json['data'][0]['id'])
-            ) {
-                $remoteId = (string) $json['data'][0]['id'];
+            $urls = [];
+            $keywords = [];
+
+            if ($urlType === 'json') {
+                $decoded = json_decode($link->target_url, true);
+                $urls = is_array($decoded) ? $decoded : [$link->target_url];
+            } else {
+                $urls = [$link->target_url];
             }
-            if (!is_array($json)) {
-                $json = ['raw' => $res->body()];
+
+            if ($kwType === 'json') {
+                $decoded = json_decode($link->anchor_keyword, true);
+                $keywords = is_array($decoded) ? $decoded : [$link->anchor_keyword];
+            } else {
+                $keywords = [$link->anchor_keyword];
             }
+
+            // ✅ Send multiple links to WordPress (one per keyword/URL pair)
+            $remoteIds = [];
+            $responses = [];
+
+            $pairCount = max(count($urls), count($keywords));
+            for ($i = 0; $i < $pairCount; $i++) {
+                $targetUrl = $urls[$i] ?? $urls[0] ?? '';
+                $keyword = $keywords[$i] ?? $keywords[0] ?? '';
+
+                // ✅ UTF-8 Sanitization - clean malformed bytes
+                $keyword = cleanUtf8((string) $keyword, [
+                    'context' => 'sidebar_blogroll_api',
+                    'task_id' => $task->id,
+                    'field' => 'keyword',
+                ]);
+
+                $targetUrl = cleanUtf8((string) $targetUrl, [
+                    'context' => 'sidebar_blogroll_api',
+                    'task_id' => $task->id,
+                    'field' => 'link',
+                ]);
+
+                $payload = [
+                    'keyword' => $keyword,
+                    'link'    => $targetUrl,
+                    'api_key' => (string) $apiKey,
+                    'nofollow' => $nofollow ? 1 : 0,
+                    'no_follow' => $nofollow ? 1 : 0,
+                    'sponsored' => $sponsored ? 1 : 0,
+                    'sponsor' => $sponsored ? 1 : 0,
+                    'ugc' => $ugc ? 1 : 0,
+                    'noopener' => $noopener ? 1 : 0,
+                    'noreferrer' => $noreferrer ? 1 : 0,
+                    'rel' => $rel,
+                    'rel_attr' => $relString,
+                ];
+
+                // 🐛 DEBUG: Log payload to verify rel attributes are sent correctly
+                \Log::info('Sidebar Blogroll Payload Debug', [
+                    'task_id' => $task->id,
+                    'domain' => $domain->name,
+                    'rel_array' => $rel,
+                    'rel_string' => $relString,
+                    'full_payload' => $payload,
+                ]);
+
+                // 🌐 Send request with UTF-8 safe headers
+                $res = Http::withoutVerifying()
+                    ->timeout(180)
+                    ->acceptJson()
+                    ->contentType('application/json; charset=utf-8')
+                    ->withBody(safeJsonEncode($payload), 'application/json; charset=utf-8')
+                    ->post($endpoint);
+
+                if (!$res->successful()) {
+                    throw new \Exception("WP blogroll API failed ({$res->status()}): " . $res->body());
+                }
+
+                $json = $res->json();
+                $remoteId = null;
+
+                if (
+                    is_array($json)
+                    && isset($json['data'][0]['id'])
+                ) {
+                    $remoteId = (string) $json['data'][0]['id'];
+                }
+                if (!is_array($json)) {
+                    $json = ['raw' => $res->body()];
+                }
+
+                $remoteIds[] = $remoteId;
+                $responses[] = $json;
+            }
+
+            // ✅ Store first remote ID (or JSON array of all IDs)
+            $finalRemoteId = count($remoteIds) === 1 ? $remoteIds[0] : json_encode($remoteIds);
+            $finalResponse = count($responses) === 1 ? $responses[0] : ['multiple' => $responses];
 
             // ✅ STEP 4: Mark success
-            DB::transaction(function () use ($task, $json, $res, $remoteId) {
+            DB::transaction(function () use ($task, $finalResponse, $finalRemoteId) {
 
                 $fresh = SidebarCampaignTask::lockForUpdate()->find($task->id);
                 if (!$fresh || $fresh->lock_token !== $task->lock_token) return;
 
                 $fresh->status         = 'success';
-                $fresh->remote_id      = $remoteId;
-                $fresh->http_status    = $res->status();
-                $fresh->remote_response = $json; // or json_encode if your column is longtext
+                $fresh->remote_id      = $finalRemoteId;
+                $fresh->http_status    = 200;
+                $fresh->remote_response = $finalResponse;
                 $fresh->published_at   = now();
                 $fresh->finished_at    = now();
                 $fresh->last_error     = null;

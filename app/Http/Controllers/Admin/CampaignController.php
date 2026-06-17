@@ -33,7 +33,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Http;
 
-class campaignController extends Controller
+class CampaignController extends Controller
 {
     use AppliesSuperAdminCampaignOwnerFilter;
     use AuthorizesAdminCampaign;
@@ -45,7 +45,13 @@ class campaignController extends Controller
     }
 
     /**
-     * Display a listing of the resource.
+     * Display a paginated listing of PBN post campaigns.
+     *
+     * Supports search by campaign number and owner filtering (Super Admin only).
+     * Excludes sticky campaigns (those are displayed separately).
+     *
+     * @param \Illuminate\Http\Request $request
+     * @return \Illuminate\View\View
      */
     public function index(Request $request)
     {
@@ -64,8 +70,7 @@ class campaignController extends Controller
             );
         }
 
-        // ✅ Pagination limit
-        $limit = 100;
+        $limit = config('campaign.pagination.default_limit');
         $admin = Auth::guard('admin')->user();
         // ✅ Base query
         $query = Campaign::query()
@@ -97,7 +102,13 @@ class campaignController extends Controller
 
 
     /**
-     * Show the form for creating a new resource.
+     * Show the form for creating a new PBN post campaign.
+     *
+     * Loads all required data for campaign creation including domain categories,
+     * article categories, article sets, domain sets, and available article languages.
+     * Data is cached for 10 minutes to improve performance.
+     *
+     * @return \Illuminate\View\View
      */
     public function create()
     {
@@ -182,6 +193,50 @@ class campaignController extends Controller
         return $slug;
     }
 
+    /**
+     * Build raw_rel_attr string from checkboxes and custom input.
+     * Priority: raw_rel_attr from Raw HTML mode > combined checkbox + custom values.
+     *
+     * @param array $row Keyword data row from frontend
+     * @return string|null Combined rel attribute string or null if empty
+     */
+    /**
+     * Build raw_rel_attr string from checkboxes or use existing raw_rel_attr from Raw HTML mode.
+     * Mirrors sidebar campaign behavior.
+     *
+     * @param array $row Keyword data row from frontend
+     * @return string|null Combined rel attribute string or null if empty
+     */
+    private function buildRawRelAttr(array $row): ?string
+    {
+        // Priority 1: If raw_rel_attr exists (from Raw HTML Anchors mode), use it directly
+        // This preserves ALL rel attributes including custom ones like "external", "bookmark"
+        if (!empty($row['raw_rel_attr'])) {
+            return trim($row['raw_rel_attr']);
+        }
+
+        // Priority 2: Build from standard checkbox values only
+        $relTokens = [];
+
+        if (!empty($row['nofollow'])) {
+            $relTokens[] = 'nofollow';
+        }
+        if (!empty($row['sponsored'])) {
+            $relTokens[] = 'sponsored';
+        }
+        if (!empty($row['ugc'])) {
+            $relTokens[] = 'ugc';
+        }
+        if (!empty($row['noopener'])) {
+            $relTokens[] = 'noopener';
+        }
+        if (!empty($row['noreferrer'])) {
+            $relTokens[] = 'noreferrer';
+        }
+
+        return count($relTokens) > 0 ? implode(' ', $relTokens) : null;
+    }
+
 
     public function store(Request $request)
     {
@@ -196,7 +251,7 @@ class campaignController extends Controller
             'sel_articles_opt'      =>  'required|in:own_article,system_article,language_article',
             'selected_articles_val' => 'required|string',   // CSV: "163,164,165,..."
 
-            'keywordmethod'         => 'nullable|string|in:normal,bulk,multiple,multi_bulk',
+            'keywordmethod'         => 'nullable|string|in:normal,bulk,multiple,multi_bulk,raw_html',
             'keywordsDataHolder'    => 'required|string',   // JSON string array
 
             'sel_domains'           => 'required|integer|in:0,1,2',
@@ -279,8 +334,8 @@ class campaignController extends Controller
 
             // 3) campaign_articles (store and keep map by index)
             $campaignArticleIds = [];
-            $method = (string) ($request->keywordmethod ?? 'normal'); // normal | bulk | multiple | multi_bulk
-            $isMultiple = in_array($method, ['multiple', 'multi_bulk'], true);
+            $method = (string) ($request->keywordmethod ?? 'normal'); // normal | bulk | multiple | multi_bulk | raw_html
+            $isMultiple = in_array($method, ['multiple', 'multi_bulk', 'raw_html'], true);
 
             foreach ($articleIds as $i => $articleId) {
                 $row = $keywords[$i] ?? [];
@@ -345,6 +400,10 @@ class campaignController extends Controller
                     'url_type'                 => $urlType,
                     'nofollow'                 => ! empty($row['nofollow']),
                     'sponsored'                => ! empty($row['sponsored']),
+                    'ugc'                      => ! empty($row['ugc']),
+                    'noopener'                 => ! empty($row['noopener']),
+                    'noreferrer'               => ! empty($row['noreferrer']),
+                    'raw_rel_attr'             => $this->buildRawRelAttr($row),
                 ]);
 
                 $campaignArticleIds[$i] = $ca->id;
@@ -696,17 +755,25 @@ class campaignController extends Controller
         $multiLevelBoxes = $postQuantity > 0
             ? $this->buildMultiLevelBoxesForEdit($orderedArticleIds)
             : [];
-        $preferredKeywordTab = $hasJsonKeywords ? 'multi' : 'batch';
+        $preferredKeywordTab = $hasJsonKeywords ? 'multibulk' : 'batch';
 
         $initialNofollow = false;
+        $initialSponsored = false;
+        $initialUgc = false;
+        $initialNoopener = false;
+        $initialNoreferrer = false;
         if ($postQuantity > 0) {
             $firstCa = CampaignArticle::find($orderedArticleIds[0]);
             $initialNofollow = $firstCa && (bool) $firstCa->nofollow;
+            $initialSponsored = $firstCa && (bool) ($firstCa->sponsored ?? false);
+            $initialUgc = $firstCa && (bool) ($firstCa->ugc ?? false);
+            $initialNoopener = $firstCa && (bool) ($firstCa->noopener ?? false);
+            $initialNoreferrer = $firstCa && (bool) ($firstCa->noreferrer ?? false);
         }
 
         return view(
             'admin.campaigns.pbn-post.edit-campaign',
-            compact('campaign', 'postQuantity', 'multiLevelBoxes', 'initialNofollow', 'distinctBatches', 'preferredKeywordTab')
+            compact('campaign', 'postQuantity', 'multiLevelBoxes', 'initialNofollow', 'initialSponsored', 'initialUgc', 'initialNoopener', 'initialNoreferrer', 'distinctBatches', 'preferredKeywordTab')
         );
     }
 
@@ -1286,11 +1353,24 @@ class campaignController extends Controller
                     $sponsored = array_key_exists('sponsored', $row)
                         ? ! empty($row['sponsored'])
                         : (bool) ($ca->sponsored ?? false);
+                    $ugc = array_key_exists('ugc', $row)
+                        ? ! empty($row['ugc'])
+                        : (bool) ($ca->ugc ?? false);
+                    $noopener = array_key_exists('noopener', $row)
+                        ? ! empty($row['noopener'])
+                        : (bool) ($ca->noopener ?? false);
+                    $noreferrer = array_key_exists('noreferrer', $row)
+                        ? ! empty($row['noreferrer'])
+                        : (bool) ($ca->noreferrer ?? false);
 
                     CampaignArticle::where('id', $ca->id)->update([
                         'media'    => $mediaVal,
                         'nofollow' => $nofollow,
                         'sponsored' => $sponsored,
+                        'ugc' => $ugc,
+                        'noopener' => $noopener,
+                        'noreferrer' => $noreferrer,
+                        'raw_rel_attr' => $this->buildRawRelAttr($row),
                     ]);
                 }
             });
@@ -1336,7 +1416,7 @@ class campaignController extends Controller
 
     /**
      * @param  array<int, int>  $orderedArticleIds
-     * @return array<int, array{quantity: int, media: ?string, nofollow: bool, sponsored: bool, rows: array<int, array{url: string, keyword: string}>}>
+     * @return array<int, array{quantity: int, media: ?string, nofollow: bool, sponsored: bool, ugc: bool, noopener: bool, noreferrer: bool, rows: array<int, array{url: string, keyword: string}>}>
      */
     private function buildMultiLevelBoxesForEdit(array $orderedArticleIds): array
     {
@@ -1361,6 +1441,9 @@ class campaignController extends Controller
                 'media'    => $groupPayload['media'],
                 'nofollow' => $groupPayload['nofollow'],
                 'sponsored' => $groupPayload['sponsored'],
+                'ugc' => $groupPayload['ugc'],
+                'noopener' => $groupPayload['noopener'],
+                'noreferrer' => $groupPayload['noreferrer'],
                 'rows'     => $groupPayload['rows'],
             ];
         };
@@ -1393,7 +1476,7 @@ class campaignController extends Controller
     }
 
     /**
-     * @return array{media: ?string, nofollow: bool, sponsored: bool, rows: array<int, array{url: string, keyword: string}>}
+     * @return array{media: ?string, nofollow: bool, sponsored: bool, ugc: bool, noopener: bool, noreferrer: bool, rows: array<int, array{url: string, keyword: string}>}
      */
     private function articleRowPayloadForEdit(CampaignArticle $ca): array
     {
@@ -1433,12 +1516,15 @@ class campaignController extends Controller
             'media'    => $media,
             'nofollow' => (bool) $ca->nofollow,
             'sponsored' => (bool) ($ca->sponsored ?? false),
+            'ugc' => (bool) ($ca->ugc ?? false),
+            'noopener' => (bool) ($ca->noopener ?? false),
+            'noreferrer' => (bool) ($ca->noreferrer ?? false),
             'rows'     => $rows,
         ];
     }
 
     /**
-     * @param  array{media: ?string, nofollow: bool, sponsored: bool, rows: array<int, array{url: string, keyword: string}>}  $payload
+     * @param  array{media: ?string, nofollow: bool, sponsored: bool, ugc: bool, noopener: bool, noreferrer: bool, rows: array<int, array{url: string, keyword: string}>}  $payload
      */
     private function signatureForMultiLevelPayload(array $payload): string
     {
@@ -1447,6 +1533,9 @@ class campaignController extends Controller
                 'm'    => $payload['media'],
                 'nf'   => $payload['nofollow'],
                 'sp'   => $payload['sponsored'],
+                'ug'   => $payload['ugc'],
+                'no'   => $payload['noopener'],
+                'nr'   => $payload['noreferrer'],
                 'rows' => $payload['rows'],
             ],
             JSON_UNESCAPED_UNICODE

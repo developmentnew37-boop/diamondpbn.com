@@ -6,7 +6,31 @@ use Illuminate\Database\Eloquent\Model;
 use App\Models\Admin;
 use Illuminate\Support\Str;
 
-
+/**
+ * Schedule Campaign Model
+ *
+ * Represents a scheduled campaign that publishes articles with keyword/URL pairs
+ * to multiple WordPress domains at specified future dates.
+ *
+ * @property int $id
+ * @property string $campaign_no
+ * @property int $domain_category_id
+ * @property int|null $article_category_id
+ * @property int $admin_id
+ * @property string $status
+ * @property bool $is_sticky_campaign
+ * @property int $total_targets
+ * @property int $completed_targets
+ * @property int $failed_targets
+ * @property string $report_token
+ * @property \Illuminate\Support\Carbon|null $schedule_from_date
+ * @property \Illuminate\Support\Carbon|null $schedule_to_date
+ * @property \Illuminate\Support\Carbon|null $started_at
+ * @property \Illuminate\Support\Carbon|null $finished_at
+ * @property \Illuminate\Support\Carbon|null $last_bulk_updated_at
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ */
 class ScheduleCampaign extends Model
 {
     protected $table = 'schedule_campaigns';

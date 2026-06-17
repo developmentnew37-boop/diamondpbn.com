@@ -56,7 +56,7 @@ class ScheduleCampaignController extends Controller
             'filter_user' => 'nullable|string|max:20',
         ]);
 
-        $limit = 100;
+        $limit = config('campaign.pagination.default_limit');
 
         $query = ScheduleCampaign::query()
             ->where('is_sticky_campaign', false)
@@ -98,7 +98,7 @@ class ScheduleCampaignController extends Controller
             'filter_user' => 'nullable|string|max:20',
         ]);
 
-        $limit = 100;
+        $limit = config('campaign.pagination.default_limit');
 
         $query = ScheduleCampaign::query()
             ->where('is_sticky_campaign', true)
@@ -265,7 +265,7 @@ class ScheduleCampaignController extends Controller
             'article_niche'         => 'nullable|integer|exists:article_categories,id',
             'sel_articles_opt'      => 'required|in:own_article,system_article,language_article',
             'selected_articles_val' => 'required|string',
-            'keywordmethod'         => 'nullable|in:normal,bulk,multiple,multi_bulk',
+            'keywordmethod'         => 'nullable|in:normal,bulk,multiple,multi_bulk,raw_html',
             'keywordsDataHolder'    => 'required|string',
             'campaigns_domains'     => 'required|string',
         ]);
@@ -284,7 +284,7 @@ class ScheduleCampaignController extends Controller
         }
 
         $method     = (string) ($request->keywordmethod ?? 'normal');
-        $isMultiple = ($method === 'multiple' || $method === 'multi_bulk');
+        $isMultiple = in_array($method, ['multiple', 'multi_bulk', 'raw_html'], true);
 
         if (count($articleIds) !== $postQty || count($domainIds) !== $postQty || count($keywords) !== $postQty) {
             return back()
@@ -448,6 +448,11 @@ class ScheduleCampaignController extends Controller
                     'url_type'                 => $urlType,
                     'media'                    => $row['media'] ?? null,
                     'nofollow'                 => ! empty($row['nofollow']),
+                    'sponsored'                => ! empty($row['sponsored']),
+                    'ugc'                      => ! empty($row['ugc']),
+                    'noopener'                 => ! empty($row['noopener']),
+                    'noreferrer'               => ! empty($row['noreferrer']),
+                    'raw_rel_attr'             => ! empty($row['raw_rel_attr']) ? trim($row['raw_rel_attr']) : null,
                 ]);
                 $articleMap[$i] = $sca->id;
                 $affected = Article::where('id', $articleId)->whereNull('lock_at')->update(['lock_at' => now()]);
@@ -606,6 +611,11 @@ class ScheduleCampaignController extends Controller
                     'url_type'                 => $urlType,
                     'media'                    => $row['media'] ?? null,
                     'nofollow'                 => ! empty($row['nofollow']),
+                    'sponsored'                => ! empty($row['sponsored']),
+                    'ugc'                      => ! empty($row['ugc']),
+                    'noopener'                 => ! empty($row['noopener']),
+                    'noreferrer'               => ! empty($row['noreferrer']),
+                    'raw_rel_attr'             => ! empty($row['raw_rel_attr']) ? trim($row['raw_rel_attr']) : null,
                 ]);
                 $articleMap[$i] = $sca->id;
                 $affected = Article::where('id', $articleId)->whereNull('lock_at')->update(['lock_at' => now()]);

@@ -5,6 +5,28 @@ namespace App\Models\Admin;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
+/**
+ * Sidebar Campaign Model
+ *
+ * Represents a sidebar/blogroll campaign that publishes links
+ * to the sidebar/blogroll section of WordPress sites.
+ *
+ * @property int $id
+ * @property string $campaign_no
+ * @property int $domain_category_id
+ * @property int $admin_id
+ * @property int|null $sidebar_count
+ * @property string $status
+ * @property int $total_targets
+ * @property int $completed_targets
+ * @property int $failed_targets
+ * @property string $report_token
+ * @property \Illuminate\Support\Carbon|null $started_at
+ * @property \Illuminate\Support\Carbon|null $finished_at
+ * @property \Illuminate\Support\Carbon|null $last_bulk_updated_at
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ */
 class SidebarCampaign extends Model
 {
     protected $fillable = [

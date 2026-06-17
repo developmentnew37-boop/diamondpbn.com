@@ -9,6 +9,30 @@ use App\Models\Admin\HiddenLinksCampaignDomains;
 use App\Models\Admin\HiddenLinksCampaignLinks;
 use App\Models\Admin\HiddenLinksCampaignTasks;
 use Illuminate\Support\Str;
+
+/**
+ * Hidden Links Campaign Model
+ *
+ * Represents a hidden link campaign that adds non-visible links
+ * to existing posts on WordPress sites.
+ *
+ * @property int $id
+ * @property string $campaign_no
+ * @property int $domain_category_id
+ * @property int $admin_id
+ * @property int|null $sidebar_count
+ * @property string|null $domain_method
+ * @property string $status
+ * @property int $total_targets
+ * @property int $completed_targets
+ * @property int $failed_targets
+ * @property string $report_token
+ * @property \Illuminate\Support\Carbon|null $started_at
+ * @property \Illuminate\Support\Carbon|null $finished_at
+ * @property \Illuminate\Support\Carbon|null $last_bulk_updated_at
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ */
 class HiddenLinksCampaign extends Model
 {
     protected $table = 'hidden_links_campaigns';

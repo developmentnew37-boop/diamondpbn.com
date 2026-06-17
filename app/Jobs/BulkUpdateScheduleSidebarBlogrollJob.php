@@ -52,15 +52,60 @@ class BulkUpdateScheduleSidebarBlogrollJob implements ShouldQueue
                 continue;
             }
 
-            $res = BlogrollApiService::updateEntryByRemoteId(
-                $domain->name,
-                $domain->api_key,
-                (string) $task->remote_id,
-                $keyword,
-                $link
-            );
+            // ✅ Handle both single remote_id and JSON array of remote_ids
+            $remoteIdRaw = $task->remote_id;
+            $remoteIds = [];
 
-            if ($res->successful()) {
+            if (is_string($remoteIdRaw) && str_starts_with($remoteIdRaw, '[')) {
+                $decoded = json_decode($remoteIdRaw, true);
+                $remoteIds = is_array($decoded) ? $decoded : [$remoteIdRaw];
+            } else {
+                $remoteIds = [$remoteIdRaw];
+            }
+
+            // ✅ Update all remote entries for this task
+            $allSuccess = true;
+            foreach ($remoteIds as $remoteId) {
+                if (empty($remoteId)) continue;
+
+                // ✅ Build rel array: prioritize raw_rel_attr if available
+                $rawRelAttr = trim((string)($task->link->raw_rel_attr ?? ''));
+
+                if ($rawRelAttr !== '') {
+                    // Use complete rel string from raw anchor mode
+                    $relArray = array_filter(array_map('trim', explode(' ', $rawRelAttr)));
+                } else {
+                    // Fall back to boolean fields
+                    $relArray = array_values(array_filter([
+                        ($task->link->nofollow ?? false) ? 'nofollow' : null,
+                        ($task->link->sponsored ?? false) ? 'sponsored' : null,
+                        ($task->link->ugc ?? false) ? 'ugc' : null,
+                        ($task->link->noopener ?? false) ? 'noopener' : null,
+                        ($task->link->noreferrer ?? false) ? 'noreferrer' : null,
+                    ]));
+                }
+
+                $res = BlogrollApiService::updateEntryByRemoteId(
+                    $domain->name,
+                    $domain->api_key,
+                    (string) $remoteId,
+                    $keyword,
+                    $link,
+                    $relArray
+                );
+
+                if (!$res->successful()) {
+                    $allSuccess = false;
+                    Log::warning('BulkUpdateScheduleSidebarBlogrollJob: remote update failed', [
+                        'task_id' => $taskId,
+                        'remote_id' => $remoteId,
+                        'domain'  => $domain->name,
+                        'body'    => $res->body(),
+                    ]);
+                }
+            }
+
+            if ($allSuccess) {
                 $task->link->update([
                     'anchor_keyword' => $keyword,
                     'target_url'     => $link,
@@ -68,11 +113,6 @@ class BulkUpdateScheduleSidebarBlogrollJob implements ShouldQueue
                 $updated++;
             } else {
                 $failed++;
-                Log::warning('BulkUpdateScheduleSidebarBlogrollJob: remote update failed', [
-                    'task_id' => $taskId,
-                    'domain'  => $domain->name,
-                    'body'    => $res->body(),
-                ]);
             }
         }
 

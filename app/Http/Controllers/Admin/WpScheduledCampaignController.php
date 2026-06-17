@@ -61,8 +61,9 @@ class WpScheduledCampaignController extends Controller
         $admin = Auth::guard('admin')->user();
         $ownerData = $this->scopeCampaignQueryForOwner($query, $request, $admin);
 
-        $campaigns = $query->orderByDesc('id')->paginate(20)->appends($request->all());
-        $offset = ($campaigns->currentPage() - 1) * 20;
+        $limit = config('campaign.pagination.default_limit');
+        $campaigns = $query->orderByDesc('id')->paginate($limit)->appends($request->all());
+        $offset = ($campaigns->currentPage() - 1) * $limit;
 
         foreach ($campaigns as $c) {
             if (empty($c->report_token)) {

@@ -61,7 +61,7 @@ class SidebarCampaignController extends Controller
             );
         }
 
-        $limit = 100;
+        $limit = config('campaign.pagination.default_limit');
         $search = trim((string) $request->input('search', ''));
 
         // ✅ Sidebar campaigns base query
@@ -254,10 +254,25 @@ class SidebarCampaignController extends Controller
 
         // ✅ validate each link row has keyword + url
         foreach ($links as $i => $row) {
-            $url = trim((string)($row['url'] ?? ''));
-            $kw  = trim((string)($row['keyword'] ?? ''));
+            $url = $row['url'] ?? null;
+            $kw  = $row['keyword'] ?? null;
 
-            if ($url === '' || $kw === '') {
+            // Handle both single strings and arrays
+            if (is_array($url)) {
+                $url = !empty($url) ? $url : null;
+            } else {
+                $url = trim((string)$url);
+                $url = $url !== '' ? $url : null;
+            }
+
+            if (is_array($kw)) {
+                $kw = !empty($kw) ? $kw : null;
+            } else {
+                $kw = trim((string)$kw);
+                $kw = $kw !== '' ? $kw : null;
+            }
+
+            if ($url === null || $kw === null) {
                 return back()->with(
                     'cus__error',
                     "Link row #" . ($i + 1) . " url/keyword cannot be empty."
@@ -301,17 +316,67 @@ class SidebarCampaignController extends Controller
             // 2) BULK INSERT LINKS (chunk)
             // ==========================================================
             $linkRows = [];
+            $method = (string) ($request->keywordmethod ?? 'normal'); // normal | bulk | rawanchor
+
+            // ✅ DEBUG: Log what we're receiving
+            \Log::info('Sidebar Campaign Debug:', [
+                'method' => $method,
+                'keywordmethod_from_request' => $request->keywordmethod,
+                'first_link_sample' => $links[0] ?? null,
+            ]);
+
+            // Only Raw Anchor uses JSON arrays for sidebar campaigns
+            $isMultiple = ($method === 'rawanchor');
+
             foreach ($links as $idx => $row) {
-                $linkRows[] = [
-                    'sidebar_campaign_id' => $campaign->id,
-                    'sort_order'          => $idx + 1,
-                    'target_url'          => trim((string)$row['url']),
-                    'anchor_keyword'      => trim((string)$row['keyword']),
-                    'nofollow'            => !empty($row['nofollow']),
-                    'sponsored'           => !empty($row['sponsored']),
-                    'created_at'          => $now,
-                    'updated_at'          => $now,
-                ];
+                $kwVal  = $row['keyword'] ?? null; // string OR array
+                $urlVal = $row['url'] ?? null;     // string OR array
+
+                // ✅ Determine types based on method
+                $kwType  = $isMultiple ? 'json' : 'single';
+                $urlType = $isMultiple ? 'json' : 'single';
+
+                // ✅ Normalize storage based on method
+                if ($isMultiple) {
+                    // Store arrays as JSON. If single string comes, wrap into array.
+                    $kwArr  = is_array($kwVal)  ? $kwVal  : (is_null($kwVal) ? [] : [$kwVal]);
+                    $urlArr = is_array($urlVal) ? $urlVal : (is_null($urlVal) ? [] : [$urlVal]);
+
+                    $linkRows[] = [
+                        'sidebar_campaign_id' => $campaign->id,
+                        'sort_order'          => $idx + 1,
+                        'target_url'          => json_encode($urlArr),
+                        'anchor_keyword'      => json_encode($kwArr),
+                        'target_url_type'     => $urlType,
+                        'anchor_keyword_type' => $kwType,
+                        'nofollow'            => !empty($row['nofollow']),
+                        'sponsored'           => !empty($row['sponsored']),
+                        'ugc'                 => !empty($row['ugc']),
+                        'noopener'            => !empty($row['noopener']),
+                        'noreferrer'          => !empty($row['noreferrer']),
+                        'raw_rel_attr'        => trim((string)($row['raw_rel_attr'] ?? '')),
+                        'created_at'          => $now,
+                        'updated_at'          => $now,
+                    ];
+                } else {
+                    // Single string storage
+                    $linkRows[] = [
+                        'sidebar_campaign_id' => $campaign->id,
+                        'sort_order'          => $idx + 1,
+                        'target_url'          => trim((string)$urlVal),
+                        'anchor_keyword'      => trim((string)$kwVal),
+                        'target_url_type'     => $urlType,
+                        'anchor_keyword_type' => $kwType,
+                        'nofollow'            => !empty($row['nofollow']),
+                        'sponsored'           => !empty($row['sponsored']),
+                        'ugc'                 => !empty($row['ugc']),
+                        'noopener'            => !empty($row['noopener']),
+                        'noreferrer'          => !empty($row['noreferrer']),
+                        'raw_rel_attr'        => trim((string)($row['raw_rel_attr'] ?? '')),
+                        'created_at'          => $now,
+                        'updated_at'          => $now,
+                    ];
+                }
             }
 
             foreach (array_chunk($linkRows, 200) as $chunk) {
@@ -922,15 +987,41 @@ class SidebarCampaignController extends Controller
 
         $batches = [];
         foreach ($links as $link) {
-            $k = trim((string) ($link->anchor_keyword ?? ''));
-            $u = trim((string) ($link->target_url ?? ''));
-            $key = $k . "\n" . $u;
+            // ✅ Handle both single and JSON array types
+            $kwType = $link->anchor_keyword_type ?? 'single';
+            $urlType = $link->target_url_type ?? 'single';
+
+            if ($kwType === 'json') {
+                $keywords = json_decode($link->anchor_keyword, true);
+                $keywords = is_array($keywords) ? $keywords : [$link->anchor_keyword];
+            } else {
+                $keywords = [$link->anchor_keyword];
+            }
+
+            if ($urlType === 'json') {
+                $urls = json_decode($link->target_url, true);
+                $urls = is_array($urls) ? $urls : [$link->target_url];
+            } else {
+                $urls = [$link->target_url];
+            }
+
+            // ✅ Create display string for grouping (show all pairs)
+            $displayPairs = [];
+            $pairCount = max(count($keywords), count($urls));
+            for ($i = 0; $i < $pairCount; $i++) {
+                $kw = trim((string)($keywords[$i] ?? $keywords[0] ?? ''));
+                $url = trim((string)($urls[$i] ?? $urls[0] ?? ''));
+                $displayPairs[] = $kw . ' → ' . $url;
+            }
+            $key = implode(' | ', $displayPairs);
 
             if (!isset($batches[$key])) {
                 $batches[$key] = [
                     'representative_link_id' => $link->id,
-                    'keyword'                => $k,
-                    'url'                    => $u,
+                    'keyword'                => $keywords, // ✅ Store as array
+                    'url'                    => $urls,     // ✅ Store as array
+                    'is_multiple'            => $pairCount > 1,
+                    'pair_count'             => $pairCount,
                     'link_ids'               => [],
                 ];
             }
@@ -958,12 +1049,32 @@ class SidebarCampaignController extends Controller
         $allLinksForBulk = SidebarCampaignLink::where('sidebar_campaign_id', $campaign->id)
             ->orderBy('sort_order')
             ->orderBy('id')
-            ->get(['id', 'anchor_keyword', 'target_url'])
-            ->map(fn ($link) => [
-                'link_id' => (int) $link->id,
-                'keyword' => trim((string) ($link->anchor_keyword ?? '')),
-                'url' => trim((string) ($link->target_url ?? '')),
-            ])
+            ->get(['id', 'anchor_keyword', 'target_url', 'anchor_keyword_type', 'target_url_type'])
+            ->map(function ($link) {
+                // ✅ Decode JSON arrays for bulk edit display
+                $kwType = $link->anchor_keyword_type ?? 'single';
+                $urlType = $link->target_url_type ?? 'single';
+
+                if ($kwType === 'json') {
+                    $keywords = json_decode($link->anchor_keyword, true);
+                    $keywords = is_array($keywords) ? $keywords : [$link->anchor_keyword];
+                } else {
+                    $keywords = [$link->anchor_keyword];
+                }
+
+                if ($urlType === 'json') {
+                    $urls = json_decode($link->target_url, true);
+                    $urls = is_array($urls) ? $urls : [$link->target_url];
+                } else {
+                    $urls = [$link->target_url];
+                }
+
+                return [
+                    'link_id' => (int) $link->id,
+                    'keyword' => implode("\n", array_map('trim', $keywords)),
+                    'url' => implode("\n", array_map('trim', $urls)),
+                ];
+            })
             ->all();
 
         return view(
@@ -1018,7 +1129,10 @@ class SidebarCampaignController extends Controller
             $representativeLinkIds = [];
         }
 
+        $editTab = $request->input('edit_kw_tab', 'normal');
         $isBulkTextarea = $request->exists('bulk_urls') && $request->exists('bulk_keywords');
+        $isRawAnchor = $editTab === 'rawanchor';
+
         if ($isBulkTextarea) {
             $expected = count($representativeLinkIds);
             $batchUrls = $this->parseManualLinesStrict((string) $request->input('bulk_urls', ''), $expected);
@@ -1030,16 +1144,53 @@ class SidebarCampaignController extends Controller
                     ->withInput($request->only(['bulk_urls', 'bulk_keywords']))
                     ->with(
                         'edit_sidebar_campaign_tab',
-                        in_array($request->input('edit_kw_tab'), ['normal', 'bulk'], true)
-                            ? $request->input('edit_kw_tab')
+                        in_array($editTab, ['normal', 'bulk', 'rawanchor'], true)
+                            ? $editTab
                             : 'bulk'
                     );
+            }
+        } elseif ($isRawAnchor) {
+            // Handle Raw HTML Anchors
+            $expected = count($representativeLinkIds);
+            $rawAnchors = $this->parseManualLinesStrict((string) $request->input('raw_html_anchors', ''), $expected);
+
+            if ($rawAnchors === null) {
+                return redirect()
+                    ->route('admin.sidebar.campaign.edit', $campaign->id)
+                    ->with('cus__error', 'Raw HTML Anchors must have exactly ' . $expected . ' non-empty lines.')
+                    ->withInput($request->only(['raw_html_anchors']))
+                    ->with('edit_sidebar_campaign_tab', 'rawanchor');
+            }
+
+            // Parse anchor tags to extract URLs, keywords, and rel attributes
+            $batchUrls = [];
+            $batchKeywords = [];
+            $batchRelAttrs = [];
+
+            foreach ($rawAnchors as $anchorLine) {
+                // Extract first anchor tag from the line
+                if (preg_match('/<a[^>]+href=["\']([^"\']+)["\'][^>]*>([^<]+)<\/a>/i', $anchorLine, $matches)) {
+                    $batchUrls[] = trim($matches[1]);
+                    $batchKeywords[] = trim($matches[2]);
+
+                    // Extract rel attribute if present
+                    if (preg_match('/rel=["\']([^"\']+)["\']/i', $anchorLine, $relMatches)) {
+                        $batchRelAttrs[] = trim($relMatches[1]);
+                    } else {
+                        $batchRelAttrs[] = '';
+                    }
+                } else {
+                    $batchUrls[] = '';
+                    $batchKeywords[] = '';
+                    $batchRelAttrs[] = '';
+                }
             }
         } else {
             $batchKeywords = $request->input('batch_keyword', []);
             $batchUrls = $request->input('batch_url', []);
             $batchKeywords = is_array($batchKeywords) ? array_values($batchKeywords) : [];
             $batchUrls = is_array($batchUrls) ? array_values($batchUrls) : [];
+            $batchRelAttrs = []; // Not applicable for normal/bulk mode
         }
 
         $updates       = [];
@@ -1054,6 +1205,7 @@ class SidebarCampaignController extends Controller
 
             $newKeyword = Str::limit(trim((string) ($batchKeywords[$index] ?? '')), 500, '');
             $newUrl     = Str::limit(trim((string) ($batchUrls[$index] ?? '')), 500, '');
+            $newRelAttr = $isRawAnchor ? trim((string) ($batchRelAttrs[$index] ?? '')) : '';
 
             if ($newKeyword === '' || $newUrl === '') {
                 continue;
@@ -1061,12 +1213,14 @@ class SidebarCampaignController extends Controller
 
             $oldKeyword = trim((string) ($representative->anchor_keyword ?? ''));
             $oldUrl     = trim((string) ($representative->target_url ?? ''));
+            $oldRelAttr = trim((string) ($representative->raw_rel_attr ?? ''));
 
-            if ($oldKeyword === $newKeyword && $oldUrl === $newUrl) {
+            // Check if anything changed
+            if ($oldKeyword === $newKeyword && $oldUrl === $newUrl && $oldRelAttr === $newRelAttr) {
                 continue;
             }
 
-            $linkIds = $isBulkTextarea
+            $linkIds = $isBulkTextarea || $isRawAnchor
                 ? [$representative->id]
                 : SidebarCampaignLink::where('sidebar_campaign_id', $campaign->id)
                     ->where('anchor_keyword', $representative->anchor_keyword)
@@ -1094,10 +1248,17 @@ class SidebarCampaignController extends Controller
             }
 
             if (count($tasks) > 0) {
-                SidebarCampaignLink::whereIn('id', $linkIds)->update([
+                $updateData = [
                     'anchor_keyword' => $newKeyword,
                     'target_url'     => $newUrl,
-                ]);
+                ];
+
+                // Update raw_rel_attr only in raw anchor mode
+                if ($isRawAnchor) {
+                    $updateData['raw_rel_attr'] = $newRelAttr;
+                }
+
+                SidebarCampaignLink::whereIn('id', $linkIds)->update($updateData);
                 $queuedBatches++;
             }
         }
@@ -1108,11 +1269,11 @@ class SidebarCampaignController extends Controller
                 ->with('cus__error', 'No changes to apply or no valid batches (keyword and URL required).')
                 ->with(
                     'edit_sidebar_campaign_tab',
-                    in_array($request->input('edit_kw_tab'), ['normal', 'bulk'], true)
-                        ? $request->input('edit_kw_tab')
+                    in_array($editTab, ['normal', 'bulk', 'rawanchor'], true)
+                        ? $editTab
                         : 'normal'
                 )
-                ->withInput($request->only(['bulk_urls', 'bulk_keywords']));
+                ->withInput($request->only(['bulk_urls', 'bulk_keywords', 'raw_html_anchors']));
         }
 
         $campaign->update(['last_bulk_updated_at' => now()]);
@@ -1211,6 +1372,13 @@ class SidebarCampaignController extends Controller
         if (count($lines) !== $expectedCount) {
             return null;
         }
+        return $lines;
+    }
+
+    private function parseManualLines(string $text): array
+    {
+        $lines = preg_split('/\r\n|\r|\n/', $text);
+        $lines = array_map(static fn ($line) => trim((string) $line), $lines ?: []);
         return $lines;
     }
 }

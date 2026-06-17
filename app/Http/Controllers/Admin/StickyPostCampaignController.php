@@ -40,8 +40,7 @@ class StickyPostCampaignController extends Controller
             );
         }
 
-        // ✅ Pagination limit
-        $limit = 20;
+        $limit = config('campaign.pagination.default_limit');
 
         // ✅ Base query
         $query = Campaign::query()

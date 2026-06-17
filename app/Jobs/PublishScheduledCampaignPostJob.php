@@ -21,7 +21,7 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
 {
         use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-        public int $tries = 5;
+        public int $tries = 1;
 
         public function __construct(public int $postId)
         {
@@ -30,9 +30,9 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
 
         public function handle(): void
         {
-            $lockTtlSec  = 300; // 5 minutes
-            $maxAttempts = 5;
-            $baseBackoff = 60;
+            $lockTtlSec  = config('campaign.jobs.lock_ttl_seconds');
+            $maxAttempts = config('campaign.jobs.max_internal_retries');
+            $baseBackoff = config('campaign.jobs.base_backoff_seconds');
 
             $lockToken = (string) Str::uuid();
 
@@ -274,9 +274,35 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
             preg_match_all('/<p\b[^>]*>.*?<\/p>/is', $html, $matches);
             $paragraphs = $matches[0] ?? [];
 
-            // Fallback: no <p> tags → wrap entire content
-            if (count($paragraphs) === 0) {
-                $paragraphs = ['<p>' . $html . '</p>'];
+            // Check if extracted paragraphs have meaningful content
+            $hasMeaningfulContent = false;
+            foreach ($paragraphs as $p) {
+                $stripped = trim(strip_tags($p));
+                if (mb_strlen($stripped) > 10) { // At least 10 chars of actual text
+                    $hasMeaningfulContent = true;
+                    break;
+                }
+            }
+
+            // Fallback: no <p> tags OR only empty <p> tags → split by <br> tags
+            if (count($paragraphs) === 0 || !$hasMeaningfulContent) {
+                // Split by <br> tags (br, BR, br/, etc.)
+                $parts = preg_split('/<br\s*\/?>/i', $html);
+                $paragraphs = [];
+                foreach ($parts as $part) {
+                    $part = trim($part);
+                    // Remove any empty <p></p> tags that might be in the part
+                    $part = preg_replace('/<p\b[^>]*>\s*<\/p>/i', '', $part);
+                    $part = trim($part);
+                    if ($part !== '') {
+                        $paragraphs[] = '<p>' . $part . '</p>';
+                    }
+                }
+
+                // Still no content? Wrap entire HTML as single paragraph
+                if (count($paragraphs) === 0) {
+                    $paragraphs = ['<p>' . $html . '</p>'];
+                }
             }
 
             $paraCount   = count($paragraphs);
@@ -289,7 +315,7 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
             // ** OLD ONES SHUFFLE CODE HERE **
             // --------------------------------------------------
 
-      
+
             // --------------------------------------------------
             // ** ENDS HERE **
             // --------------------------------------------------
@@ -300,10 +326,47 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
             shuffle($paraIndexes);              // randomize paragraph order
 
             $pairIndex = 0;
-            $nofollow  = (bool) ($ca->nofollow ?? false);
-            $relAttr   = $nofollow ? 'nofollow noopener' : 'noopener';
 
-            while ($pairIndex < $anchorCount) {
+            // ✅ PRIORITY 1: Use raw_rel_attr if present (from Raw HTML Anchors mode - supports ANY rel values)
+            // ✅ PRIORITY 2: Build from individual boolean fields (from checkbox mode - backward compatibility)
+            $relPart = '';
+            if (!empty($ca->raw_rel_attr)) {
+                // Raw HTML mode: Use full rel string directly (supports custom values like "external", "bookmark")
+                $relPart = ' rel="' . e(trim($ca->raw_rel_attr)) . '"';
+            } else {
+                // Checkbox mode: Build from boolean fields (legacy behavior)
+                $nofollow  = (bool) ($ca->nofollow ?? false);
+                $sponsored = (bool) ($ca->sponsored ?? false);
+                $ugc = (bool) ($ca->ugc ?? false);
+                $noopener = (bool) ($ca->noopener ?? false);
+                $noreferrer = (bool) ($ca->noreferrer ?? false);
+
+                $relTokens = [];
+                if ($nofollow) {
+                    $relTokens[] = 'nofollow';
+                }
+                if ($sponsored) {
+                    $relTokens[] = 'sponsored';
+                }
+                if ($ugc) {
+                    $relTokens[] = 'ugc';
+                }
+                if ($noopener) {
+                    $relTokens[] = 'noopener';
+                }
+                if ($noreferrer) {
+                    $relTokens[] = 'noreferrer';
+                }
+                $relPart = count($relTokens) > 0 ? ' rel="' . implode(' ', $relTokens) . '"' : '';
+            }
+
+            // ✅ FIX: Prevent infinite loop by tracking passes
+            $minLength = 30; // Preferred minimum paragraph length
+            $maxPasses = 2;  // Pass 1: >= 30 chars, Pass 2: any length
+            $currentPass = 0;
+
+            while ($pairIndex < $anchorCount && $currentPass < $maxPasses) {
+                $placedThisPass = false;
 
                 foreach ($paraIndexes as $p) {
                     if ($pairIndex >= $anchorCount) break;
@@ -317,14 +380,20 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
                     // extract inner HTML
                     $inner = preg_replace('/^<p\b[^>]*>|<\/p>$/i', '', $paraHtml);
 
-                    // skip very short paragraphs
-                    if (mb_strlen(trim(strip_tags($inner))) < 30) {
+                    $textLen = mb_strlen(trim(strip_tags($inner)));
+
+                    // Pass 1: skip short paragraphs; Pass 2: accept any paragraph with text
+                    if ($currentPass === 0 && $textLen < $minLength) {
                         continue;
+                    }
+                    if ($textLen < 1) {
+                        continue; // Always skip completely empty paragraphs
                     }
 
                     [$kw, $url] = $pairs[$pairIndex++];
+                    $placedThisPass = true;
 
-                    $anchor = '<a href="' . e($url) . '" target="_blank" rel="' . $relAttr . '">' . e($kw) . '</a>';
+                    $anchor = '<a href="' . e($url) . '" target="_blank"' . $relPart . '>' . e($kw) . '</a>';
 
                     // random safe insertion point (10%–30%)
                     // ✅ Use mb_strlen for character count, not byte count (critical for Chinese/Thai/Arabic)
@@ -341,6 +410,11 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
                         . mb_substr($inner, $safePos);
 
                     $paragraphs[$p] = $openTag . $inner . '</p>';
+                }
+
+                // ✅ If no anchors were placed this pass, try next pass with relaxed rules
+                if (!$placedThisPass) {
+                    $currentPass++;
                 }
             }
 

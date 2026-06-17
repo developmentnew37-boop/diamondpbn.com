@@ -45,7 +45,12 @@ class DomainSet extends Model
         return $slug;
     }
 
-    public function DomainCategory()
+    /**
+     * Get the domain category that owns this domain set.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
+     */
+    public function domainCategory()
     {
         return $this->belongsTo(DomainCategory::class);
     }

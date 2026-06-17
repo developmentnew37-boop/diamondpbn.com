@@ -27,7 +27,7 @@ class PublishWpScheduledPostJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 5;
+    public int $tries = 1;
 
     public function __construct(public int $postId)
     {
@@ -36,9 +36,9 @@ class PublishWpScheduledPostJob implements ShouldQueue
 
     public function handle(): void
     {
-        $lockTtlSec = 300;
-        $maxAttempts = 5;
-        $baseBackoff = 60;
+        $lockTtlSec = config('campaign.jobs.lock_ttl_seconds');
+        $maxAttempts = config('campaign.jobs.max_internal_retries');
+        $baseBackoff = config('campaign.jobs.base_backoff_seconds');
         $lockToken = (string) Str::uuid();
 
         $post = DB::transaction(function () use ($lockToken, $lockTtlSec) {

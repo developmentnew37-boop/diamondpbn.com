@@ -23,7 +23,7 @@ class PublishHiddenLinksJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 5;
+    public int $tries = 1;
 
     public function __construct(public int $taskId)
     {
@@ -46,9 +46,9 @@ class PublishHiddenLinksJob implements ShouldQueue
 
     public function handle(): void
     {
-        $lockTtlSec  = 180; // 3 minutes
-        $maxAttempts = 5;
-        $baseBackoff = 60;  // seconds (1m, 2m, 4m, 8m...)
+        $lockTtlSec  = config('campaign.jobs.lock_ttl_seconds');
+        $maxAttempts = config('campaign.jobs.max_internal_retries');
+        $baseBackoff = config('campaign.jobs.base_backoff_seconds');
 
         $lockToken = (string) Str::uuid();
 
@@ -113,16 +113,31 @@ class PublishHiddenLinksJob implements ShouldQueue
 
             // ✅ Hidden Links endpoint
             $endpoint = rtrim($base, '/') . '/wp-json/external/v1/hidden-links/add';
+
+            // Always read boolean fields (for backward compatibility and payload)
             $nofollow = (bool) ($link->nofollow ?? false);
             $sponsored = (bool) ($link->sponsored ?? false);
-            $rel = [];
-            if ($nofollow) {
-                $rel[] = 'nofollow';
+            $ugc = (bool) ($link->ugc ?? false);
+            $noopener = (bool) ($link->noopener ?? false);
+            $noreferrer = (bool) ($link->noreferrer ?? false);
+
+            // Check for raw_rel_attr (custom values from raw HTML anchors)
+            $rawRelAttr = trim((string)($link->raw_rel_attr ?? ''));
+
+            if ($rawRelAttr !== '') {
+                // Use complete rel string (supports ANY custom values)
+                $relString = $rawRelAttr;
+                $rel = array_filter(array_map('trim', explode(' ', $rawRelAttr)));
+            } else {
+                // Build from boolean fields (backward compatibility)
+                $rel = [];
+                if ($nofollow) $rel[] = 'nofollow';
+                if ($sponsored) $rel[] = 'sponsored';
+                if ($ugc) $rel[] = 'ugc';
+                if ($noopener) $rel[] = 'noopener';
+                if ($noreferrer) $rel[] = 'noreferrer';
+                $relString = implode(' ', $rel);
             }
-            if ($sponsored) {
-                $rel[] = 'sponsored';
-            }
-            $relString = implode(' ', $rel);
 
             // ✅ UTF-8 Sanitization - clean malformed bytes
             $keyword = cleanUtf8((string) $link->anchor_keyword, [
@@ -146,6 +161,9 @@ class PublishHiddenLinksJob implements ShouldQueue
                 'no_follow' => $nofollow ? 1 : 0,
                 'sponsored' => $sponsored ? 1 : 0,
                 'sponsor' => $sponsored ? 1 : 0,
+                'ugc' => $ugc ? 1 : 0,
+                'noopener' => $noopener ? 1 : 0,
+                'noreferrer' => $noreferrer ? 1 : 0,
                 'rel' => $rel,
                 'rel_attr' => $relString,
             ];
