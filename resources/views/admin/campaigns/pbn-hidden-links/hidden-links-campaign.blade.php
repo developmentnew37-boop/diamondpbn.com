@@ -2,14 +2,18 @@
 
 @section('title', 'Hidden Links Campaigns')
 
+@push('style')
+    @include('admin.campaigns.partials.campaign-list-table-styles')
+@endpush
+
 @section('main-content')
 
     {{-- bread-crumbs --}}
-    <div class="page-header">
-        <div class="w-full flex flex-wrap items-center">
-            <div class="w-1/2 flex flex-col gap-2 flex-wrap">
+    <div class="page-header w-full max-w-full min-w-0">
+        <div class="w-full flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div class="w-full md:flex-1 flex flex-col gap-2 min-w-0">
                 <h2 class="page-title">Dashboards</h2>
-                <div class="breadcrumb">
+                <div class="breadcrumb flex-wrap">
                     <div class="breadcrumb-item">
                         <a href="{{ route('admin.dashboard') }}" class="breadcrumb-link">Dashboard</a>
                         <span>›</span>
@@ -22,12 +26,11 @@
                 </div>
             </div>
 
-            <div class="w-1/2 flex flex-wrap justify-end items-center">
+            <div class="w-full md:w-auto flex flex-wrap justify-start md:justify-end items-center md:shrink-0">
                 @if (Auth::guard('admin')->user()->canCreateCampaigns())
                 <a href="{{ route('admin.hidden.link.campaign.create') }}"
-                    class="flex !p-2 !py-3 text-[16px] font-normal w-fit justify-center
-               bg-[var(--primary-color)] whitespace-nowrap text-white rounded
-               hover:bg-[var(--primary-color)]/70 transition-all">
+                    class="flex !p-2 !py-3 text-[16px] font-normal w-full sm:w-fit justify-center duration:300 bg-[var(--primary-color)]
+                    whitespace-nowrap hover:bg-[var(--primary-color)]/70 text-white rounded transition-all duration">
                     Create Campaign
                 </a>
                 @endif
@@ -35,85 +38,69 @@
         </div>
     </div>
 
-    {{-- alerts --}}
+    {{-- alerts + filters --}}
     <div class="w-full flex flex-col gap-2 items-center !mt-2">
         @if (session('cus__success') || session('cus__error'))
             <div class="w-full flex flex-col gap-2">
                 @if (session('cus__success'))
-                    <div class="!p-4 text-sm rounded bg-green-100 text-green-700">
-                        {{ session('cus__success') }}
+                    <div class="!p-4 text-sm rounded bg-green-100 text-green-700 w-full !mb-2" role="alert">
+                        <span class="font-medium">{{ session('cus__success') }}</span>
                     </div>
                 @endif
 
                 @if (session('cus__error'))
-                    <div class="!p-4 text-sm rounded bg-red-100 text-red-700">
-                        {{ session('cus__error') }}
+                    <div class="!p-4 text-sm rounded bg-red-100 text-red-700 w-full !mb-2" role="alert">
+                        <span class="font-medium">{{ session('cus__error') }}</span>
                     </div>
                 @endif
             </div>
         @endif
-    </div>
 
-    {{-- filters --}}
-    <div class="flex flex-wrap items-center content-card w-full gap-3 justify-between">
-
-        @include('admin.campaigns.partials.campaign-owner-filter')
-
-        <div class="flex flex-wrap gap-2 flex-1 min-w-[200px] justify-end">
-            <form method="GET" action="{{ url()->current() }}"
-                class="w-full max-w-md flex flex-col justify-center items-stretch gap-1">
-                @foreach (request()->except('search') as $key => $value)
-                    @continue(is_array($value))
-                    <input type="hidden" name="{{ $key }}" value="{{ $value }}">
-                @endforeach
-                <input type="search" name="search" value="{{ request('search') }}" placeholder="Search campaign no"
-                    class="bg-gray-100 border border-gray-200 !p-3 text-sm rounded w-full">
-            </form>
-        </div>
-
+        @include('admin.campaigns.partials.campaign-list-toolbar')
     </div>
 
     {{-- table --}}
-    <div class="w-full flex flex-wrap justify-between items-start content-card !mt-3">
+    <div class="w-full flex flex-wrap justify-between items-start content-card">
+        <h2 class="text-xl capitalize !mb-4 bg-[var(--primary-color)] text-white w-fit !p-2 rounded">
+            Hidden Links Campaigns
+        </h2>
 
-        <div class="w-full flex flex-wrap items-center gap-3 !mb-4">
-            <h2 class="text-xl capitalize bg-[var(--primary-color)] text-white w-fit !p-2 rounded">
-                Hidden Links Campaigns
-            </h2>
-            {{-- Separate forms (no nesting with per-row forms in the table). IDs submitted via JS. --}}
-            <form id="bulk-delete-campaigns-form" action="{{ route('admin.hidden.link.campaign.bulk.delete') }}" method="POST" class="hidden">@csrf</form>
-            <form id="bulk-purge-local-campaigns-form" action="{{ route('admin.hidden.link.campaign.bulk.purge.local') }}" method="POST" class="hidden">@csrf</form>
-            <form id="hidden-links-bulk-retry-failed-form" action="{{ route('admin.hidden.link.campaign.bulk.retry.failed') }}" method="POST" class="hidden">@csrf</form>
-            <button type="button" id="bulk-delete-campaigns-btn"
-                class="!px-3 !py-2 rounded bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Removes links from remote sites, then deletes data">
-                Bulk delete selected (remote + DB)
-            </button>
-            <button type="button" id="bulk-purge-local-campaigns-btn"
-                class="!px-3 !py-2 rounded bg-orange-600 text-white text-sm hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Only removes rows in this app; remote links stay">
-                Bulk remove locally only
-            </button>
-            <button type="button" id="hidden-links-bulk-retry-failed-btn"
-                class="!px-3 !py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Retry all failed tasks in selected campaigns">
-                Bulk Retry Failed Tasks
-            </button>
-            <span class="text-sm text-gray-500">Select campaigns with checkboxes, then retry failed tasks, delete (remote + DB), or remove locally only.</span>
+        <form id="bulk-delete-campaigns-form" action="{{ route('admin.hidden.link.campaign.bulk.delete') }}" method="POST" class="hidden">@csrf</form>
+        <form id="bulk-purge-local-campaigns-form" action="{{ route('admin.hidden.link.campaign.bulk.purge.local') }}" method="POST" class="hidden">@csrf</form>
+        <form id="hidden-links-bulk-retry-failed-form" action="{{ route('admin.hidden.link.campaign.bulk.retry.failed') }}" method="POST" class="hidden">@csrf</form>
+
+        <div class="w-full flex flex-col gap-2 !mb-2">
+            <div class="w-full flex flex-wrap items-center gap-2">
+                <button type="button" id="bulk-delete-campaigns-btn"
+                    class="!px-3 !py-2 rounded bg-red-600 text-white text-sm hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Removes links from remote sites, then deletes data">
+                    Bulk delete selected (remote + DB)
+                </button>
+                <button type="button" id="bulk-purge-local-campaigns-btn"
+                    class="!px-3 !py-2 rounded bg-orange-600 text-white text-sm hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Only removes rows in this app; remote links stay">
+                    Bulk remove locally only
+                </button>
+                <button type="button" id="hidden-links-bulk-retry-failed-btn"
+                    class="!px-3 !py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Retry all failed tasks in selected campaigns">
+                    Bulk Retry Failed Tasks
+                </button>
+            </div>
+            <p class="text-sm text-gray-500">Select campaigns with checkboxes, then retry failed tasks, delete (remote + DB), or remove locally only.</p>
         </div>
 
-        <div class="overflow-x-auto w-full">
-            <table class="display w-full border border-gray-200 border-collapse text-sm whitespace-nowrap searchable-table">
+        <div class="overflow-x-auto !mt-3 w-full max-w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
+            <table class="campaign-list-table display w-full min-w-[1200px] border border-gray-200 border-collapse text-sm whitespace-nowrap searchable-table">
                 <thead>
                     <tr class="bg-gray-800 text-white">
                         <th class="border border-gray-200 !px-2 !py-3 text-left w-10">
-                            <input type="checkbox" id="select-all-campaigns" title="Select all">
+                            <input type="checkbox" id="select-all-campaigns" class="scale-125" title="Select all">
                         </th>
                         @php
                             $tHead = [
                                 'S.No',
                                 'Campaign No',
-                                'Type',
                                 'Domain Category',
                                 'Links',
                                 'Domains',
@@ -128,7 +115,10 @@
                         @endphp
 
                         @foreach ($tHead as $t)
-                            <th class="border border-gray-200 !px-2 !py-3 text-left">
+                            <th @class([
+                                'border border-gray-200 font-sans !font-normal !px-2 !py-3 text-left',
+                                'actions-col min-w-[252px]' => $t === 'Actions',
+                            ])>
                                 {{ $t }}
                             </th>
                         @endforeach
@@ -162,114 +152,86 @@
                         @endphp
 
                         <tr class="hover:bg-gray-50">
-                            <td class="border !px-2 !py-2 text-center">
+                            <td class="border border-gray-200 font-sans !px-2 !py-3 text-center">
                                 <input type="checkbox" class="campaign-select-cb" name="campaign_ids[]" value="{{ $campaign->id }}">
                             </td>
-                            <td class="border !px-2 !py-2 text-center">
+                            <td class="border border-gray-200 font-sans !px-2 !py-3 text-center">
                                 {{ $index + 1 + $offset }}
                             </td>
 
-                            <td class="border !px-2 !py-2">
+                            <td class="border border-gray-200 font-sans !px-2 !py-3">
                                 {{ $campaign->campaign_no }}
                             </td>
 
-                            <td class="border !px-2 !py-2">
-                                Hidden Links Campaign
-                            </td>
-
-                            <td class="border !px-2 !py-2">
+                            <td class="border border-gray-200 font-sans !px-2 !py-3">
                                 {{ optional($campaign->domainCategory)->name ?? '-' }}
                             </td>
 
-                            <td class="border !px-2 !py-2 text-center">
+                            <td class="border border-gray-200 font-sans !px-2 !py-3 text-center">
                                 {{ $campaign->links_count }}
                             </td>
 
-                            <td class="border !px-2 !py-2 text-center">
+                            <td class="border border-gray-200 font-sans !px-2 !py-3 text-center">
                                 {{ $campaign->domains_count }}
                             </td>
 
-                            <td class="border !px-2 !py-2 text-center">
+                            <td class="border border-gray-200 font-sans !px-2 !py-3 text-center">
                                 {{ $completed }}
                             </td>
 
-                            <td class="border !px-2 !py-2 text-center">
+                            <td class="border border-gray-200 font-sans !px-2 !py-3 text-center">
                                 {{ $failed }}
                             </td>
 
-                            <td class="border !px-2 !py-2 text-center">
+                            <td class="border border-gray-200 font-sans !px-2 !py-3 text-center">
                                 {{ $pending }}
                             </td>
 
-                            <td class="border !px-2 !py-2 min-w-[140px]">
+                            <td class="border border-gray-200 font-sans !px-2 !py-3 min-w-[140px]">
                                 <div class="w-full bg-gray-200 rounded h-2">
                                     <div class="h-2 rounded
                                     {{ $progress >= 80 ? 'bg-green-500' : ($progress >= 50 ? 'bg-yellow-500' : 'bg-red-500') }}"
                                         style="width: {{ $progress }}%">
                                     </div>
                                 </div>
-                                <div class="text-[11px] text-gray-600 text-center !mt-1">
+                                <div class="text-[11px] text-gray-600 text-center mt-1">
                                     {{ $progress }}%
                                 </div>
                             </td>
 
-                            <td class="border !px-2 !py-2 text-center">
-                                <span class="!p-2 rounded text-xs font-semibold {{ $statusClass }}">
+                            <td class="border border-gray-200 font-sans !px-2 !py-3 text-center">
+                                <span class="!px-2 !py-1 rounded text-xs font-semibold {{ $statusClass }}">
                                     {{ $status === 'updated' ? 'Updated' : ucfirst($status) }}
                                 </span>
                             </td>
 
-                            <td class="border !px-2 !py-2">
+                            <td class="border border-gray-200 font-sans !px-2 !py-3">
                                 {{ $campaign->created_at?->format('d-M-Y H:i') }}
                             </td>
 
-                            <td class="border !px-2 !py-2">
-                                <div class="flex gap-2 justify-center">
-                                    <a href="{{ route('admin.hidden.link.campaign.show', $campaign->id) }}"
-                                        class="bg-green-500 w-7 h-7 flex items-center justify-center rounded" title="View campaign">
-                                        <span class="material-symbols-outlined text-white !text-sm">visibility</span>
-                                    </a>
-                                    <a href="{{ route('admin.hidden.link.campaign.edit', $campaign->id) }}"
-                                        class="bg-yellow-600 w-7 h-7 flex items-center justify-center rounded hover:bg-yellow-700" title="Edit links (bulk update)">
-                                        <span class="material-symbols-outlined text-white !text-sm">edit</span>
-                                    </a>
-                                    <a href="javascript:void(0)"
-                                        data-report="{{ route('admin.hidden.link.campaign.report', [
-                                            'campaign_no' => $campaign->campaign_no,
-                                            'token' => $campaign->report_token,
-                                        ]) }}"
-                                        class="bg-yellow-500 copy-link flex items-center justify-center rounded w-7 h-7 hover:bg-yellow-600" title="Copy report link">
-                                        <span class="material-symbols-outlined !text-sm text-white">content_copy</span>
-                                    </a>
-                                    <a href="{{ route('admin.hidden.link.campaign.report', [
+                            <td class="actions-col border border-gray-200 font-sans !px-2 !py-3 min-w-[252px]">
+                                @include('admin.campaigns.partials.campaign-list-actions', [
+                                    'viewUrl' => route('admin.hidden.link.campaign.show', $campaign->id),
+                                    'editUrl' => route('admin.hidden.link.campaign.edit', $campaign->id),
+                                    'reportUrl' => route('admin.hidden.link.campaign.report', [
                                         'campaign_no' => $campaign->campaign_no,
                                         'token' => $campaign->report_token,
-                                    ]) }}"
-                                        class="bg-blue-600 w-7 h-7 flex items-center justify-center rounded" title="View report">
-                                        <span class="material-symbols-outlined text-white !text-sm">assignment</span>
-                                    </a>
-                                    <form action="{{ route('admin.hidden.link.campaign.bulk.delete') }}" method="POST" class="inline"
-                                        onsubmit="return confirm('Delete this campaign? Links will be removed from remote sites, then the campaign and its data will be deleted.');">
-                                        @csrf
-                                        <input type="hidden" name="campaign_ids[]" value="{{ $campaign->id }}">
-                                        <button type="submit" class="bg-red-500 w-7 h-7 flex items-center justify-center rounded hover:bg-red-600 border-0 cursor-pointer" title="Delete this campaign">
-                                            <span class="material-symbols-outlined text-white !text-sm">delete</span>
-                                        </button>
-                                    </form>
-                                    <form action="{{ route('admin.hidden.link.campaign.purge.local', $campaign->id) }}" method="POST" class="inline"
-                                        onsubmit="return confirm('Remove this campaign from the dashboard only? Remote hidden links stay. You will not be able to edit this campaign here anymore.');">
-                                        @csrf
-                                        <button type="submit" class="bg-orange-500 w-7 h-7 flex items-center justify-center rounded hover:bg-orange-600 border-0 cursor-pointer" title="Dashboard only — keeps remote links">
-                                            <span class="material-symbols-outlined text-white !text-sm">database</span>
-                                        </button>
-                                    </form>
-                                </div>
+                                    ]),
+                                    'destroyAction' => route('admin.hidden.link.campaign.bulk.delete'),
+                                    'destroyMethod' => 'POST',
+                                    'destroyHiddenInputs' => [
+                                        ['name' => 'campaign_ids[]', 'value' => $campaign->id],
+                                    ],
+                                    'purgeAction' => route('admin.hidden.link.campaign.purge.local', $campaign->id),
+                                    'destroyConfirm' => 'Delete this campaign? Links will be removed from remote sites, then the campaign and its data will be deleted.',
+                                    'purgeConfirm' => 'Remove this campaign from the dashboard only? Remote hidden links stay. You will not be able to edit this campaign here anymore.',
+                                ])
                             </td>
 
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="14" class="text-center !py-4 text-gray-500 bg-gray-100">
+                            <td colspan="13" class="text-center !py-4 text-gray-500 bg-gray-100">
                                 No hidden links campaigns found...
                             </td>
                         </tr>

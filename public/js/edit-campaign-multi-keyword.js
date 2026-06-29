@@ -343,6 +343,15 @@
 
         var noFollowEl = document.getElementById(id("noFollow", "edit-no-follow"));
         var noFollow = noFollowEl && noFollowEl.checked;
+        var sponsoredEl = document.getElementById("edit-sponsored");
+        var sponsored = sponsoredEl && sponsoredEl.checked;
+        var ugcEl = document.getElementById("edit-ugc");
+        var ugc = ugcEl && ugcEl.checked;
+        var noopenerEl = document.getElementById("edit-noopener");
+        var noopener = noopenerEl && noopenerEl.checked;
+        var noreferrerEl = document.getElementById("edit-noreferrer");
+        var noreferrer = noreferrerEl && noreferrerEl.checked;
+
         var multiKeyWordUrlBoxes = wrap.getElementsByClassName("multi-keyword-url-box");
         var multiData = [];
         var keyUrlValidation = [];
@@ -364,6 +373,10 @@
             var qtyInp = item.querySelector(".multi-keyword-url-box-quantity");
             var quantity = parseInt((qtyInp && qtyInp.value) || "0", 10) || 0;
             singleBoxData.nofollow = noFollow;
+            singleBoxData.sponsored = sponsored;
+            singleBoxData.ugc = ugc;
+            singleBoxData.noopener = noopener;
+            singleBoxData.noreferrer = noreferrer;
             for (var z = 0; z < quantity; z++) {
                 multiData.push(singleBoxData);
             }

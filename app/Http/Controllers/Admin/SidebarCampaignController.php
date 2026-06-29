@@ -2,28 +2,29 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
+use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
+use App\Http\Controllers\Admin\Concerns\ValidatesBulkCampaignIds;
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
+use App\Jobs\BulkRetrySidebarCampaignTasksJob;
+use App\Jobs\BulkUpdateSidebarBlogrollJob;
+use App\Jobs\DeleteSidebarCampaignJob;
+use App\Jobs\PublishSidebarBlogrollJob;
+use App\Models\Admin\Domain;
 use App\Models\Admin\DomainCategory;
 use App\Models\Admin\DomainSet;
-use Illuminate\Support\Facades\Auth;
-use App\Models\Admin\Domain;
 use App\Models\Admin\SidebarCampaign;
 use App\Models\Admin\SidebarCampaignDomain;
 use App\Models\Admin\SidebarCampaignLink;
 use App\Models\Admin\SidebarCampaignTask;
-use Illuminate\Support\Facades\DB;
-use App\Jobs\BulkUpdateSidebarBlogrollJob;
-use App\Jobs\BulkRetrySidebarCampaignTasksJob;
-use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
-use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
-use App\Http\Controllers\Admin\Concerns\ValidatesBulkCampaignIds;
-use App\Jobs\DeleteSidebarCampaignJob;
-use App\Services\PurgeLocalCampaignDataService;
-use App\Jobs\PublishSidebarBlogrollJob;
 use App\Services\BlogrollApiService;
-use Spatie\SimpleExcel\SimpleExcelWriter;
+use App\Services\PurgeLocalCampaignDataService;
+use App\Support\ReportDisplay;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Spatie\SimpleExcel\SimpleExcelWriter;
 
 class SidebarCampaignController extends Controller
 {
@@ -55,7 +56,7 @@ class SidebarCampaignController extends Controller
         // ✅ Remove empty search from URL
         if ($request->has('search') && trim($request->search) === '') {
             return redirect()->to(
-                url()->current() . '?' . http_build_query(
+                url()->current().'?'.http_build_query(
                     $request->except('search')
                 )
             );
@@ -89,7 +90,7 @@ class SidebarCampaignController extends Controller
             $query->where(
                 'campaign_no',
                 'LIKE',
-                '%' . $search . '%'
+                '%'.$search.'%'
             );
         }
         $admin = Auth::guard('admin')->user();
@@ -123,7 +124,7 @@ class SidebarCampaignController extends Controller
             ->select(['id', 'name'])
             ->findOrFail($categoryId);
 
-        $fileName = 'domains-' . Str::slug((string) $category->name) . '-' . now()->format('Ymd_His') . '.xlsx';
+        $fileName = 'domains-'.Str::slug((string) $category->name).'-'.now()->format('Ymd_His').'.xlsx';
 
         $writer = SimpleExcelWriter::streamDownload($fileName)->addHeader([
             'Domain',
@@ -171,7 +172,6 @@ class SidebarCampaignController extends Controller
         return $writer->toBrowser();
     }
 
-
     /**
      * Show the form for creating a new resource.
      */
@@ -179,7 +179,7 @@ class SidebarCampaignController extends Controller
     {
         //
 
-        $campaignId = 'SBC-' . now()->format('YmdHis') . '-' . random_int(1000, 9999);
+        $campaignId = 'SBC-'.now()->format('YmdHis').'-'.random_int(1000, 9999);
         // // domain + article category
         $domainCategory = DomainCategory::all();
         // ** now providing user domain sets
@@ -199,7 +199,7 @@ class SidebarCampaignController extends Controller
 
         // 2️⃣ Fallback if user enters garbage like /// or ###
         if ($base === '') {
-            $base = 'campaign-' . now()->timestamp;
+            $base = 'campaign-'.now()->timestamp;
         }
 
         $slug = $base;
@@ -220,26 +220,26 @@ class SidebarCampaignController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'campaign_no'         => 'required|string',
-            'domain_category_id'  => 'nullable|integer|exists:domain_categories,id',
-            'sidebar_quantity'    => 'required|integer|min:1',
+            'campaign_no' => 'required|string',
+            'domain_category_id' => 'nullable|integer|exists:domain_categories,id',
+            'sidebar_quantity' => 'required|integer|min:1',
 
-            'keywordsDataHolder'  => 'required|string',
-            'sel_domains'         => 'required|integer|in:0,1,2',
-            'campaigns_domains'   => 'required|string',
+            'keywordsDataHolder' => 'required|string',
+            'sel_domains' => 'required|integer|in:0,1,2',
+            'campaigns_domains' => 'required|string',
         ]);
 
         $sidebarCount = (int) $request->sidebar_quantity;
 
         // ✅ links JSON -> array
         $links = json_decode((string) $request->keywordsDataHolder, true);
-        if (!is_array($links)) {
+        if (! is_array($links)) {
             return back()->with('cus__error', 'Links data is invalid JSON.')->withInput();
         }
 
         // ✅ domains JSON -> array[int]
         $domainIds = json_decode((string) $request->campaigns_domains, true);
-        if (!is_array($domainIds)) {
+        if (! is_array($domainIds)) {
             return back()->with('cus__error', 'Domains data is invalid JSON.')->withInput();
         }
         $domainIds = array_values(array_filter(array_map('intval', $domainIds)));
@@ -255,27 +255,27 @@ class SidebarCampaignController extends Controller
         // ✅ validate each link row has keyword + url
         foreach ($links as $i => $row) {
             $url = $row['url'] ?? null;
-            $kw  = $row['keyword'] ?? null;
+            $kw = $row['keyword'] ?? null;
 
             // Handle both single strings and arrays
             if (is_array($url)) {
-                $url = !empty($url) ? $url : null;
+                $url = ! empty($url) ? $url : null;
             } else {
-                $url = trim((string)$url);
+                $url = trim((string) $url);
                 $url = $url !== '' ? $url : null;
             }
 
             if (is_array($kw)) {
-                $kw = !empty($kw) ? $kw : null;
+                $kw = ! empty($kw) ? $kw : null;
             } else {
-                $kw = trim((string)$kw);
+                $kw = trim((string) $kw);
                 $kw = $kw !== '' ? $kw : null;
             }
 
             if ($url === null || $kw === null) {
                 return back()->with(
                     'cus__error',
-                    "Link row #" . ($i + 1) . " url/keyword cannot be empty."
+                    'Link row #'.($i + 1).' url/keyword cannot be empty.'
                 )->withInput();
             }
         }
@@ -299,17 +299,17 @@ class SidebarCampaignController extends Controller
 
             // 1) master
             $campaign = SidebarCampaign::create([
-                'campaign_no'        => $campaignNo,
+                'campaign_no' => $campaignNo,
                 'domain_category_id' => $request->domain_category_id ?: null,
-                'admin_id'           => auth('admin')->id(),
+                'admin_id' => auth('admin')->id(),
 
-                'sidebar_count'      => $sidebarCount,
-                'domain_method'      => $domain__methods[(int) $request->sel_domains],
-                'status'             => 'queued',
+                'sidebar_count' => $sidebarCount,
+                'domain_method' => $domain__methods[(int) $request->sel_domains],
+                'status' => 'queued',
 
-                'total_targets'      => $sidebarCount,
-                'completed_targets'  => 0,
-                'failed_targets'     => 0,
+                'total_targets' => $sidebarCount,
+                'completed_targets' => 0,
+                'failed_targets' => 0,
             ]);
 
             // ==========================================================
@@ -329,52 +329,52 @@ class SidebarCampaignController extends Controller
             $isMultiple = ($method === 'rawanchor');
 
             foreach ($links as $idx => $row) {
-                $kwVal  = $row['keyword'] ?? null; // string OR array
+                $kwVal = $row['keyword'] ?? null; // string OR array
                 $urlVal = $row['url'] ?? null;     // string OR array
 
                 // ✅ Determine types based on method
-                $kwType  = $isMultiple ? 'json' : 'single';
+                $kwType = $isMultiple ? 'json' : 'single';
                 $urlType = $isMultiple ? 'json' : 'single';
 
                 // ✅ Normalize storage based on method
                 if ($isMultiple) {
                     // Store arrays as JSON. If single string comes, wrap into array.
-                    $kwArr  = is_array($kwVal)  ? $kwVal  : (is_null($kwVal) ? [] : [$kwVal]);
+                    $kwArr = is_array($kwVal) ? $kwVal : (is_null($kwVal) ? [] : [$kwVal]);
                     $urlArr = is_array($urlVal) ? $urlVal : (is_null($urlVal) ? [] : [$urlVal]);
 
                     $linkRows[] = [
                         'sidebar_campaign_id' => $campaign->id,
-                        'sort_order'          => $idx + 1,
-                        'target_url'          => json_encode($urlArr),
-                        'anchor_keyword'      => json_encode($kwArr),
-                        'target_url_type'     => $urlType,
+                        'sort_order' => $idx + 1,
+                        'target_url' => json_encode($urlArr),
+                        'anchor_keyword' => json_encode($kwArr),
+                        'target_url_type' => $urlType,
                         'anchor_keyword_type' => $kwType,
-                        'nofollow'            => !empty($row['nofollow']),
-                        'sponsored'           => !empty($row['sponsored']),
-                        'ugc'                 => !empty($row['ugc']),
-                        'noopener'            => !empty($row['noopener']),
-                        'noreferrer'          => !empty($row['noreferrer']),
-                        'raw_rel_attr'        => trim((string)($row['raw_rel_attr'] ?? '')),
-                        'created_at'          => $now,
-                        'updated_at'          => $now,
+                        'nofollow' => ! empty($row['nofollow']),
+                        'sponsored' => ! empty($row['sponsored']),
+                        'ugc' => ! empty($row['ugc']),
+                        'noopener' => ! empty($row['noopener']),
+                        'noreferrer' => ! empty($row['noreferrer']),
+                        'raw_rel_attr' => trim((string) ($row['raw_rel_attr'] ?? '')),
+                        'created_at' => $now,
+                        'updated_at' => $now,
                     ];
                 } else {
                     // Single string storage
                     $linkRows[] = [
                         'sidebar_campaign_id' => $campaign->id,
-                        'sort_order'          => $idx + 1,
-                        'target_url'          => trim((string)$urlVal),
-                        'anchor_keyword'      => trim((string)$kwVal),
-                        'target_url_type'     => $urlType,
+                        'sort_order' => $idx + 1,
+                        'target_url' => trim((string) $urlVal),
+                        'anchor_keyword' => trim((string) $kwVal),
+                        'target_url_type' => $urlType,
                         'anchor_keyword_type' => $kwType,
-                        'nofollow'            => !empty($row['nofollow']),
-                        'sponsored'           => !empty($row['sponsored']),
-                        'ugc'                 => !empty($row['ugc']),
-                        'noopener'            => !empty($row['noopener']),
-                        'noreferrer'          => !empty($row['noreferrer']),
-                        'raw_rel_attr'        => trim((string)($row['raw_rel_attr'] ?? '')),
-                        'created_at'          => $now,
-                        'updated_at'          => $now,
+                        'nofollow' => ! empty($row['nofollow']),
+                        'sponsored' => ! empty($row['sponsored']),
+                        'ugc' => ! empty($row['ugc']),
+                        'noopener' => ! empty($row['noopener']),
+                        'noreferrer' => ! empty($row['noreferrer']),
+                        'raw_rel_attr' => trim((string) ($row['raw_rel_attr'] ?? '')),
+                        'created_at' => $now,
+                        'updated_at' => $now,
                     ];
                 }
             }
@@ -396,9 +396,9 @@ class SidebarCampaignController extends Controller
             foreach ($domainIds as $idx => $domainId) {
                 $domainRows[] = [
                     'sidebar_campaign_id' => $campaign->id,
-                    'domain_id'           => $domainId,
-                    'created_at'          => $now,
-                    'updated_at'          => $now,
+                    'domain_id' => $domainId,
+                    'created_at' => $now,
+                    'updated_at' => $now,
                 ];
             }
 
@@ -414,7 +414,7 @@ class SidebarCampaignController extends Controller
 
             // ✅ Safety: make sure we have same count (pairing will be exact)
             if (count($linkIds) !== $sidebarCount || count($domainRowIds) !== $sidebarCount) {
-                throw new \RuntimeException("Mismatch after insert: links/domains count not equal to sidebarCount.");
+                throw new \RuntimeException('Mismatch after insert: links/domains count not equal to sidebarCount.');
             }
 
             // ==========================================================
@@ -423,19 +423,19 @@ class SidebarCampaignController extends Controller
             $taskRows = [];
             for ($i = 0; $i < $sidebarCount; $i++) {
                 $taskRows[] = [
-                    'sidebar_campaign_id'        => $campaign->id,
+                    'sidebar_campaign_id' => $campaign->id,
                     'sidebar_campaign_domain_id' => $domainRowIds[$i],
-                    'sidebar_campaign_link_id'   => $linkIds[$i], // ✅ required (fixes your “no default value” error)
+                    'sidebar_campaign_link_id' => $linkIds[$i], // ✅ required (fixes your “no default value” error)
 
-                    'status'        => 'queued',
+                    'status' => 'queued',
                     'attempt_count' => 0,
-                    'max_attempts'  => 5,
+                    'max_attempts' => 5,
 
                     // snapshot (single row)
                     'links_payload' => json_encode($links[$i], JSON_UNESCAPED_UNICODE),
 
-                    'created_at'    => $now,
-                    'updated_at'    => $now,
+                    'created_at' => $now,
+                    'updated_at' => $now,
                 ];
             }
 
@@ -469,7 +469,6 @@ class SidebarCampaignController extends Controller
                 "Sidebar Campaign {$campaign->campaign_no} created successfully ({$campaign->total_targets} targets)."
             );
     }
-
 
     public function show(Request $request, string $id)
     {
@@ -584,9 +583,7 @@ class SidebarCampaignController extends Controller
         );
     }
 
-
     /** Report Excel file function **/
-
 
     // public function exportReport(string $campaign_no, string $token)
     // {
@@ -711,10 +708,10 @@ class SidebarCampaignController extends Controller
             ->chunkById(500, function ($tasks) use (&$sno, $hasNofollow, $writer) {
                 foreach ($tasks as $task) {
                     $row = [
-                        'S.No'    => $sno++,
-                        'Domain'  => optional($task->domainRow?->domain)->name ?? '-',
-                        'Keyword' => $task->linkRow?->anchor_keyword ?? '-',
-                        'URL'     => $task->linkRow?->target_url ?? '-',
+                        'S.No' => $sno++,
+                        'Domain' => optional($task->domainRow?->domain)->name ?? '-',
+                        'Keyword' => ReportDisplay::plain($task->linkRow?->anchor_keyword),
+                        'URL' => ReportDisplay::plain($task->linkRow?->target_url),
                     ];
 
                     if ($hasNofollow) {
@@ -739,7 +736,7 @@ class SidebarCampaignController extends Controller
     {
         $task = SidebarCampaignTask::with('campaign')->find($id);
 
-        if (!$task) {
+        if (! $task) {
             return back()->with('cus__error', 'Task not found');
         }
 
@@ -753,12 +750,12 @@ class SidebarCampaignController extends Controller
         }
 
         $task->update([
-            'status'        => 'queued',
+            'status' => 'queued',
             'attempt_count' => 0,
             'next_retry_at' => null,
-            'locked_at'     => null,
-            'lock_token'    => null,
-            'last_error'    => null,
+            'locked_at' => null,
+            'lock_token' => null,
+            'last_error' => null,
         ]);
 
         PublishSidebarBlogrollJob::dispatch($task->id)->onQueue('sidebar_campaigns');
@@ -773,26 +770,26 @@ class SidebarCampaignController extends Controller
     {
         $task = SidebarCampaignTask::with(['domainRow.domain', 'linkRow'])->find($id);
 
-        if (!$task || !$task->linkRow) {
+        if (! $task || ! $task->linkRow) {
             return back()->with('cus__error', 'Task or link not found');
         }
 
-        if (!$task->remote_id) {
+        if (! $task->remote_id) {
             return back()->with('cus__error', 'Task has no remote_id; cannot update on remote.');
         }
 
         $domain = $task->domainRow?->domain;
-        if (!$domain || !$domain->api_key) {
+        if (! $domain || ! $domain->api_key) {
             return back()->with('cus__error', 'Domain or API key missing');
         }
 
         $request->validate([
             'keyword' => 'required|string|max:500',
-            'link'    => 'required|url|max:500',
+            'link' => 'required|url|max:500',
         ]);
 
         $keyword = trim($request->keyword);
-        $link    = trim($request->link);
+        $link = trim($request->link);
 
         $res = BlogrollApiService::updateEntryByRemoteId(
             $domain->name,
@@ -805,13 +802,13 @@ class SidebarCampaignController extends Controller
                 ($task->linkRow->sponsored ?? false) ? 'sponsored' : null,
             ]))
         );
-        if (!$res->successful()) {
-            return back()->with('cus__error', 'Remote update failed: ' . $res->body());
+        if (! $res->successful()) {
+            return back()->with('cus__error', 'Remote update failed: '.$res->body());
         }
 
         $task->linkRow->update([
             'anchor_keyword' => $keyword,
-            'target_url'     => $link,
+            'target_url' => $link,
         ]);
         $task->update(['content_updated_at' => now()]);
 
@@ -825,12 +822,12 @@ class SidebarCampaignController extends Controller
     {
         $task = SidebarCampaignTask::with(['domainRow.domain', 'linkRow', 'campaign'])->find($id);
 
-        if (!$task) {
+        if (! $task) {
             return back()->with('cus__error', 'Task not found.');
         }
 
         $campaign = $task->campaign;
-        if (!$campaign) {
+        if (! $campaign) {
             return back()->with('cus__error', 'Campaign not found.');
         }
 
@@ -840,8 +837,8 @@ class SidebarCampaignController extends Controller
             $domain = $task->domainRow?->domain;
             if ($domain && $domain->api_key) {
                 $res = BlogrollApiService::deleteEntryByRemoteId($domain->name, $domain->api_key, $task->remote_id);
-                if (!$res->successful()) {
-                    return back()->with('cus__error', 'Remote delete failed: ' . $res->body());
+                if (! $res->successful()) {
+                    return back()->with('cus__error', 'Remote delete failed: '.$res->body());
                 }
             }
         }
@@ -855,7 +852,7 @@ class SidebarCampaignController extends Controller
             $campaign->decrement('failed_targets');
         }
 
-        $linkId      = $task->sidebar_campaign_link_id;
+        $linkId = $task->sidebar_campaign_link_id;
         $domainRowId = $task->sidebar_campaign_domain_id;
         $task->delete();
         if ($linkId) {
@@ -875,11 +872,11 @@ class SidebarCampaignController extends Controller
     {
         $task = SidebarCampaignTask::with(['domainRow.domain', 'linkRow', 'campaign'])->find($id);
 
-        if (!$task) {
+        if (! $task) {
             return back()->with('cus__error', 'Task not found');
         }
 
-        if (!$task->remote_id) {
+        if (! $task->remote_id) {
             return back()->with('cus__error', 'Task has no remote_id; only published entries can be updated.');
         }
 
@@ -893,7 +890,7 @@ class SidebarCampaignController extends Controller
     {
         $campaign = SidebarCampaign::find($id);
 
-        if (!$campaign) {
+        if (! $campaign) {
             return back()->with('cus__error', 'Campaign not found');
         }
 
@@ -910,7 +907,7 @@ class SidebarCampaignController extends Controller
     public function purgeLocalOnly(string $id)
     {
         $campaign = SidebarCampaign::find($id);
-        if (!$campaign) {
+        if (! $campaign) {
             return back()->with('cus__error', 'Campaign not found');
         }
         $this->authorizeCampaignAccess($campaign);
@@ -947,7 +944,7 @@ class SidebarCampaignController extends Controller
 
         return redirect()
             ->route('admin.sidebar.campaign.index')
-            ->with('cus__success', $n . ' campaign(s) removed from this dashboard only. Remote blogroll links were not deleted.');
+            ->with('cus__success', $n.' campaign(s) removed from this dashboard only. Remote blogroll links were not deleted.');
     }
 
     /**
@@ -971,7 +968,7 @@ class SidebarCampaignController extends Controller
 
         return redirect()
             ->route('admin.sidebar.campaign.index')
-            ->with('cus__success', 'Bulk retry queued for ' . $n . ' sidebar campaign(s). All failed tasks will be retried in the background. Run the queue worker to process them.');
+            ->with('cus__success', 'Bulk retry queued for '.$n.' sidebar campaign(s). All failed tasks will be retried in the background. Run the queue worker to process them.');
     }
 
     /**
@@ -1009,20 +1006,20 @@ class SidebarCampaignController extends Controller
             $displayPairs = [];
             $pairCount = max(count($keywords), count($urls));
             for ($i = 0; $i < $pairCount; $i++) {
-                $kw = trim((string)($keywords[$i] ?? $keywords[0] ?? ''));
-                $url = trim((string)($urls[$i] ?? $urls[0] ?? ''));
-                $displayPairs[] = $kw . ' → ' . $url;
+                $kw = trim((string) ($keywords[$i] ?? $keywords[0] ?? ''));
+                $url = trim((string) ($urls[$i] ?? $urls[0] ?? ''));
+                $displayPairs[] = $kw.' → '.$url;
             }
             $key = implode(' | ', $displayPairs);
 
-            if (!isset($batches[$key])) {
+            if (! isset($batches[$key])) {
                 $batches[$key] = [
                     'representative_link_id' => $link->id,
-                    'keyword'                => $keywords, // ✅ Store as array
-                    'url'                    => $urls,     // ✅ Store as array
-                    'is_multiple'            => $pairCount > 1,
-                    'pair_count'             => $pairCount,
-                    'link_ids'               => [],
+                    'keyword' => $keywords, // ✅ Store as array
+                    'url' => $urls,     // ✅ Store as array
+                    'is_multiple' => $pairCount > 1,
+                    'pair_count' => $pairCount,
+                    'link_ids' => [],
                 ];
             }
             $batches[$key]['link_ids'][] = $link->id;
@@ -1102,7 +1099,7 @@ class SidebarCampaignController extends Controller
 
             $base = Str::slug($raw);
             if ($base === '') {
-                $base = 'campaign-' . now()->timestamp;
+                $base = 'campaign-'.now()->timestamp;
             }
             $slug = $base;
             $counter = 1;
@@ -1125,7 +1122,7 @@ class SidebarCampaignController extends Controller
 
         $representativeLinkIds = $request->input('batch_representative_link_id', []);
 
-        if (!is_array($representativeLinkIds)) {
+        if (! is_array($representativeLinkIds)) {
             $representativeLinkIds = [];
         }
 
@@ -1140,7 +1137,7 @@ class SidebarCampaignController extends Controller
             if ($batchUrls === null || $batchKeywords === null) {
                 return redirect()
                     ->route('admin.sidebar.campaign.edit', $campaign->id)
-                    ->with('cus__error', 'Bulk URLs and Bulk Keywords must each have exactly ' . $expected . ' non-empty lines.')
+                    ->with('cus__error', 'Bulk URLs and Bulk Keywords must each have exactly '.$expected.' non-empty lines.')
                     ->withInput($request->only(['bulk_urls', 'bulk_keywords']))
                     ->with(
                         'edit_sidebar_campaign_tab',
@@ -1157,7 +1154,7 @@ class SidebarCampaignController extends Controller
             if ($rawAnchors === null) {
                 return redirect()
                     ->route('admin.sidebar.campaign.edit', $campaign->id)
-                    ->with('cus__error', 'Raw HTML Anchors must have exactly ' . $expected . ' non-empty lines.')
+                    ->with('cus__error', 'Raw HTML Anchors must have exactly '.$expected.' non-empty lines.')
                     ->withInput($request->only(['raw_html_anchors']))
                     ->with('edit_sidebar_campaign_tab', 'rawanchor');
             }
@@ -1193,18 +1190,18 @@ class SidebarCampaignController extends Controller
             $batchRelAttrs = []; // Not applicable for normal/bulk mode
         }
 
-        $updates       = [];
+        $updates = [];
         $queuedBatches = 0;
 
         foreach ($representativeLinkIds as $index => $repLinkId) {
             $repLinkId = (int) $repLinkId;
             $representative = SidebarCampaignLink::where('sidebar_campaign_id', $campaign->id)->find($repLinkId);
-            if (!$representative) {
+            if (! $representative) {
                 continue;
             }
 
             $newKeyword = Str::limit(trim((string) ($batchKeywords[$index] ?? '')), 500, '');
-            $newUrl     = Str::limit(trim((string) ($batchUrls[$index] ?? '')), 500, '');
+            $newUrl = Str::limit(trim((string) ($batchUrls[$index] ?? '')), 500, '');
             $newRelAttr = $isRawAnchor ? trim((string) ($batchRelAttrs[$index] ?? '')) : '';
 
             if ($newKeyword === '' || $newUrl === '') {
@@ -1212,7 +1209,7 @@ class SidebarCampaignController extends Controller
             }
 
             $oldKeyword = trim((string) ($representative->anchor_keyword ?? ''));
-            $oldUrl     = trim((string) ($representative->target_url ?? ''));
+            $oldUrl = trim((string) ($representative->target_url ?? ''));
             $oldRelAttr = trim((string) ($representative->raw_rel_attr ?? ''));
 
             // Check if anything changed
@@ -1237,20 +1234,20 @@ class SidebarCampaignController extends Controller
 
             foreach ($tasks as $task) {
                 $domain = $task->domainRow?->domain;
-                if (!$domain || !$domain->api_key) {
+                if (! $domain || ! $domain->api_key) {
                     continue;
                 }
                 $updates[] = [
                     'task_id' => $task->id,
                     'keyword' => $newKeyword,
-                    'link'    => $newUrl,
+                    'link' => $newUrl,
                 ];
             }
 
             if (count($tasks) > 0) {
                 $updateData = [
                     'anchor_keyword' => $newKeyword,
-                    'target_url'     => $newUrl,
+                    'target_url' => $newUrl,
                 ];
 
                 // Update raw_rel_attr only in raw anchor mode
@@ -1283,15 +1280,15 @@ class SidebarCampaignController extends Controller
 
         $batchSize = (int) config('sidebar.bulk_update_batch_size', 20);
         $batchSize = $batchSize > 0 ? $batchSize : 20;
-        $chunks   = array_chunk($updates, $batchSize);
-        $queued   = 0;
+        $chunks = array_chunk($updates, $batchSize);
+        $queued = 0;
 
         foreach ($chunks as $chunk) {
             BulkUpdateSidebarBlogrollJob::dispatch($chunk)->onQueue('bulk_blogroll_updates');
             $queued++;
         }
 
-        $msg = count($updates) . ' link(s) across ' . $queuedBatches . ' batch(es) queued for remote update. ';
+        $msg = count($updates).' link(s) across '.$queuedBatches.' batch(es) queued for remote update. ';
 
         return redirect()
             ->route('admin.sidebar.campaign.show', $campaign->id)
@@ -1306,7 +1303,7 @@ class SidebarCampaignController extends Controller
         $campaign = SidebarCampaign::findOrFail($id);
 
         $taskIds = $request->input('task_ids', []);
-        if (!is_array($taskIds)) {
+        if (! is_array($taskIds)) {
             $taskIds = [];
         }
         $taskIds = array_values(array_filter(array_map('intval', $taskIds)));
@@ -1331,7 +1328,7 @@ class SidebarCampaignController extends Controller
                     if ($res->successful()) {
                         $deletedRemote++;
                     } else {
-                        $errors[] = optional($domain)->name . ': ' . $res->body();
+                        $errors[] = optional($domain)->name.': '.$res->body();
                     }
                 }
             }
@@ -1357,7 +1354,7 @@ class SidebarCampaignController extends Controller
         }
 
         if (count($errors) > 0) {
-            return back()->with('cus__error', 'Some remote deletes failed: ' . implode(' ', $errors))
+            return back()->with('cus__error', 'Some remote deletes failed: '.implode(' ', $errors))
                 ->with('cus__success', $deletedRemote > 0 ? "{$deletedRemote} link(s) removed from remote; all selected tasks removed from database." : null);
         }
 
@@ -1372,6 +1369,7 @@ class SidebarCampaignController extends Controller
         if (count($lines) !== $expectedCount) {
             return null;
         }
+
         return $lines;
     }
 
@@ -1379,6 +1377,7 @@ class SidebarCampaignController extends Controller
     {
         $lines = preg_split('/\r\n|\r|\n/', $text);
         $lines = array_map(static fn ($line) => trim((string) $line), $lines ?: []);
+
         return $lines;
     }
 }

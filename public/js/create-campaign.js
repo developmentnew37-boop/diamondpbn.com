@@ -2397,38 +2397,38 @@ window.addEventListener("DOMContentLoaded", () => {
 
             let div = document.createElement("div");
             div.className =
-                "flex w-full bg-orange-100 keyword-url-box relative keyword-mobile-stack";
+                "flex w-full flex-col lg:flex-row bg-orange-100 keyword-url-box relative keyword-mobile-stack rounded border border-orange-200";
             div.innerHTML = `
-        <div class="w-3/5 flex flex-col gap-2 !p-4 !pt-[45px] keyword-mobile-main">
-            <div class="w-full flex items-center">
-                <label class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-1/5 keyword-mobile-label">Client Url</label>
-                <div class="w-4/5 flex items-center justify-between keyword-mobile-input-wrap">
-                    <input type="text" placeholder="Enter Url" class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-[78%] client-url keyword-mobile-input-main">
-                    <input type="text" value="0" class="bg-gray-50 !p-2 text-sm outline-none text-center border border-gray-300 w-1/5 client-url-quantity num-inp keyword-mobile-qty">
+        <div class="w-full lg:w-3/5 flex flex-col gap-3 !p-3 sm:!p-4 !pt-10 keyword-mobile-main">
+            <div class="w-full flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2">
+                <label class="text-sm font-medium flex items-center shrink-0 after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-full sm:w-1/5 keyword-mobile-label">Client Url</label>
+                <div class="w-full sm:w-4/5 flex flex-col sm:flex-row gap-2 sm:items-center keyword-mobile-input-wrap">
+                    <input type="text" placeholder="Enter Url" class="bg-white !p-2.5 text-sm outline-none border border-gray-300 w-full sm:w-[78%] client-url keyword-mobile-input-main rounded">
+                    <input type="text" value="0" class="bg-white !p-2.5 text-sm outline-none text-center border border-gray-300 w-full sm:w-1/5 client-url-quantity num-inp keyword-mobile-qty rounded">
                 </div>
             </div>
-            <div class="w-full flex items-center">
-                <label class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-1/5 keyword-mobile-label ">Media Link</label>
-                <div class="w-4/5 flex items-center justify-between keyword-mobile-input-wrap">
-                    <textarea class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none media-link" rows="2" placeholder="Enter Media Link Here"></textarea>
+            <div class="w-full flex flex-col sm:flex-row sm:items-start gap-1.5 sm:gap-2">
+                <label class="text-sm font-medium flex items-center shrink-0 after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-full sm:w-1/5 keyword-mobile-label">Media Link</label>
+                <div class="w-full sm:w-4/5 keyword-mobile-input-wrap">
+                    <textarea class="bg-white !p-2.5 text-sm outline-none border border-gray-300 w-full resize-y media-link rounded min-h-[72px]" rows="2" placeholder="Enter Media Link Here"></textarea>
                 </div>
             </div>
             <div class="w-full flex items-center justify-end">
-                <button class="!p-1 bg-red-600 rounded text-sm cursor-pointer text-white remove-keyword-box">delete</button>
+                <button type="button" class="!px-2.5 !py-1 bg-red-600 rounded text-xs sm:text-sm cursor-pointer text-white remove-keyword-box">Delete</button>
             </div>
         </div>
-        <div class="w-2/5 flex flex-col gap-1 !p-4 keyword-mobile-side">
-            <label class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">Client Keyword</label>
-            <div class="w-full flex flex-wrap justify-between keywords-area-parent">
-                <div class="w-[78%] flex flex-wrap keyword-mobile-input-main">
-                    <textarea rows="5" class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none keywords-area"></textarea>
+        <div class="w-full lg:w-2/5 flex flex-col gap-1.5 !p-3 sm:!p-4 border-t lg:border-t-0 lg:border-l border-orange-200 keyword-mobile-side">
+            <label class="text-sm font-medium flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">Client Keyword</label>
+            <div class="w-full flex flex-col sm:flex-row gap-2 keywords-area-parent">
+                <div class="w-full sm:w-[78%] keyword-mobile-input-main min-w-0">
+                    <textarea rows="5" class="bg-white !p-2.5 text-sm outline-none border border-gray-300 w-full resize-y keywords-area rounded min-h-[100px]"></textarea>
                 </div>
-                <div class="w-1/5 flex flex-wrap keyword-mobile-qty">
-                    <textarea rows="5" class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none text-center keywords-quantity-area"></textarea>
+                <div class="w-full sm:w-[22%] keyword-mobile-qty min-w-0">
+                    <textarea rows="5" class="bg-white !p-2.5 text-sm outline-none border border-gray-300 w-full resize-y text-center keywords-quantity-area rounded min-h-[60px] sm:min-h-[100px]" placeholder="Qty"></textarea>
                 </div>
             </div>
         </div>
-        <div class="box-count flex !px-3 !py-1 text-sm font-semibold bg-[var(--primary-color)] text-white rounded absolute top-3 left-3">01</div>
+        <div class="box-count flex !px-2.5 !py-0.5 text-xs sm:text-sm font-semibold bg-[var(--primary-color)] text-white rounded absolute top-2.5 left-2.5">01</div>
     `;
 
             //checking box not exceed the postcount
@@ -2776,6 +2776,32 @@ window.addEventListener("DOMContentLoaded", () => {
         updateMultiKeywordProgress();
 
 
+        // Raw HTML line counter and post quantity display
+        const rawHtmlTextarea = document.getElementById('raw-html-anchors');
+        const rawHtmlLineCount = document.getElementById('raw-html-line-count');
+        const rawHtmlPostQty = document.getElementById('raw-html-post-qty');
+
+        if (rawHtmlTextarea && rawHtmlLineCount && rawHtmlPostQty) {
+            // Update post quantity display
+            rawHtmlPostQty.textContent = postCount;
+
+            // Update line count on input
+            rawHtmlTextarea.addEventListener('input', function() {
+                const lines = this.value.split('\n').filter(line => line.trim() !== '').length;
+                rawHtmlLineCount.textContent = lines;
+
+                // Highlight if line count doesn't match post quantity
+                if (lines !== postCount && lines > 0) {
+                    rawHtmlLineCount.style.color = 'red';
+                    rawHtmlLineCount.style.fontWeight = 'bold';
+                } else {
+                    rawHtmlLineCount.style.color = '';
+                    rawHtmlLineCount.style.fontWeight = '';
+                }
+            });
+        }
+
+
         let addKeywordBtn = document.getElementById("add-keywords-links");
         addKeywordBtn.addEventListener("click", (e) => {
             e.preventDefault();
@@ -2789,6 +2815,15 @@ window.addEventListener("DOMContentLoaded", () => {
                 : "";
             const sponsored = document.getElementById("sponsored_link")?.checked
                 ? document.getElementById("sponsored_link").value
+                : "";
+            const ugc = document.getElementById("ugc_link")?.checked
+                ? document.getElementById("ugc_link").value
+                : "";
+            const noopener = document.getElementById("noopener_link")?.checked
+                ? document.getElementById("noopener_link").value
+                : "";
+            const noreferrer = document.getElementById("noreferrer_link")?.checked
+                ? document.getElementById("noreferrer_link").value
                 : "";
 
             let keyWordBox = document.querySelectorAll(".keyword-url-box");
@@ -2890,6 +2925,9 @@ window.addEventListener("DOMContentLoaded", () => {
                             keyword: keywords[keywordIndex],
                             nofollow: noFollow,
                             sponsored: sponsored,
+                            ugc: ugc,
+                            noopener: noopener,
+                            noreferrer: noreferrer,
                         });
 
                         repeatCount--;
@@ -2959,6 +2997,9 @@ window.addEventListener("DOMContentLoaded", () => {
                         media: bulkMediaVal[x] ? bulkMediaVal[x] : "-",
                         nofollow: noFollow,
                         sponsored: sponsored,
+                        ugc: ugc,
+                        noopener: noopener,
+                        noreferrer: noreferrer,
                     });
                 }
 
@@ -3028,6 +3069,9 @@ window.addEventListener("DOMContentLoaded", () => {
                     media: "-",
                     nofollow: noFollow,
                     sponsored: sponsored,
+                    ugc: ugc,
+                    noopener: noopener,
+                    noreferrer: noreferrer,
                 }));
 
                 usedPairs.forEach((pair) => {
@@ -3076,6 +3120,9 @@ window.addEventListener("DOMContentLoaded", () => {
                     let quantity = item.querySelector('.multi-keyword-url-box-quantity').value;
                     singleBoxData.nofollow = noFollow;
                     singleBoxData.sponsored = sponsored;
+                    singleBoxData.ugc = ugc;
+                    singleBoxData.noopener = noopener;
+                    singleBoxData.noreferrer = noreferrer;
                     // check this
                     for (let z = 0; z < parseInt(quantity); z++) {
                         multiData.push(singleBoxData)
@@ -3096,11 +3143,121 @@ window.addEventListener("DOMContentLoaded", () => {
                 keywords_url_data = multiData
             }
 
+            // Raw HTML parsing method
+            if (method == "raw_html") {
+                let rawHtmlData = [];
+                let rawHtmlTextarea = document.getElementById("raw-html-anchors");
+
+                if (!rawHtmlTextarea || !rawHtmlTextarea.value.trim()) {
+                    alert("Please paste anchor tags in the Raw HTML field");
+                    return;
+                }
+
+                let lines = rawHtmlTextarea.value.split('\n').filter(line => line.trim() !== '');
+
+                if (lines.length !== postCount) {
+                    alert(`Number of lines (${lines.length}) must equal Post Quantity (${postCount})`);
+                    return;
+                }
+
+                // Function to parse a single anchor tag
+                function parseAnchorTag(anchorHtml) {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(anchorHtml.trim(), 'text/html');
+                    const anchor = doc.querySelector('a');
+
+                    if (!anchor) {
+                        return null;
+                    }
+
+                    const url = anchor.getAttribute('href') || '';
+                    const keyword = anchor.textContent.trim() || '';
+                    const relAttr = anchor.getAttribute('rel') || '';
+
+                    // Parse all rel attributes dynamically
+                    const relValues = relAttr.split(/\s+/).filter(v => v.trim() !== '');
+                    const relObj = {};
+
+                    // Check for common rel attributes (for backward compatibility with checkbox mode)
+                    relObj.nofollow = relValues.includes('nofollow') ? '1' : '';
+                    relObj.sponsored = relValues.includes('sponsored') ? '1' : '';
+                    relObj.ugc = relValues.includes('ugc') ? '1' : '';
+                    relObj.noopener = relValues.includes('noopener') ? '1' : '';
+                    relObj.noreferrer = relValues.includes('noreferrer') ? '1' : '';
+
+                    // ✅ PRESERVE FULL rel ATTRIBUTE STRING (supports custom values like "external", "bookmark", etc.)
+                    relObj.raw_rel_attr = relAttr.trim();
+
+                    return {
+                        url: url,
+                        keyword: keyword,
+                        ...relObj
+                    };
+                }
+
+                // Process each line
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i].trim();
+
+                    // Split by comma to handle multiple anchors per line
+                    const anchors = line.split(',').map(a => a.trim()).filter(a => a !== '');
+
+                    if (anchors.length > 5) {
+                        alert(`Line ${i + 1} has more than 5 anchors. Maximum is 5 per line.`);
+                        return;
+                    }
+
+                    const urls = [];
+                    const keywords = [];
+                    let lineNofollow = '';
+                    let lineSponsored = '';
+                    let lineUgc = '';
+                    let lineNoopener = '';
+                    let lineNoreferrer = '';
+                    let lineRawRelAttr = '';
+
+                    for (let j = 0; j < anchors.length; j++) {
+                        const parsed = parseAnchorTag(anchors[j]);
+
+                        if (!parsed || !parsed.url || !parsed.keyword) {
+                            alert(`Line ${i + 1}, anchor ${j + 1}: Invalid anchor tag or missing URL/keyword`);
+                            return;
+                        }
+
+                        urls.push(parsed.url);
+                        keywords.push(parsed.keyword);
+
+                        // Use rel attributes from first anchor (supports custom rel values via raw_rel_attr)
+                        if (j === 0) {
+                            lineNofollow = parsed.nofollow;
+                            lineSponsored = parsed.sponsored;
+                            lineUgc = parsed.ugc;
+                            lineNoopener = parsed.noopener;
+                            lineNoreferrer = parsed.noreferrer;
+                            lineRawRelAttr = parsed.raw_rel_attr || '';
+                        }
+                    }
+
+                    rawHtmlData.push({
+                        url: urls.length === 1 ? urls[0] : urls,
+                        keyword: keywords.length === 1 ? keywords[0] : keywords,
+                        media: '',
+                        nofollow: lineNofollow,
+                        sponsored: lineSponsored,
+                        ugc: lineUgc,
+                        noopener: lineNoopener,
+                        noreferrer: lineNoreferrer,
+                        raw_rel_attr: lineRawRelAttr,
+                    });
+                }
+
+                keywords_url_data = rawHtmlData;
+            }
+
             let keywordsDataTable = document.getElementById(
                 "keywords-data-table"
             );
             keywordsDataHolder.value = JSON.stringify(keywords_url_data);
-            console.log(keywordsDataHolder.value)
             //===============================
 
             keywordsDataTable.querySelector("tbody").innerHTML = "";

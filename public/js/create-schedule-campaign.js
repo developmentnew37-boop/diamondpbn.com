@@ -2571,6 +2571,31 @@ window.addEventListener("DOMContentLoaded", () => {
             updateMultiBulkProgress();
         }
 
+        // Raw HTML line counter and post quantity display
+        const rawHtmlTextarea = document.getElementById('raw-html-anchors');
+        const rawHtmlLineCount = document.getElementById('raw-html-line-count');
+        const rawHtmlPostQty = document.getElementById('raw-html-post-qty');
+
+        if (rawHtmlTextarea && rawHtmlLineCount && rawHtmlPostQty) {
+            // Update post quantity display
+            rawHtmlPostQty.textContent = postCount;
+
+            // Update line count on input
+            rawHtmlTextarea.addEventListener('input', function() {
+                const lines = this.value.split('\n').filter(line => line.trim() !== '').length;
+                rawHtmlLineCount.textContent = lines;
+
+                // Highlight if line count doesn't match post quantity
+                if (lines !== postCount && lines > 0) {
+                    rawHtmlLineCount.style.color = 'red';
+                    rawHtmlLineCount.style.fontWeight = 'bold';
+                } else {
+                    rawHtmlLineCount.style.color = '';
+                    rawHtmlLineCount.style.fontWeight = '';
+                }
+            });
+        }
+
 
         let addKeywordBtn = document.getElementById("add-keywords-links");
         addKeywordBtn.addEventListener("click", (e) => {
@@ -2585,6 +2610,15 @@ window.addEventListener("DOMContentLoaded", () => {
                 : "";
             const sponsored = document.getElementById("sponsored_link")?.checked
                 ? document.getElementById("sponsored_link").value
+                : "";
+            const ugc = document.getElementById("ugc_link")?.checked
+                ? document.getElementById("ugc_link").value
+                : "";
+            const noopener = document.getElementById("noopener_link")?.checked
+                ? document.getElementById("noopener_link").value
+                : "";
+            const noreferrer = document.getElementById("noreferrer_link")?.checked
+                ? document.getElementById("noreferrer_link").value
                 : "";
 
             let keyWordBox = document.querySelectorAll(".keyword-url-box");
@@ -2686,6 +2720,9 @@ window.addEventListener("DOMContentLoaded", () => {
                             keyword: keywords[keywordIndex],
                             nofollow: noFollow,
                             sponsored: sponsored,
+                            ugc: ugc,
+                            noopener: noopener,
+                            noreferrer: noreferrer,
                         });
 
                         repeatCount--;
@@ -2755,6 +2792,9 @@ window.addEventListener("DOMContentLoaded", () => {
                         media: bulkMediaVal[x] ? bulkMediaVal[x] : "-",
                         nofollow: noFollow,
                         sponsored: sponsored,
+                        ugc: ugc,
+                        noopener: noopener,
+                        noreferrer: noreferrer,
                     });
                 }
 
@@ -2787,6 +2827,9 @@ window.addEventListener("DOMContentLoaded", () => {
                     let quantity = item.querySelector('.multi-keyword-url-box-quantity').value;
                     singleBoxData.nofollow = noFollow;
                     singleBoxData.sponsored = sponsored;
+                    singleBoxData.ugc = ugc;
+                    singleBoxData.noopener = noopener;
+                    singleBoxData.noreferrer = noreferrer;
                     // check this
                     for (let z = 0; z < parseInt(quantity); z++) {
                         multiData.push(singleBoxData)
@@ -2867,7 +2910,10 @@ window.addEventListener("DOMContentLoaded", () => {
                         keyword: pair1.keywords[postIndex],
                         media: "-",
                         nofollow: noFollow,
-                        sponsored: sponsored
+                        sponsored: sponsored,
+                        ugc: ugc,
+                        noopener: noopener,
+                        noreferrer: noreferrer
                     };
 
                     // Add additional pairs if available
@@ -2889,6 +2935,117 @@ window.addEventListener("DOMContentLoaded", () => {
                 }
 
                 keywords_url_data = multiBulkData;
+            }
+
+            // Raw HTML parsing method
+            if (method == "raw_html") {
+                let rawHtmlData = [];
+                let rawHtmlTextarea = document.getElementById("raw-html-anchors");
+
+                if (!rawHtmlTextarea || !rawHtmlTextarea.value.trim()) {
+                    alert("Please paste anchor tags in the Raw HTML field");
+                    return;
+                }
+
+                let lines = rawHtmlTextarea.value.split('\n').filter(line => line.trim() !== '');
+
+                if (lines.length !== postCount) {
+                    alert(`Number of lines (${lines.length}) must equal Post Quantity (${postCount})`);
+                    return;
+                }
+
+                // Function to parse a single anchor tag
+                function parseAnchorTag(anchorHtml) {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(anchorHtml.trim(), 'text/html');
+                    const anchor = doc.querySelector('a');
+
+                    if (!anchor) {
+                        return null;
+                    }
+
+                    const url = anchor.getAttribute('href') || '';
+                    const keyword = anchor.textContent.trim() || '';
+                    const relAttr = anchor.getAttribute('rel') || '';
+
+                    // Parse all rel attributes dynamically
+                    const relValues = relAttr.split(/\s+/).filter(v => v.trim() !== '');
+                    const relObj = {};
+
+                    // Check for common rel attributes (for backward compatibility with checkbox mode)
+                    relObj.nofollow = relValues.includes('nofollow') ? '1' : '';
+                    relObj.sponsored = relValues.includes('sponsored') ? '1' : '';
+                    relObj.ugc = relValues.includes('ugc') ? '1' : '';
+                    relObj.noopener = relValues.includes('noopener') ? '1' : '';
+                    relObj.noreferrer = relValues.includes('noreferrer') ? '1' : '';
+
+                    // ✅ PRESERVE FULL rel ATTRIBUTE STRING (supports custom values like "external", "bookmark", etc.)
+                    relObj.raw_rel_attr = relAttr.trim();
+
+                    return {
+                        url: url,
+                        keyword: keyword,
+                        ...relObj
+                    };
+                }
+
+                // Process each line
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i].trim();
+
+                    // Split by comma to handle multiple anchors per line
+                    const anchors = line.split(',').map(a => a.trim()).filter(a => a !== '');
+
+                    if (anchors.length > 5) {
+                        alert(`Line ${i + 1} has more than 5 anchors. Maximum is 5 per line.`);
+                        return;
+                    }
+
+                    const urls = [];
+                    const keywords = [];
+                    let lineNofollow = '';
+                    let lineSponsored = '';
+                    let lineUgc = '';
+                    let lineNoopener = '';
+                    let lineNoreferrer = '';
+                    let lineRawRelAttr = '';
+
+                    for (let j = 0; j < anchors.length; j++) {
+                        const parsed = parseAnchorTag(anchors[j]);
+
+                        if (!parsed || !parsed.url || !parsed.keyword) {
+                            alert(`Line ${i + 1}, anchor ${j + 1}: Invalid anchor tag or missing URL/keyword`);
+                            return;
+                        }
+
+                        urls.push(parsed.url);
+                        keywords.push(parsed.keyword);
+
+                        // Use rel attributes from first anchor (supports custom rel values via raw_rel_attr)
+                        if (j === 0) {
+                            lineNofollow = parsed.nofollow;
+                            lineSponsored = parsed.sponsored;
+                            lineUgc = parsed.ugc;
+                            lineNoopener = parsed.noopener;
+                            lineNoreferrer = parsed.noreferrer;
+                            lineRawRelAttr = parsed.raw_rel_attr || '';
+                        }
+                    }
+
+                    rawHtmlData.push({
+                        url: urls.length === 1 ? urls[0] : urls,
+                        keyword: keywords.length === 1 ? keywords[0] : keywords,
+                        media: '',
+                        nofollow: lineNofollow,
+                        sponsored: lineSponsored,
+                        ugc: lineUgc,
+                        noopener: lineNoopener,
+                        noreferrer: lineNoreferrer,
+                        raw_rel_attr: lineRawRelAttr,
+                    });
+                }
+
+                keywords_url_data = rawHtmlData;
             }
 
             let keywordsDataTable = document.getElementById(

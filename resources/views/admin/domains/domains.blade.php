@@ -45,6 +45,65 @@
             text-align: left !important;
             vertical-align: middle !important;
         }
+
+        .domains-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+
+        .domains-toolbar-group {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .domains-toolbar-divider {
+            display: none;
+            width: 1px;
+            height: 2.5rem;
+            background-color: #e5e7eb;
+            flex-shrink: 0;
+        }
+
+        @media (min-width: 768px) {
+            .domains-toolbar-divider {
+                display: block;
+            }
+        }
+
+        .domains-control-select {
+            min-width: 11rem;
+            min-height: 46px;
+        }
+
+        .domains-control-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 46px;
+            padding: 0.75rem 1rem;
+            font-size: 0.875rem;
+            white-space: nowrap;
+            border-radius: 0.25rem;
+            transition: background-color 0.3s ease;
+        }
+
+        .domains-search-wrap {
+            width: 100%;
+            max-width: 100%;
+        }
+
+        @media (min-width: 1024px) {
+            .domains-search-wrap {
+                width: auto;
+                min-width: 280px;
+                max-width: 320px;
+            }
+        }
     </style>
 @endpush
 
@@ -88,110 +147,110 @@
                     {{-- heading here --}}
 
                     {{-- heading here --}}
-                    <h2 class="text-xl bg-[var(--primary-color)] text-white !p-2 rounded font-semibold  capitalize w-fit">
+                    <h2 class="text-xl bg-[var(--primary-color)] text-white !p-2 rounded font-semibold capitalize w-fit">
                         Domains List Here <span class="material-symbols-outlined !text-sm">
                             arrow_cool_down
                         </span>
                     </h2>
 
-                    <div class="w-full flex flex-wrap items-center !mt-2">
-                        <div class="w-full flex flex-col gap-2">
-                            @if (session()->has('cus__success'))
-                                <div class="!p-4  text-sm rounded bg-green-100 text-green-700 w-full !mb-2" role="alert">
-                                    <span class="font-medium"> {{ session('cus__success') }}</span>
-                                </div>
-                            @endif
-                            @if (session()->has('cus__error'))
-                                <div class="!p-4  text-sm rounded bg-red-100 text-red-700 w-full !mb-2" role="alert">
-                                    <span class="font-medium"> {{ session('cus__error') }}</span>
-                                </div>
-                            @endif
-                            @error('action')
-                                <div class="!p-4  text-sm rounded bg-red-100 text-red-700 w-full !mb-2" role="alert">
-                                    <span class="font-medium"> {{ $message }}</span>
-                                </div>
-                            @enderror
-                            @error('bulk_ids')
-                                <div class="!p-4  text-sm rounded bg-red-100 text-red-700 w-full !mb-2" role="alert">
-                                    <span class="font-medium"> {{ $message }}</span>
-                                </div>
-                            @enderror
-                        </div>
-                        <div class="w-[65%] flex flex-wrap gap-2">
-                            <div class="w-1/5">
-                                <select name="" id="domain-category"
-                                    class="bg-gray-100  border border-gray-200 !w-full !p-3 text-sm w-full rounded outline-none focus:border-orange-600">
-                                    <option value="">select category</option>
-                                    @if (isset($domainCategories) && count($domainCategories) > 0)
-                                        @foreach ($domainCategories as $domainCategory)
-                                            <option value="{{ $domainCategory->id }}" @selected((string) request('category_id') === (string) $domainCategory->id)>
-                                                {{ $domainCategory->name }}
-                                            </option>
-                                        @endforeach
-                                    @endif
-                                </select>
+                    <div class="w-full flex flex-col gap-2 !mt-2">
+                        @if (session()->has('cus__success'))
+                            <div class="!p-4 text-sm rounded bg-green-100 text-green-700 w-full" role="alert">
+                                <span class="font-medium">{{ session('cus__success') }}</span>
                             </div>
-                            <div class="w-auto">
-                                <form method="GET" action="{{ route('admin.domain.extract') }}">
-                                    <input type="hidden" name="category_id" value="{{ request('category_id') }}">
-                                    <button type="submit"
-                                        class="flex !p-3 !px-4 text-sm font-medium justify-center transition-all bg-emerald-600 hover:bg-emerald-700 text-white rounded cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-                                        @disabled(!request()->filled('category_id'))
-                                        title="{{ request()->filled('category_id') ? 'Download Excel for selected category' : 'Please select a category first' }}">
-                                        Extract Domains
-                                    </button>
-                                </form>
+                        @endif
+                        @if (session()->has('cus__error'))
+                            <div class="!p-4 text-sm rounded bg-red-100 text-red-700 w-full" role="alert">
+                                <span class="font-medium">{{ session('cus__error') }}</span>
                             </div>
-                            <div class="flex-1 min-w-[260px]">
-                                {{-- {{ route('admin.domain.category.delete') }} --}}
-                                <form action="{{ route('admin.domain.delete') }}"
-                                    class="w-full flex flex-wrap justify-start items-center gap-1" method="post">
-                                    @csrf
-                                    <select name="actions" id=""
-                                        class="bg-gray-100 border border-gray-200 !w-2/5 !p-3 text-sm w-full rounded outline-none focus:border-orange-600">
-                                        <option value="">Bulk actions</option>
-                                        <option value="1">Delete</option>
-                                    </select>
-                                    <input type="hidden" name="bulk_ids" id="valHolders">
-                                    <button type="submit"
-                                        class="flex !p-3  !px-4 text-sm font-normal justify-center duration:600 transition-all bg-[var(--sidebar-bg)] hover:bg-[var(--primary-color)] text-white rounded cursor-pointer">
-                                        Apply
-                                    </button>
-                                </form>
-
-
-                            </div>
-                        </div>
-                        <div class="w-[35%] flex flex-wrap gap-3 justify-end">
-
-                            {{-- Search Box --}}
-
-                            <div class="relative w-1/2 max-h-12 overflow-hidden">
-                                <form method="GET" action="{{ url()->current() }}" class="relative w-full">
-
-                                    {{-- keep other parameters --}}
-                                    @foreach (request()->except('search') as $key => $value)
-                                        <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                        @endif
+                        @if (session()->has('transfer_errors'))
+                            <div class="!p-4 text-sm rounded bg-yellow-100 text-yellow-800 w-full" role="alert">
+                                <span class="font-medium">Some domains failed to transfer:</span>
+                                <ul class="list-disc list-inside !mt-2">
+                                    @foreach (session('transfer_errors') as $transferError)
+                                        <li>{{ $transferError }}</li>
                                     @endforeach
-
-                                    <input type="search" name="search" placeholder="search here" id="search_category"
-                                        value="{{ request('search') }}"
-                                        class="bg-gray-100 shadow border border-gray-200 !p-3 !pr-[50px] max-h-12 text-sm w-full rounded outline-none">
-
-                                    <button type="submit"
-                                        class="w-12 h-12 flex items-center justify-center bg-[var(--sidebar-bg)] absolute top-0 right-0 rounded-r">
-                                        <svg class="w-5 h-5 text-white !text-sm" fill="none" stroke="currentColor"
-                                            viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                                        </svg>
-                                    </button>
-
-                                </form>
-
-
+                                </ul>
                             </div>
+                        @endif
+                        @error('action')
+                            <div class="!p-4 text-sm rounded bg-red-100 text-red-700 w-full" role="alert">
+                                <span class="font-medium">{{ $message }}</span>
+                            </div>
+                        @enderror
+                        @error('bulk_ids')
+                            <div class="!p-4 text-sm rounded bg-red-100 text-red-700 w-full" role="alert">
+                                <span class="font-medium">{{ $message }}</span>
+                            </div>
+                        @enderror
+                    </div>
 
+                    <div class="domains-toolbar !mt-3">
+                        <div class="domains-toolbar-group">
+                            {{-- Category filter + extract --}}
+                            <select name="" id="domain-category"
+                                class="domains-control-select bg-gray-100 border border-gray-200 !p-3 text-sm rounded outline-none focus:border-[var(--primary-color)]">
+                                <option value="">select category</option>
+                                @if (isset($domainCategories) && count($domainCategories) > 0)
+                                    @foreach ($domainCategories as $domainCategory)
+                                        <option value="{{ $domainCategory->id }}" @selected((string) request('category_id') === (string) $domainCategory->id)>
+                                            {{ $domainCategory->name }}
+                                        </option>
+                                    @endforeach
+                                @endif
+                            </select>
+
+                            <form method="GET" action="{{ route('admin.domain.extract') }}" class="inline-flex">
+                                <input type="hidden" name="category_id" value="{{ request('category_id') }}">
+                                <button type="submit"
+                                    class="domains-control-btn bg-[var(--primary-color)] hover:bg-[#e0410f] text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                    @disabled(!request()->filled('category_id'))
+                                    title="{{ request()->filled('category_id') ? 'Download Excel for selected category' : 'Please select a category first' }}">
+                                    <span class="material-symbols-outlined !text-base !mr-1">download</span>
+                                    Extract Domains
+                                </button>
+                            </form>
+
+                            <span class="domains-toolbar-divider" aria-hidden="true"></span>
+
+                            {{-- Bulk actions --}}
+                            <form action="{{ route('admin.domain.delete') }}"
+                                class="domains-toolbar-group" method="post">
+                                @csrf
+                                <select name="actions"
+                                    class="domains-control-select bg-gray-100 border border-gray-200 !p-3 text-sm rounded outline-none focus:border-[var(--primary-color)]">
+                                    <option value="">Bulk actions</option>
+                                    <option value="1">Delete</option>
+                                </select>
+                                <input type="hidden" name="bulk_ids" id="valHolders">
+                                <button type="submit"
+                                    class="domains-control-btn bg-[var(--sidebar-bg)] hover:bg-[var(--primary-color)] text-white cursor-pointer">
+                                    Apply
+                                </button>
+                            </form>
+                        </div>
+
+                        {{-- Search --}}
+                        <div class="domains-search-wrap relative max-h-12">
+                            <form method="GET" action="{{ url()->current() }}" class="relative w-full">
+                                @foreach (request()->except('search') as $key => $value)
+                                    <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                                @endforeach
+
+                                <input type="search" name="search" placeholder="search here" id="search_category"
+                                    value="{{ request('search') }}"
+                                    class="bg-gray-100 shadow border border-gray-200 !p-3 !pr-[50px] max-h-12 text-sm w-full rounded outline-none focus:border-[var(--primary-color)]">
+
+                                <button type="submit"
+                                    class="w-12 h-12 flex items-center justify-center bg-[var(--sidebar-bg)] hover:bg-[var(--primary-color)] absolute top-0 right-0 rounded-r transition-colors">
+                                    <svg class="w-5 h-5 text-white !text-sm" fill="none" stroke="currentColor"
+                                        viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                                    </svg>
+                                </button>
+                            </form>
                         </div>
                     </div>
 

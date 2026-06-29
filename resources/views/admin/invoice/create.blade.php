@@ -318,8 +318,11 @@
                     <input type="file" name="logo" id="logo-input" accept="image/*" style="display: none;">
                     <img src="" alt="Logo Preview" class="logo-preview" id="logo-preview">
                     <div id="upload-text">
-                        <svg class="w-12 h-12 mx-auto mb-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                        <svg class="w-12 h-12 mx-auto mb-2 text-gray-400" fill="none" stroke="currentColor"
+                            viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12">
+                            </path>
                         </svg>
                         <p class="text-sm text-gray-600">Click to upload logo</p>
                         <p class="text-xs text-gray-400 mt-1">PNG, JPG, GIF up to 2MB</p>
@@ -330,11 +333,13 @@
             <div class="form-grid">
                 <div class="form-group">
                     <label class="form-label">Company Name <span class="text-red-500">*</span></label>
-                    <input type="text" name="company_name" class="form-input" required value="{{ old('company_name') }}">
+                    <input type="text" name="company_name" class="form-input" required
+                        value="{{ old('company_name') ? old('company_name') : 'ABDUL SERVICES' }}">
                 </div>
                 <div class="form-group">
                     <label class="form-label">Company Email</label>
-                    <input type="email" name="company_email" class="form-input" value="{{ old('company_email') }}">
+                    <input type="email" name="company_email" class="form-input"
+                        value="{{ old('company_email') ? old('company_email') : 'awaheedkhatri@gmail.com' }}">
                 </div>
                 <div class="form-group">
                     <label class="form-label">Company Phone</label>
@@ -342,7 +347,7 @@
                 </div>
                 <div class="form-group" style="grid-column: 1 / -1;">
                     <label class="form-label">Company Address</label>
-                    <textarea name="company_address" class="form-input" rows="2">{{ old('company_address') }}</textarea>
+                    <textarea name="company_address" class="form-input" rows="2">{{ old('company_address') }} </textarea>
                 </div>
             </div>
         </div>
@@ -376,15 +381,18 @@
             <div class="form-grid">
                 <div class="form-group">
                     <label class="form-label">Invoice Number <span class="text-red-500">*</span></label>
-                    <input type="text" name="invoice_number" class="form-input" required value="{{ old('invoice_number', 'INV-' . date('Ymd') . '-001') }}">
+                    <input type="text" name="invoice_number" class="form-input" required
+                        value="{{ old('invoice_number', 'INV-' . date('Ymd') . '-001') }}">
                 </div>
                 <div class="form-group">
                     <label class="form-label">Invoice Date <span class="text-red-500">*</span></label>
-                    <input type="date" name="invoice_date" class="form-input" required value="{{ old('invoice_date', date('Y-m-d')) }}">
+                    <input type="date" name="invoice_date" class="form-input" required
+                        value="{{ old('invoice_date', date('Y-m-d')) }}">
                 </div>
                 <div class="form-group">
                     <label class="form-label">Due Date <span class="text-red-500">*</span></label>
-                    <input type="date" name="due_date" class="form-input" required value="{{ old('due_date', date('Y-m-d', strtotime('+30 days'))) }}">
+                    <input type="date" name="due_date" class="form-input" required
+                        value="{{ old('due_date', date('Y-m-d', strtotime('+30 days'))) }}">
                 </div>
                 <div class="form-group">
                     <label class="form-label">Currency <span class="text-red-500">*</span></label>
@@ -518,11 +526,13 @@
             <div class="form-grid" style="margin-bottom: 20px;">
                 <div class="form-group">
                     <label class="form-label">Tax Rate (%)</label>
-                    <input type="number" name="tax_rate" id="tax-rate" class="form-input" min="0" max="100" step="0.01" value="{{ old('tax_rate', 0) }}">
+                    <input type="number" name="tax_rate" id="tax-rate" class="form-input" min="0"
+                        max="100" step="0.01" value="{{ old('tax_rate', 0) }}">
                 </div>
                 <div class="form-group">
                     <label class="form-label">Discount ($)</label>
-                    <input type="number" name="discount" id="discount" class="form-input" min="0" step="0.01" value="{{ old('discount', 0) }}">
+                    <input type="number" name="discount" id="discount" class="form-input" min="0"
+                        step="0.01" value="{{ old('discount', 0) }}">
                 </div>
             </div>
 
@@ -550,7 +560,8 @@
                     Custom Total Override (Optional)
                     <span class="text-xs text-gray-500 font-normal ml-2">- Leave empty to use calculated total</span>
                 </label>
-                <input type="text" name="custom_total" id="custom-total" class="form-input" placeholder="e.g., Rp 1,560,000 or $100.00">
+                <input type="text" name="custom_total" id="custom-total" class="form-input"
+                    placeholder="e.g., Rp 1,560,000 or $100.00">
                 <p class="text-xs text-gray-500 mt-1">
                     Enter the total with currency symbol (e.g., "Rp 1,560,000" or "$100.00").
                     This will replace the calculated total in the PDF exactly as you type it.
@@ -558,8 +569,17 @@
             </div>
 
             <div class="form-group" style="margin-top: 20px;">
-                <label class="form-label">Notes / Terms</label>
-                <textarea name="notes" class="form-input" rows="4" placeholder="Payment terms, thank you note, or any additional information...">{{ old('notes') }}</textarea>
+                <label class="form-label">Payment Info</label>
+                <textarea name="notes" class="form-input" rows="10"
+                    placeholder="Payment terms, thank you note, or any additional information...">{{ old('notes')
+                        ? old('notes')
+                        : 'USDT Address: TQhtcHLwDUwbChtcCb5zBG6oT4MkeUgse8
+Network: Tron(TRC20)
+
+Account #: PK98MEZN0016010101983602
+A/c Title: Abdul Waheed Khatri
+Bank Name: Meezan Bank Limited
+Office Address: A/113 - 212 Jail Road, Hyderabad, Sindh' }}</textarea>
             </div>
         </div>
 

@@ -2,14 +2,18 @@
 
 @section('title', 'Campaigns')
 
+@push('style')
+    @include('admin.campaigns.partials.campaign-list-table-styles')
+@endpush
+
 @section('main-content')
 
     {{-- bread-crumbs --}}
-    <div class="page-header">
-        <div class="w-full flex flex-wrap items-center">
-            <div class="w-1/2 flex flex-col gap-2 flex-wrap">
+    <div class="page-header w-full max-w-full min-w-0">
+        <div class="w-full flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div class="w-full md:flex-1 flex flex-col gap-2 min-w-0">
                 <h2 class="page-title">Dashboards</h2>
-                <div class="breadcrumb">
+                <div class="breadcrumb flex-wrap">
                     <div class="breadcrumb-item">
                         <a href="{{ route('admin.dashboard') }}" class="breadcrumb-link">Dashboard</a>
                         <span>›</span>
@@ -20,10 +24,10 @@
 
                 </div>
             </div>
-            <div class="w-1/2 flex flex-wrap justify-end items-center">
+            <div class="w-full md:w-auto flex flex-wrap justify-start md:justify-end items-center md:shrink-0">
                 @if (Auth::guard('admin')->user()->canCreateCampaigns())
                 <a href="{{ route('admin.campaign.create') }}"
-                    class="flex !p-2 !py-3 text-[16px] font-normal w-fit justify-center duration:300 bg-[var(--primary-color)] 
+                    class="flex !p-2 !py-3 text-[16px] font-normal w-full sm:w-fit justify-center duration:300 bg-[var(--primary-color)]
                     whitespace-nowrap hover:bg-[var(--primary-color)]/70 text-white rounded transition-all duration">
                     Create Campaign</a>
                 @endif
@@ -53,83 +57,7 @@
 
         @endif
 
-        {{-- filters thing here --}}
-
-        <div
-            class="flex flex-col gap-4 lg:flex-row lg:flex-nowrap lg:items-center lg:justify-between content-card w-full min-w-0 campaign-list-toolbar">
-
-            <div
-                class="w-full lg:w-auto lg:flex-1 lg:min-w-0 flex flex-col gap-2 sm:flex-row sm:flex-wrap md:flex-nowrap sm:items-center lg:items-center">
-
-                <div class="w-full sm:w-40 shrink-0 md:shrink-0">
-                    <select name="" id="domain-category"
-                        class="bg-gray-100  border border-gray-200 !w-full !p-3 text-sm w-full rounded outline-none focus:border-orange-600">
-                        <option value="">select</option>
-                        {{-- @if (isset($domainCategories) && count($domainCategories) > 0)
-                            @foreach ($domainCategories as $domainCategory)
-                                <option value="{{ $domainCategory->id }}">{{ $domainCategory->name }}</option>
-                            @endforeach
-                        @endif --}}
-                    </select>
-                </div>
-                <div class="w-full sm:flex-1 sm:min-w-0 md:min-w-[12rem]">
-                    <form action="#"
-                        class="w-full flex flex-col gap-2 sm:flex-row sm:flex-wrap md:flex-nowrap sm:items-center sm:gap-2"
-                        method="post">
-                        @csrf
-                        <select name="actions" id=""
-                            class="bg-gray-100 border border-gray-200 !p-3 text-sm w-full sm:flex-1 sm:min-w-0 md:min-w-[9rem] rounded outline-none focus:border-orange-600">
-                            <option value="">Bulk actions</option>
-                            <option value="1">Delete</option>
-                        </select>
-                        <input type="hidden" name="bulk_ids" id="valHolders">
-                        <button type="submit"
-                            class="flex !p-3 !px-4 text-sm font-normal justify-center duration:600 transition-all bg-[var(--sidebar-bg)] hover:bg-[var(--primary-color)] text-white rounded cursor-pointer shrink-0 w-full sm:w-auto">
-                            Apply
-                        </button>
-                    </form>
-
-
-                </div>
-
-            </div>
-            <div
-                class="w-full lg:w-auto lg:max-w-none flex flex-col gap-3 sm:flex-row sm:flex-wrap md:flex-nowrap sm:items-center sm:gap-3 lg:justify-end lg:shrink-0 min-w-0">
-
-                @include('admin.campaigns.partials.campaign-owner-filter')
-
-                {{-- Search Box --}}
-
-                <div class="relative w-full sm:flex-1 sm:min-w-[12rem] sm:max-w-md max-h-12 overflow-hidden min-w-0">
-                    <form method="GET" action="{{ url()->current() }}" class="relative w-full">
-
-                        {{-- keep other parameters --}}
-                        @foreach (request()->except('search') as $key => $value)
-                            @continue(is_array($value))
-                            <input type="hidden" name="{{ $key }}" value="{{ $value }}">
-                        @endforeach
-
-                        <input type="search" name="search" placeholder="search here" id="search_category"
-                            value="{{ request('search') }}"
-                            class="bg-gray-100 shadow border border-gray-200 !p-3 !pr-[50px] max-h-12 text-sm w-full rounded outline-none">
-
-                        <button type="submit"
-                            class="w-12 h-12 flex items-center justify-center bg-[var(--sidebar-bg)] absolute top-0 right-0 rounded-r">
-                            <svg class="w-5 h-5 text-white !text-sm" fill="none" stroke="currentColor"
-                                viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                            </svg>
-                        </button>
-
-                    </form>
-
-
-                </div>
-
-            </div>
-        </div>
-
+        @include('admin.campaigns.partials.campaign-list-toolbar')
 
     </div>
 
@@ -141,24 +69,26 @@
         </h2>
         <form id="pbn-bulk-purge-local-form" action="{{ route('admin.campaign.bulk.purge.local') }}" method="POST" class="hidden">@csrf</form>
         <form id="pbn-bulk-retry-failed-form" action="{{ route('admin.campaign.bulk.retry.failed') }}" method="POST" class="hidden">@csrf</form>
-        <div class="w-full flex flex-wrap items-center gap-2 !mb-2">
-            <button type="button" id="pbn-bulk-purge-local-btn"
-                class="!px-3 !py-2 rounded bg-orange-600 text-white text-sm hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Remove selected campaigns from this app only; remote posts stay">
-                Bulk remove locally only
-            </button>
-            <button type="button" id="pbn-bulk-retry-failed-btn"
-                class="!px-3 !py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Retry all failed posts in selected campaigns">
-                Bulk Retry Failed Posts
-            </button>
-            <span class="text-sm text-gray-500">Select campaigns with checkboxes, then retry all failed posts or remove local records.</span>
+        <div class="w-full flex flex-col gap-2 !mb-2">
+            <div class="w-full flex flex-wrap items-center gap-2">
+                <button type="button" id="pbn-bulk-purge-local-btn"
+                    class="!px-3 !py-2 rounded bg-orange-600 text-white text-sm hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Remove selected campaigns from this app only; remote posts stay">
+                    Bulk remove locally only
+                </button>
+                <button type="button" id="pbn-bulk-retry-failed-btn"
+                    class="!px-3 !py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Retry all failed posts in selected campaigns">
+                    Bulk Retry Failed Posts
+                </button>
+            </div>
+            <p class="text-sm text-gray-500">Select campaigns with checkboxes, then retry all failed posts or remove local records.</p>
         </div>
 
         {{-- table code here --}}
 
         <div class="overflow-x-auto !mt-3 w-full max-w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
-            <table class="display w-full min-w-[1000px] border border-gray-200 border-collapse text-sm whitespace-nowrap searchable-table">
+            <table class="campaign-list-table display w-full min-w-[1100px] border border-gray-200 border-collapse text-sm whitespace-nowrap searchable-table">
                 <thead>
                     <tr class="bg-gray-800 text-white">
                         <th><input type="checkbox" name="" id="bulk-checkBox-selector" class="scale-125 "></th>
@@ -166,7 +96,6 @@
                             $tHead = [
                                 'sno',
                                 'Campaign No',
-                                'Type',
                                 'Domain Category',
                                 'Total Targets',
                                 'Completed',
@@ -179,7 +108,10 @@
                             ];
                         @endphp
                         @foreach ($tHead as $t)
-                            <th class="border border-gray-200 font-sans !font-normal !px-2 !py-3 capitilize text-left">
+                            <th @class([
+                                'border border-gray-200 font-sans !font-normal !px-2 !py-3 capitilize text-left',
+                                'actions-col min-w-[252px]' => $t === 'Actions',
+                            ])>
                                 {{ $t }}
                             </th>
                         @endforeach
@@ -232,15 +164,9 @@
                                 {{ $campaign->campaign_no }}
                             </td>
 
-                            {{-- type --}}
-                            <td class="border border-gray-200 font-sans !px-2 !py-3">
-                                {{ $campaign->is_sticky_campaign ? 'sticky Campaign' : 'Post Campaign' }}
-                            </td>
-
                             {{-- domain category --}}
                             <td class="border border-gray-200 font-sans !px-2 !py-3">
-                                {{-- {{ optional($campaign->campaignDomains->first()?->domain)->name ?? '-' }} --}}
-                                {{ $campaign->campaignDomain->name ?? '-' }}
+                                {{ optional($campaign->domainCategory)->name ?? '-' }}
                             </td>
 
                             {{-- totals --}}
@@ -286,61 +212,25 @@
                             </td>
 
                             {{-- actions --}}
-                            <td class="border border-gray-200 font-sans !px-2 !py-3">
-                                <div class="flex  gap-2 justify-center">
-                                    {{-- {{ route('admin.campaigns.report', $campaign->id) }} --}}
-                                    <a href="{{ route('admin.campaign.show', $campaign->id) }}"
-                                        class="bg-green-500 flex items-center justify-center rounded w-7 h-7 hover:bg-green-600">
-                                        <span class="material-symbols-outlined !text-sm text-white">visibility</span>
-                                    </a>
-
-                                    <a href="javascript:void(0)"
-                                        data-report="{{ route('admin.campaign.report', [
-                                            'campaign_no' => $campaign->campaign_no,
-                                            'token' => $campaign->report_token,
-                                        ]) }}"
-                                        class="bg-yellow-500 copy-link flex items-center justify-center rounded w-7 h-7 hover:bg-yellow-600">
-                                        <span class="material-symbols-outlined !text-sm text-white">content_copy</span>
-                                    </a>
-                                    <a href="{{ route('admin.campaign.report', [
+                            <td class="actions-col border border-gray-200 font-sans !px-2 !py-3 min-w-[252px]">
+                                @include('admin.campaigns.partials.campaign-list-actions', [
+                                    'viewUrl' => route('admin.campaign.show', $campaign->id),
+                                    'editUrl' => route('admin.campaign.edit', $campaign->id),
+                                    'reportUrl' => route('admin.campaign.report', [
                                         'campaign_no' => $campaign->campaign_no,
                                         'token' => $campaign->report_token,
-                                    ]) }}"
-                                        class="bg-blue-700 flex items-center justify-center rounded w-7 h-7 hover:bg-blue-800">
-                                        <span class="material-symbols-outlined !text-sm text-white">assignment</span>
-                                    </a>
-
-                                    <a href="{{ route('admin.campaign.edit', $campaign->id) }}"
-                                        class="bg-gray-700 flex items-center justify-center rounded w-7 h-7 duration-500 hover:bg-gray-700"
-                                        title="Edit campaign">
-                                        <span class="material-symbols-outlined !text-[16px] text-white">edit_square</span>
-                                    </a>
-                                    <form action="{{ route('admin.campaign.destroy', $campaign->id) }}" method="POST"
-                                        class="inline"
-                                        onsubmit="return confirm('Delete this campaign? All campaign posts will be removed from the database and from remote sites.');">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button type="submit" class="bg-red-500 flex items-center justify-center rounded w-7 h-7 hover:bg-red-600"
-                                            title="Delete campaign and all posts (DB + remote)">
-                                            <span class="material-symbols-outlined !text-[16px] text-white">delete</span>
-                                        </button>
-                                    </form>
-                                    <form action="{{ route('admin.campaign.purge.local', $campaign->id) }}" method="POST"
-                                        class="inline"
-                                        onsubmit="return confirm('Remove this campaign from the dashboard only? Published posts on remote sites will stay. You will not be able to edit this campaign here anymore.');">
-                                        @csrf
-                                        <button type="submit" class="bg-orange-500 flex items-center justify-center rounded w-7 h-7 hover:bg-orange-600"
-                                            title="Remove from dashboard only — does not delete remote posts">
-                                            <span class="material-symbols-outlined !text-[16px] text-white">database</span>
-                                        </button>
-                                    </form>
-                                </div>
+                                    ]),
+                                    'destroyAction' => route('admin.campaign.destroy', $campaign->id),
+                                    'purgeAction' => route('admin.campaign.purge.local', $campaign->id),
+                                    'destroyConfirm' => 'Delete this campaign? All campaign posts will be removed from the database and from remote sites.',
+                                    'purgeConfirm' => 'Remove this campaign from the dashboard only? Published posts on remote sites will stay. You will not be able to edit this campaign here anymore.',
+                                ])
                             </td>
                         </tr>
 
                     @empty
                         <tr>
-                            <td colspan="14" class="text-center !py-4 text-gray-500 bg-gray-100 font-sans">
+                            <td colspan="13" class="text-center !py-4 text-gray-500 bg-gray-100 font-sans">
                                 No campaigns found...
                             </td>
                         </tr>
@@ -363,7 +253,6 @@
 
 
 @push('scripts')
-    <script src="{{ asset('js/updated_dynamic_dropdown.js') }}"></script>
     <script src="{{ asset('js/copy.js') }}"></script>
     <script>
         (function () {

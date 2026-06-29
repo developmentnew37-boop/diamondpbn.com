@@ -99,7 +99,51 @@
         .sortable-ghost {
             opacity: 0.5;
         }
+
+        /* Checkbox row selection — plain tables with custom pagination (not DataTables) */
+        #myTable tbody tr[class*="bg-blue-100"],
+        #RandomDomainsTable tbody tr[class*="bg-blue-100"],
+        #domainSetTable tbody tr[class*="bg-blue-100"],
+        table.display tbody tr[class*="bg-blue-100"] {
+            background-color: #dbeafe !important;
+        }
+
+        /* Article selection modal — keep footer visible */
+        .dy-pop-box {
+            display: flex;
+            flex-direction: column;
+            max-height: calc(100vh - 24px);
+        }
+
+        .article-selected-modal-footer {
+            flex-shrink: 0;
+        }
+
+        #campaign-form {
+            overflow-x: clip;
+        }
+
+        #campaign-form .campaigns-section,
+        #campaign-form .article-opt-box,
+        #campaign-form .domains-sections,
+        #campaign-form [data-dropdown-container] {
+            overflow: visible;
+        }
+
+        #campaign-form [data-dropdown-container]:focus-within {
+            z-index: 40;
+        }
+
+        #campaign-form [data-dropdown] {
+            z-index: 50;
+            max-width: 100%;
+        }
     </style>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"
+        integrity="sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 @endpush
 
 
@@ -810,7 +854,7 @@
                             @endphp
                             @foreach ($tHead as $t)
                                 <th
-                                    class="border border-gray-200 font-sans !font-normal !px-2 !py-3 capitilize text-center text-xl capitalize">
+                                    class="border border-gray-200 font-sans !font-normal !px-1.5 sm:!px-2 !py-2 sm:!py-3 text-center text-[11px] sm:text-sm md:text-base capitalize leading-tight whitespace-normal break-words">
                                     {{ $t }}
                                 </th>
                             @endforeach
@@ -1176,13 +1220,16 @@
         <div class="dy-pop-box w-[96%] sm:w-[80%] max-w-[850px] max-h-[calc(100vh-24px)] sm:max-h-none flex flex-col items-stretch !shadow-2xl bg-gray-50 border border-gray-300 z-2 rounded !mt-3 sm:!mt-[70px] opacity-0 -translate-y-[20%] linear  duration-600 transition-all min-w-0"
             id="dy-article-box">
             {{-- pop top bar --}}
-            <div class="w-full flex justify-between items-center !bg-gray-200 !p-3">
+            <div class="w-full flex justify-between items-center !bg-gray-200 !p-3 relative shrink-0">
                 <h6>Selected Articles <span class="dy-article-count" id="selectedCount">(0)</span></h6>
                 <button type="button" class="cursor-pointer article-set-close" id='dy-close-btn'>
                     <span class="material-symbols-outlined">
                         close
                     </span>
                 </button>
+                <div
+                    class="w-5 h-5 border-3 border-[var(--primary-color)] border-t-transparent rounded-full animate-spin pagination-loader hidden">
+                </div>
             </div>
 
             <div class="w-full flex flex-col gap-3 !p-3 max-h-[560px] overflow-auto">
@@ -1597,114 +1644,8 @@
 
 @push('scripts')
     <script src="{{ asset('js/updated_dynamic_dropdown.js') }}"></script>
-    <script type='module' src="{{ asset('js/create-schedule-campaign.js') }}"></script>
+    <script type="module" src="{{ asset('js/create-schedule-campaign.js') }}"></script>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"
-        integrity="sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g=="
-        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script src="https://cdn.datatables.net/2.3.4/js/dataTables.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
-
-    <script>
-        $(document).ready(function() {
-            // 🌍 Make it GLOBAL so other JS files can use it
-            window.myDT = $('#myTable').DataTable({
-                pageLength: 50,
-                lengthMenu: [
-                    [10, 50, 100, 250, 500, -1],
-                    [10, 50, 100, 250, 500, "All"]
-                ],
-                responsive: true,
-                order: [
-                    [1, 'asc']
-                ],
-                columnDefs: [{
-                        orderable: false,
-                        targets: [0, 3]
-                    },
-                    {
-                        className: "text-center align-middle",
-                        targets: [0, 1, 3]
-                    }
-                ],
-                language: {
-                    search: "Search:",
-                    lengthMenu: "Show _MENU_ entries",
-                }
-            });
-            // ✅ Keep Select Manager in sync on every DataTables redraw
-            window.myDT.on('draw', function() {
-                if (window.articleSelectMgr) {
-                    window.articleSelectMgr.refresh();
-                }
-            });
-            window.randomDT = $('#RandomDomainsTable').DataTable({
-                pageLength: 50,
-                lengthMenu: [
-                    [10, 50, 100, 250, 500, -1], // -1 means “All”
-                    [10, 50, 100, 250, 500, "All"] // labels shown in dropdown
-                ],
-                responsive: true,
-                order: [
-                    [1, 'asc']
-                ], // default sort by sno
-                columnDefs: [{
-                        orderable: false,
-                        targets: [0, 2]
-                    }, // disable sort for checkbox + action
-                    {
-                        className: "!text-left !align-middle !px-2",
-                        targets: [0, 1, 3, 4, 5, 6]
-                    }, // center align checkbox + numeric cols
-                    {
-                        className: "!pl-4",
-                        targets: [1]
-                    } // center align checkbox + numeric cols
-                ],
-                language: {
-                    search: "Search:",
-                    lengthMenu: "Show _MENU_ entries",
-                }
-            });
-            window.domainSetDT = $('#domainSetTable').DataTable({
-                pageLength: 50,
-                lengthMenu: [
-                    [10, 50, 100, 250, 500, -1], // -1 means “All”
-                    [10, 50, 100, 250, 500, "All"] // labels shown in dropdown
-                ],
-                responsive: true,
-                order: [
-                    [1, 'asc']
-                ], // default sort by sno
-                columnDefs: [{
-                        orderable: false,
-                        targets: [0, 2]
-                    }, // disable sort for checkbox + action
-                    {
-                        className: "!text-center !align-middle !px-2",
-                        targets: [3, 4, 5, 6]
-                    }, // center align checkbox + numeric cols
-                    {
-                        className: "!pl-4",
-                        targets: [1]
-                    } // center align checkbox + numeric cols
-                ],
-                language: {
-                    search: "Search:",
-                    lengthMenu: "Show _MENU_ entries",
-                }
-            });
-            // -------------------------------
-            window.randomDT.on('draw', function() {
-                if (window.randomDomainSelectMgr) window.randomDomainSelectMgr.refresh();
-            });
-
-            window.domainSetDT.on('draw', function() {
-                if (window.domainSetSelectMgr) window.domainSetSelectMgr.refresh();
-            });
-
-        });
-    </script>
     {{-- WP Scheduled date table: also run on DOMContentLoaded so it works even if jQuery ready fails --}}
     <script>
         document.addEventListener('DOMContentLoaded', function() {

@@ -3,6 +3,7 @@
 @section('title', 'Sidebar Campaigns')
 
 @push('style')
+    @include('admin.campaigns.partials.campaign-list-table-styles')
     <style>
     .pagination nav{
         width: 100%;
@@ -63,78 +64,8 @@
 
         @endif
 
-        {{-- filters thing here --}}
-
-        <div
-            class="flex flex-col gap-3 content-card w-full min-w-0 campaign-list-toolbar">
-
-            {{-- <div
-                class="w-full flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-start">
-
-                <div class="w-full sm:w-auto shrink-0">
-                    <select name="" id="domain-category"
-                        class="bg-white border border-gray-300 h-11 !px-3 text-sm w-full sm:w-[92px] rounded-md outline-none focus:border-orange-600">
-                        <option value="">select</option>
-                    </select>
-                </div>
-                <div class="w-full sm:w-auto sm:min-w-0">
-                    <form action="#"
-                        class="w-full flex flex-col gap-2 sm:flex-row sm:flex-nowrap sm:items-center sm:gap-2"
-                        method="post">
-                        @csrf
-                        <select name="actions" id=""
-                            class="bg-white border border-gray-300 h-11 !px-3 text-sm w-full sm:w-[240px] md:w-[340px] lg:w-[420px] rounded-md outline-none focus:border-orange-600">
-                            <option value="">Bulk actions</option>
-                            <option value="1">Delete</option>
-                        </select>
-                        <input type="hidden" name="bulk_ids" id="valHolders">
-                        <button type="submit"
-                            class="h-11 !px-5 text-sm font-medium inline-flex items-center justify-center transition-all bg-[var(--sidebar-bg)] hover:bg-[var(--primary-color)] text-white rounded-md cursor-pointer shadow-sm shrink-0 w-full sm:w-auto">
-                            Apply
-                        </button>
-                    </form>
-
-
-                </div>
-
-            </div> --}}
-            <div
-                class="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[320px_minmax(320px,420px)] gap-3 items-stretch justify-start min-w-0">
-
-                @include('admin.campaigns.partials.campaign-owner-filter')
-
-                {{-- Search Box --}}
-
-                <div class="relative w-full min-w-0">
-                    <form method="GET" action="{{ url()->current() }}" class="relative w-full">
-
-                        {{-- keep other parameters --}}
-                        @foreach (request()->except(['search', 'page']) as $key => $value)
-                            @continue(is_array($value))
-                            <input type="hidden" name="{{ $key }}" value="{{ $value }}">
-                        @endforeach
-
-                        <input type="search" name="search" placeholder="search here" id="search_category"
-                            value="{{ request('search') }}"
-                            class="bg-gray-100 shadow border border-gray-200 h-12 !px-3 !pr-[50px] text-sm leading-normal w-full rounded outline-none">
-
-                        <button type="submit"
-                            class="w-12 h-12 flex items-center justify-center bg-[var(--sidebar-bg)] absolute top-0 right-0 rounded-r">
-                            <svg class="w-5 h-5 text-white !text-sm" fill="none" stroke="currentColor"
-                                viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                            </svg>
-                        </button>
-
-                    </form>
-
-
-                </div>
-
-            </div>
-        </div>
-
+        {{-- filters --}}
+        @include('admin.campaigns.partials.campaign-list-toolbar')
 
     </div>
 
@@ -160,7 +91,7 @@
         </div>
 
         <div class="overflow-x-auto !mt-3 w-full max-w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
-            <table class="display w-full min-w-[1100px] border border-gray-200 border-collapse text-sm whitespace-nowrap searchable-table">
+            <table class="campaign-list-table display w-full min-w-[1100px] border border-gray-200 border-collapse text-sm whitespace-nowrap searchable-table">
                 <thead>
                     <tr class="bg-gray-800 text-white">
                         <th>
@@ -171,7 +102,6 @@
                             $tHead = [
                                 'sno',
                                 'Campaign No',
-                                'Type',
                                 'Domain Category',
                                 'Sidebar Links',
                                 'Domains',
@@ -186,7 +116,10 @@
                         @endphp
 
                         @foreach ($tHead as $t)
-                            <th class="border border-gray-200 font-sans !font-normal !px-2 !py-3 text-left">
+                            <th @class([
+                                'border border-gray-200 font-sans !font-normal !px-2 !py-3 text-left',
+                                'actions-col min-w-[252px]' => $t === 'Actions',
+                            ])>
                                 {{ $t }}
                             </th>
                         @endforeach
@@ -234,11 +167,6 @@
                             {{-- campaign no --}}
                             <td class="border border-gray-200 !px-2 !py-3">
                                 {{ $campaign->campaign_no }}
-                            </td>
-
-                            {{-- type --}}
-                            <td class="border border-gray-200 !px-2 !py-3">
-                                Sidebar Campaign
                             </td>
 
                             {{-- domain category --}}
@@ -297,63 +225,25 @@
                             </td>
 
                             {{-- actions --}}
-                            <td class="border border-gray-200 !px-2 !py-3">
-                                <div class="flex gap-2 justify-center">
-                                    {{-- View campaign (tasks/links) --}}
-                                    <a href="{{ route('admin.sidebar.campaign.show', $campaign->id) }}"
-                                        class="bg-green-500 w-7 h-7 flex items-center justify-center rounded hover:bg-green-600"
-                                        title="View campaign">
-                                        <span class="material-symbols-outlined text-white !text-sm">visibility</span>
-                                    </a>
-                                    {{-- Edit / bulk edit links --}}
-                                    <a href="{{ route('admin.sidebar.campaign.edit', $campaign->id) }}"
-                                        class="bg-yellow-400 w-7 h-7 flex items-center justify-center rounded hover:bg-yellow-500"
-                                        title="Edit links (bulk update keyword/URL on remote and in DB)">
-                                        <span class="material-symbols-outlined text-white !text-sm">edit</span>
-                                    </a>
-                                    <a href="javascript:void(0)"
-                                        data-report="{{ route('admin.sidebar.campaign.report', [
-                                            'campaign_no' => $campaign->campaign_no,
-                                            'token' => $campaign->report_token,
-                                        ]) }}"
-                                        class="bg-gray-500 copy-link flex items-center justify-center rounded w-7 h-7 hover:bg-amber-600"
-                                        title="Copy report link">
-                                        <span class="material-symbols-outlined !text-sm text-white">content_copy</span>
-                                    </a>
-                                    {{-- {{ route('admin.sidebar-campaigns.report', $campaign->id) }} --}}
-                                    <a href="{{ route('admin.sidebar.campaign.report', [
+                            <td class="actions-col border border-gray-200 !px-2 !py-3 min-w-[252px]">
+                                @include('admin.campaigns.partials.campaign-list-actions', [
+                                    'viewUrl' => route('admin.sidebar.campaign.show', $campaign->id),
+                                    'editUrl' => route('admin.sidebar.campaign.edit', $campaign->id),
+                                    'reportUrl' => route('admin.sidebar.campaign.report', [
                                         'campaign_no' => $campaign->campaign_no,
                                         'token' => $campaign->report_token,
-                                    ]) }}"
-                                        class="bg-blue-600 w-7 h-7 flex items-center justify-center rounded hover:bg-blue-700">
-                                        <span class="material-symbols-outlined text-white !text-sm">assignment</span>
-                                    </a>
-                                    <form action="{{ route('admin.sidebar.campaign.destroy', $campaign->id) }}" method="POST"
-                                        class="inline"
-                                        onsubmit="return confirm('Delete this sidebar campaign? All tasks will be removed from the database and from remote blogroll.');">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button type="submit" class="bg-red-500 w-7 h-7 flex items-center justify-center rounded hover:bg-red-600"
-                                            title="Delete campaign and all tasks (DB + remote)">
-                                            <span class="material-symbols-outlined text-white !text-sm">delete</span>
-                                        </button>
-                                    </form>
-                                    <form action="{{ route('admin.sidebar.campaign.purge.local', $campaign->id) }}" method="POST"
-                                        class="inline"
-                                        onsubmit="return confirm('Remove this campaign from the dashboard only? Remote blogroll links stay. You will not be able to edit this campaign here anymore.');">
-                                        @csrf
-                                        <button type="submit" class="bg-orange-500 w-7 h-7 flex items-center justify-center rounded hover:bg-orange-600"
-                                            title="Dashboard only — does not delete remote links">
-                                            <span class="material-symbols-outlined text-white !text-sm">database</span>
-                                        </button>
-                                    </form>
-                                </div>
+                                    ]),
+                                    'destroyAction' => route('admin.sidebar.campaign.destroy', $campaign->id),
+                                    'purgeAction' => route('admin.sidebar.campaign.purge.local', $campaign->id),
+                                    'destroyConfirm' => 'Delete this sidebar campaign? All tasks will be removed from the database and from remote blogroll.',
+                                    'purgeConfirm' => 'Remove this campaign from the dashboard only? Remote blogroll links stay. You will not be able to edit this campaign here anymore.',
+                                ])
                             </td>
                         </tr>
 
                     @empty
                         <tr>
-                            <td colspan="13" class="text-center !py-4 text-gray-500 bg-gray-100">
+                            <td colspan="12" class="text-center !py-4 text-gray-500 bg-gray-100">
                                 No sidebar campaigns found...
                             </td>
                         </tr>

@@ -19,9 +19,10 @@ class BlogrollApiService
         if ($domain === '') {
             throw new \InvalidArgumentException('Domain cannot be empty');
         }
-        if (!preg_match('~^https?://~i', $domain)) {
-            $domain = 'https://' . $domain;
+        if (! preg_match('~^https?://~i', $domain)) {
+            $domain = 'https://'.$domain;
         }
+
         return rtrim($domain, '/');
     }
 
@@ -32,7 +33,7 @@ class BlogrollApiService
     public static function fetchBlogroll(string $domain, string $apiKey): array
     {
         $base = self::baseUrl($domain);
-        $url  = $base . '/wp-json/external/v1/blogroll?api_key=' . urlencode($apiKey);
+        $url = $base.'/wp-json/external/v1/blogroll?api_key='.urlencode($apiKey);
 
         $res = Http::withoutVerifying()
             ->timeout(60)
@@ -40,19 +41,19 @@ class BlogrollApiService
             ->get($url);
 
         $body = $res->json();
-        if (!is_array($body)) {
+        if (! is_array($body)) {
             return ['status' => false, 'message' => $res->body(), 'data' => []];
         }
 
         $data = $body['data'] ?? [];
-        if (!is_array($data)) {
+        if (! is_array($data)) {
             $data = [];
         }
 
         return [
-            'status'  => (bool) ($body['status'] ?? false),
-            'message'  => (string) ($body['message'] ?? ''),
-            'data'     => $data,
+            'status' => (bool) ($body['status'] ?? false),
+            'message' => (string) ($body['message'] ?? ''),
+            'data' => $data,
         ];
     }
 
@@ -64,7 +65,7 @@ class BlogrollApiService
     {
         $remoteId = trim($remoteId);
         foreach ($data as $index => $entry) {
-            if (!is_array($entry)) {
+            if (! is_array($entry)) {
                 continue;
             }
             $id = $entry['id'] ?? null;
@@ -72,6 +73,7 @@ class BlogrollApiService
                 return (int) $index;
             }
         }
+
         return null;
     }
 
@@ -86,14 +88,13 @@ class BlogrollApiService
         string $keyword,
         string $link,
         ?array $rel = null
-    ): \Illuminate\Http\Client\Response
-    {
-        $base     = self::baseUrl($domain);
-        $endpoint = $base . '/wp-json/external/v1/blogroll/update/' . $index;
+    ): \Illuminate\Http\Client\Response {
+        $base = self::baseUrl($domain);
+        $endpoint = $base.'/wp-json/external/v1/blogroll/update/'.$index;
         $payload = [
             'api_key' => $apiKey,
             'keyword' => $keyword,
-            'link'    => $link,
+            'link' => $link,
         ];
         if (is_array($rel)) {
             $tokens = array_values($rel);
@@ -103,6 +104,9 @@ class BlogrollApiService
             $payload['no_follow'] = in_array('nofollow', $tokens, true) ? 1 : 0;
             $payload['sponsored'] = in_array('sponsored', $tokens, true) ? 1 : 0;
             $payload['sponsor'] = in_array('sponsored', $tokens, true) ? 1 : 0;
+            $payload['ugc'] = in_array('ugc', $tokens, true) ? 1 : 0;
+            $payload['noopener'] = in_array('noopener', $tokens, true) ? 1 : 0;
+            $payload['noreferrer'] = in_array('noreferrer', $tokens, true) ? 1 : 0;
         }
 
         return Http::withoutVerifying()
@@ -123,14 +127,13 @@ class BlogrollApiService
         string $keyword,
         string $link,
         ?array $rel = null
-    ): \Illuminate\Http\Client\Response
-    {
-        $base    = self::baseUrl($domain);
-        $endpoint = $base . '/wp-json/external/v1/blogroll/update/' . urlencode($remoteId);
+    ): \Illuminate\Http\Client\Response {
+        $base = self::baseUrl($domain);
+        $endpoint = $base.'/wp-json/external/v1/blogroll/update/'.urlencode($remoteId);
         $payload = [
             'api_key' => $apiKey,
             'keyword' => $keyword,
-            'link'    => $link,
+            'link' => $link,
         ];
         if (is_array($rel)) {
             $tokens = array_values($rel);
@@ -140,6 +143,9 @@ class BlogrollApiService
             $payload['no_follow'] = in_array('nofollow', $tokens, true) ? 1 : 0;
             $payload['sponsored'] = in_array('sponsored', $tokens, true) ? 1 : 0;
             $payload['sponsor'] = in_array('sponsored', $tokens, true) ? 1 : 0;
+            $payload['ugc'] = in_array('ugc', $tokens, true) ? 1 : 0;
+            $payload['noopener'] = in_array('noopener', $tokens, true) ? 1 : 0;
+            $payload['noreferrer'] = in_array('noreferrer', $tokens, true) ? 1 : 0;
         }
 
         return Http::withoutVerifying()
@@ -156,7 +162,7 @@ class BlogrollApiService
     public static function deleteEntry(string $domain, string $apiKey, int $index): \Illuminate\Http\Client\Response
     {
         $base = self::baseUrl($domain);
-        $url  = $base . '/wp-json/external/v1/blogroll/delete/' . $index . '?api_key=' . urlencode($apiKey);
+        $url = $base.'/wp-json/external/v1/blogroll/delete/'.$index.'?api_key='.urlencode($apiKey);
 
         $res = Http::withoutVerifying()
             ->timeout(60)
@@ -168,7 +174,8 @@ class BlogrollApiService
         }
 
         // Fallback: POST with api_key in body (in case remote expects POST)
-        $endpoint = $base . '/wp-json/external/v1/blogroll/delete/' . $index;
+        $endpoint = $base.'/wp-json/external/v1/blogroll/delete/'.$index;
+
         return Http::withoutVerifying()
             ->timeout(60)
             ->acceptJson()
@@ -183,7 +190,7 @@ class BlogrollApiService
     public static function deleteEntryByRemoteId(string $domain, string $apiKey, string $remoteId): \Illuminate\Http\Client\Response
     {
         $base = self::baseUrl($domain);
-        $url  = $base . '/wp-json/external/v1/blogroll/delete/' . urlencode($remoteId) . '?api_key=' . urlencode($apiKey);
+        $url = $base.'/wp-json/external/v1/blogroll/delete/'.urlencode($remoteId).'?api_key='.urlencode($apiKey);
 
         return Http::withoutVerifying()
             ->timeout(60)

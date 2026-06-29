@@ -633,6 +633,11 @@ window.addEventListener("DOMContentLoaded", () => {
             if (target.value == "normal") {
                 document.querySelector(".add-more-window").classList.remove("hidden");
             }
+            // ✅ Update hidden field with selected method
+            const methodHolder = document.getElementById("keywordmethodHolder");
+            if (methodHolder) {
+                methodHolder.value = target.value;
+            }
         }
 
         function tabStyleSwitcher(btns, section, func = false) {
@@ -679,11 +684,8 @@ window.addEventListener("DOMContentLoaded", () => {
         // === Utility: Update borders dynamically ===
         function updateBorders() {
             const boxes = document.querySelectorAll(".keyword-url-box");
-            boxes.forEach((box, i) => {
+            boxes.forEach((box) => {
                 box.classList.remove("border-b", "border-b-[var(--primary-color)]");
-                if (i < boxes.length - 1) {
-                    box.classList.add("border-b", "border-b-[var(--primary-color)]");
-                }
             });
         }
 
@@ -706,7 +708,7 @@ window.addEventListener("DOMContentLoaded", () => {
                 .reduce((a, b) => a + b, 0);
         }
         function ensureOverallProgressNode() {
-            const host = document.querySelector(".add-more-window.keyword-tab-sec > div");
+            const host = document.querySelector(".add-more-window.keyword-tab-sec .keyword-progress-wrap");
             if (!host) return null;
             let node = document.getElementById("overall-sidebar-keyword-progress");
             if (node) return node;
@@ -866,33 +868,34 @@ window.addEventListener("DOMContentLoaded", () => {
             }
 
             let div = document.createElement("div");
-            div.className = "flex w-full bg-orange-100 keyword-url-box relative keyword-mobile-stack";
+            div.className =
+                "flex w-full bg-orange-100 keyword-url-box relative keyword-mobile-stack";
             div.innerHTML = `
-                <div class="w-3/5 flex flex-col gap-2 !p-4 !pt-[45px] keyword-mobile-main">
-                    <div class="w-full flex items-center">
-                        <label class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-1/5 keyword-mobile-label">Client Url</label>
-                        <div class="w-4/5 flex items-center justify-between keyword-mobile-input-wrap">
-                            <input type="text" placeholder="Enter Url" class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-[78%] client-url keyword-mobile-input-main">
-                            <input type="text" value="0" class="bg-gray-50 !p-2 text-sm outline-none text-center border border-gray-300 w-1/5 client-url-quantity num-inp keyword-mobile-qty">
-                        </div>
-                    </div>
-                    <div class="w-full flex items-center justify-end">
-                        <button class="!p-1 bg-red-600 rounded text-sm cursor-pointer text-white remove-keyword-box">delete</button>
-                    </div>
+        <div class="w-3/5 flex flex-col gap-2 !p-4 !pt-[45px] keyword-mobile-main">
+            <div class="w-full flex items-center">
+                <label class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-1/5 keyword-mobile-label">Client Url</label>
+                <div class="w-4/5 flex items-center justify-between keyword-mobile-input-wrap">
+                    <input type="text" placeholder="Enter Url" class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-[78%] client-url keyword-mobile-input-main">
+                    <input type="text" value="0" class="bg-gray-50 !p-2 text-sm outline-none text-center border border-gray-300 w-1/5 client-url-quantity num-inp keyword-mobile-qty">
                 </div>
-                <div class="w-2/5 flex flex-col gap-1 !p-4 keyword-mobile-side">
-                    <label class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">Client Keyword</label>
-                    <div class="w-full flex flex-wrap justify-between keywords-area-parent">
-                        <div class="w-[78%] flex flex-wrap keyword-mobile-input-main">
-                            <textarea rows="5" class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none keywords-area"></textarea>
-                        </div>
-                        <div class="w-1/5 flex flex-wrap keyword-mobile-qty">
-                            <textarea rows="5" class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none text-center keywords-quantity-area"></textarea>
-                        </div>
-                    </div>
+            </div>
+            <div class="w-full flex items-center justify-end">
+                <button type="button" class="!p-1 bg-red-600 rounded text-sm cursor-pointer text-white remove-keyword-box">delete</button>
+            </div>
+        </div>
+        <div class="w-2/5 flex flex-col gap-1 !p-4 keyword-mobile-side">
+            <label class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">Client Keyword</label>
+            <div class="w-full flex flex-wrap justify-between keywords-area-parent">
+                <div class="w-[78%] flex flex-wrap keyword-mobile-input-main">
+                    <textarea rows="5" class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none keywords-area"></textarea>
                 </div>
-                <div class="box-count flex !px-3 !py-1 text-sm font-semibold bg-[var(--primary-color)] text-white rounded absolute top-3 left-3">01</div>
-            `;
+                <div class="w-1/5 flex flex-wrap keyword-mobile-qty">
+                    <textarea rows="5" class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none text-center keywords-quantity-area"></textarea>
+                </div>
+            </div>
+        </div>
+        <div class="box-count flex !px-3 !py-1 text-sm font-semibold bg-[var(--primary-color)] text-white rounded absolute top-3 left-3">01</div>
+    `;
 
             keywordUrlCon.appendChild(div);
             updateBoxCount();
@@ -927,9 +930,54 @@ window.addEventListener("DOMContentLoaded", () => {
             item.addEventListener("input", (e) => {
                 let splitVal = e.target.value.split("\n").filter((line) => line.trim() !== "");
                 let parent = e.target.closest("div");
-                parent.querySelector(".bulk-count").textContent = `(${splitVal.length})`;
+                const counter = parent?.querySelector(".bulk-count");
+                if (counter) {
+                    counter.textContent = splitVal.length > 0 ? `(${splitVal.length})` : "";
+                }
             });
         });
+
+        // Update raw HTML sidebar quantity display when sidebar count changes
+        const sidebarQtyInput = document.getElementById("sidebar-quantity");
+        if (sidebarQtyInput) {
+            sidebarQtyInput.addEventListener("input", () => {
+                const qty = parseInt(sidebarQtyInput.value) || 0;
+                const rawHtmlQtySpan = document.getElementById("raw-html-sidebar-qty");
+                if (rawHtmlQtySpan) {
+                    rawHtmlQtySpan.textContent = qty;
+                }
+            });
+        }
+
+        // xxxxxxxxxxxxxxxxxxxxxxx raw HTML anchors input xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+        const rawHtmlAnchorsTextarea = document.getElementById("raw-html-anchors");
+        if (rawHtmlAnchorsTextarea) {
+            rawHtmlAnchorsTextarea.addEventListener("input", (e) => {
+                // ✅ Count only non-empty lines (same as validation logic)
+                const lines = e.target.value.split("\n").filter(line => line.trim() !== "");
+                const countSpan = document.getElementById("raw-html-line-count");
+                const sidebarQtySpan = document.getElementById("raw-html-sidebar-qty");
+
+                if (countSpan) {
+                    countSpan.textContent = lines.length;
+
+                    // ✅ Visual feedback: green if matches, red if doesn't match
+                    const currentSidebarCount = getSidebarCount();
+                    if (lines.length === currentSidebarCount) {
+                        countSpan.classList.remove("text-red-600");
+                        countSpan.classList.add("text-green-600");
+                    } else {
+                        countSpan.classList.remove("text-green-600");
+                        countSpan.classList.add("text-red-600");
+                    }
+                }
+
+                // ✅ Update sidebar quantity display
+                if (sidebarQtySpan) {
+                    sidebarQtySpan.textContent = getSidebarCount();
+                }
+            });
+        }
 
         //===============================================================================================================
 
@@ -948,6 +996,15 @@ window.addEventListener("DOMContentLoaded", () => {
                 : "";
             const sponsored = document.getElementById("sponsored_link")?.checked
                 ? document.getElementById("sponsored_link").value
+                : "";
+            const ugc = document.getElementById("ugc_link")?.checked
+                ? document.getElementById("ugc_link").value
+                : "";
+            const noopener = document.getElementById("noopener_link")?.checked
+                ? document.getElementById("noopener_link").value
+                : "";
+            const noreferrer = document.getElementById("noreferrer_link")?.checked
+                ? document.getElementById("noreferrer_link").value
                 : "";
 
             let keyWordBox = document.querySelectorAll(".keyword-url-box");
@@ -1015,6 +1072,9 @@ window.addEventListener("DOMContentLoaded", () => {
                             keyword: keywords[keywordIndex],
                             nofollow: noFollow,
                             sponsored: sponsored,
+                            ugc: ugc,
+                            noopener: noopener,
+                            noreferrer: noreferrer,
                         });
 
                         repeatCount--;
@@ -1055,10 +1115,131 @@ window.addEventListener("DOMContentLoaded", () => {
                         keyword: bulkKeywordsVal[x],
                         nofollow: noFollow,
                         sponsored: sponsored,
+                        ugc: ugc,
+                        noopener: noopener,
+                        noreferrer: noreferrer,
                     });
                 }
 
                 keywords_url_data = bulkData;
+            }
+
+            if (method == "rawanchor") {
+                // Raw HTML Anchors: parse anchor tags and extract href, text, and rel attributes
+                const rawHtmlTextarea = document.getElementById("raw-html-anchors");
+                if (!rawHtmlTextarea) {
+                    alert("Raw HTML anchors textarea not found");
+                    return;
+                }
+
+                // ✅ Split by newlines and filter out empty lines
+                const allLines = rawHtmlTextarea.value.split("\n");
+                const lines = allLines.filter(line => line.trim() !== "");
+
+                if (lines.length !== currentSidebarCount) {
+                    const emptyLineCount = allLines.length - lines.length;
+                    let errorMsg = `❌ Line count mismatch!\n\n`;
+                    errorMsg += `Required: ${currentSidebarCount} lines (one per sidebar link)\n`;
+                    errorMsg += `Current: ${lines.length} non-empty lines\n`;
+                    if (emptyLineCount > 0) {
+                        errorMsg += `Empty lines: ${emptyLineCount} (these are ignored)\n\n`;
+                        errorMsg += `Tip: Remove empty lines between anchor tags.`;
+                    } else if (lines.length < currentSidebarCount) {
+                        errorMsg += `\nYou need ${currentSidebarCount - lines.length} more anchor lines.`;
+                    } else {
+                        errorMsg += `\nYou have ${lines.length - currentSidebarCount} extra anchor lines.`;
+                    }
+                    alert(errorMsg);
+                    return;
+                }
+
+                let rawAnchorData = [];
+
+                for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+                    const line = lines[lineIdx];
+
+                    // Parse all anchor tags in this line (comma-separated or not)
+                    const anchorRegex = /<a\s+([^>]*?)>([^<]+)<\/a>/gi;
+                    let matches = [];
+                    let match;
+
+                    while ((match = anchorRegex.exec(line)) !== null) {
+                        matches.push({
+                            attributes: match[1],
+                            text: match[2]
+                        });
+                    }
+
+                    if (matches.length === 0) {
+                        alert(`Line ${lineIdx + 1} has no valid anchor tags. Each line must have at least one <a> tag.`);
+                        return;
+                    }
+
+                    if (matches.length > 5) {
+                        alert(`Line ${lineIdx + 1} has ${matches.length} anchor tags. Maximum is 5 per line.`);
+                        return;
+                    }
+
+                    let urlsForThisLink = [];
+                    let keywordsForThisLink = [];
+                    let relAttrs = {
+                        nofollow: false,
+                        sponsored: false,
+                        ugc: false,
+                        noopener: false,
+                        noreferrer: false
+                    };
+                    let rawRelString = ""; // ✅ Store the complete rel attribute string
+
+                    for (let anchor of matches) {
+                        // Extract href
+                        const hrefMatch = anchor.attributes.match(/href=["']([^"']+)["']/i);
+                        const href = hrefMatch ? hrefMatch[1] : "";
+
+                        // Extract rel attribute (COMPLETE STRING)
+                        const relMatch = anchor.attributes.match(/rel=["']([^"']+)["']/i);
+                        const relValue = relMatch ? relMatch[1] : "";
+
+                        // ✅ Store the raw rel string (preserve original case and all values)
+                        if (relValue && !rawRelString) {
+                            rawRelString = relValue.trim();
+                        }
+
+                        // Parse known rel attributes for backward compatibility
+                        const relLower = relValue.toLowerCase();
+                        if (relLower.includes("nofollow")) relAttrs.nofollow = true;
+                        if (relLower.includes("sponsored")) relAttrs.sponsored = true;
+                        if (relLower.includes("ugc")) relAttrs.ugc = true;
+                        if (relLower.includes("noopener")) relAttrs.noopener = true;
+                        if (relLower.includes("noreferrer")) relAttrs.noreferrer = true;
+
+                        // Extract keyword (text content)
+                        const keyword = anchor.text.trim();
+
+                        if (href && keyword) {
+                            urlsForThisLink.push(href);
+                            keywordsForThisLink.push(keyword);
+                        }
+                    }
+
+                    if (urlsForThisLink.length === 0) {
+                        alert(`Line ${lineIdx + 1} has no valid keyword/URL pairs.`);
+                        return;
+                    }
+
+                    rawAnchorData.push({
+                        url: urlsForThisLink,
+                        keyword: keywordsForThisLink,
+                        nofollow: relAttrs.nofollow ? "1" : "",
+                        sponsored: relAttrs.sponsored ? "1" : "",
+                        ugc: relAttrs.ugc ? "1" : "",
+                        noopener: relAttrs.noopener ? "1" : "",
+                        noreferrer: relAttrs.noreferrer ? "1" : "",
+                        raw_rel_attr: rawRelString, // ✅ Pass the complete rel string
+                    });
+                }
+
+                keywords_url_data = rawAnchorData;
             }
 
             let keywordsDataTable = document.getElementById("keywords-data-table");

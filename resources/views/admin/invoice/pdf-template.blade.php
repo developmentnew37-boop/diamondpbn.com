@@ -552,14 +552,15 @@ body {
                         @if($company_address)
                         <p>Office Address: {{ $company_address }}</p>
                         @endif
-                        @if($company_email)
+                        {{-- @if($company_email)
                         <p>Email: {{ $company_email }}</p>
-                        @endif
+                        @endif --}}
                         @if($company_phone)
                         <p>Phone: {{ $company_phone }}</p>
                         @endif
                         @if($notes)
-                        <p style="margin-top: 9px;">{{ $notes }}</p>
+                        {{-- <p style="margin-top: 9px;">{{ $notes }}</p> --}}
+                        <p style="margin-top: 9px;"> {!! nl2br(e($notes)) !!}</p>
                         @endif
                     </div>
                 </td>

@@ -12,10 +12,11 @@ sudo apt install supervisor
 - Replace `/var/www/pbn_automation_software` with your actual project path on the VPS.
 - Replace `user=www-data` with your web server user (e.g. `www-data`, `nginx`, or your deploy user).
 
-Copy the config to Supervisor:
+Copy configs to Supervisor:
 
 ```bash
 sudo cp deploy/supervisor/laravel-worker.conf /etc/supervisor/conf.d/laravel-worker.conf
+sudo cp deploy/supervisor/laravel-webhook-worker.conf /etc/supervisor/conf.d/laravel-webhook-worker.conf
 ```
 
 Edit if needed:
@@ -37,7 +38,27 @@ sudo chown www-data:www-data /var/www/pbn_automation_software/storage/logs/worke
 sudo supervisorctl reread
 sudo supervisorctl update
 sudo supervisorctl start laravel-worker:*
+sudo supervisorctl start laravel-webhook-worker:*
 ```
+
+## Webhook secret rotation (dedicated queue)
+
+| Item | Value |
+|------|--------|
+| Schedule | `routes/console.php` — `0 */8 * * *` (every 8 hours) |
+| Job | `RefreshWebhookSecretsJob` |
+| Queue | `webhook-secret` |
+| Worker | `php artisan queue:work --queue=webhook-secret` |
+
+**Server load:** Very low. The job only updates a few rows in `webhook_secrets` (no HTTP, no heavy CPU). It runs 3 times per day. A single Supervisor process (`numprocs=1`) is enough.
+
+**Cron still required** (dispatches the job into the queue):
+
+```bash
+* * * * * cd /path/to/project && php artisan schedule:run >> /dev/null 2>&1
+```
+
+**What can load the server more** (not webhook): `scheduled_campaigns` dispatch every minute, large PBN publish queues, domain status checks with many parallel HTTP calls. Use separate Supervisor programs per queue group if needed.
 
 ## 5. Useful commands
 
@@ -50,6 +71,7 @@ sudo supervisorctl stop laravel-worker:*
 
 # Restart after code deploy
 sudo supervisorctl restart laravel-worker:*
+sudo supervisorctl restart laravel-webhook-worker:*
 
 # Tail worker log
 tail -f /var/www/pbn_automation_software/storage/logs/worker.log
@@ -58,6 +80,7 @@ tail -f /var/www/pbn_automation_software/storage/logs/worker.log
 ## Options in the config
 
 - **numprocs=2** – number of worker processes (increase if you have many jobs).
+- **--queue=...** – **required**. The main worker listens to all named queues (campaigns, domain checks, plugin deploy, bulk updates, etc.). Without `--queue`, only `default` is processed.
 - **--sleep=3** – seconds to sleep when no jobs.
 - **--tries=3** – job retry attempts.
 - **--max-time=3600** – restart worker after 1 hour (releases memory, picks up code changes).

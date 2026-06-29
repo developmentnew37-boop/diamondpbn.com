@@ -2,14 +2,18 @@
 
 @section('title', 'Sidebar Campaigns')
 
+@push('style')
+    @include('admin.campaigns.partials.campaign-list-table-styles')
+@endpush
+
 @section('main-content')
 
     {{-- bread-crumbs --}}
-    <div class="page-header">
-        <div class="w-full flex flex-wrap items-center">
-            <div class="w-1/2 flex flex-col gap-2 flex-wrap">
+    <div class="page-header w-full max-w-full min-w-0">
+        <div class="w-full flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div class="w-full md:flex-1 flex flex-col gap-2 min-w-0">
                 <h2 class="page-title">Dashboards</h2>
-                <div class="breadcrumb">
+                <div class="breadcrumb flex-wrap">
                     <div class="breadcrumb-item">
                         <a href="{{ route('admin.dashboard') }}" class="breadcrumb-link">Dashboard</a>
                         <span>›</span>
@@ -21,10 +25,10 @@
 
                 </div>
             </div>
-            <div class="w-1/2 flex flex-wrap justify-end items-center">
+            <div class="w-full md:w-auto flex flex-wrap justify-start md:justify-end items-center md:shrink-0">
                 @if (Auth::guard('admin')->user()->canCreateCampaigns())
                 <a href="{{ route('admin.schedule.sidebar.campaign.create') }}"
-                    class="flex !p-2 !py-3 text-[16px] font-normal w-fit justify-center duration:300 bg-[var(--primary-color)] 
+                    class="flex !p-2 !py-3 text-[16px] font-normal w-full sm:w-fit justify-center duration:300 bg-[var(--primary-color)] 
                     whitespace-nowrap hover:bg-[var(--primary-color)]/70 text-white rounded transition-all duration">
                     Create Campaign</a>
                 @endif
@@ -150,8 +154,8 @@
             <span class="text-sm text-gray-500">Select campaigns with checkboxes, then retry failed tasks or remove local records.</span>
         </div>
 
-        <div class="overflow-x-auto !mt-3 w-full">
-            <table class="display w-full border border-gray-200 border-collapse text-sm whitespace-nowrap searchable-table">
+        <div class="overflow-x-auto !mt-3 w-full max-w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
+            <table class="campaign-list-table display w-full min-w-[1200px] border border-gray-200 border-collapse text-sm whitespace-nowrap searchable-table">
                 <thead>
                     <tr class="bg-gray-800 text-white">
                         <th>
@@ -180,7 +184,10 @@
                         @endphp
 
                         @foreach ($tHead as $t)
-                            <th class="border border-gray-200 font-sans !font-normal !px-2 !py-3 text-left">
+                            <th @class([
+                                'border border-gray-200 font-sans !font-normal !px-2 !py-3 text-left',
+                                'actions-col min-w-[252px]' => $t === 'Actions',
+                            ])>
                                 {{ $t }}
                             </th>
                         @endforeach
@@ -306,48 +313,20 @@
                             </td>
 
                             {{-- actions --}}
-                            <td class="border border-gray-200 !px-2 !py-3">
-                                <div class="flex  gap-1 justify-center">
-                                    <a href="{{ route('admin.schedule.sidebar.campaign.show', $campaign->id) }}"
-                                        class="bg-green-500 w-7 h-7 flex items-center justify-center rounded hover:bg-green-600" title="View campaign">
-                                        <span class="material-symbols-outlined text-white !text-sm">visibility</span>
-                                    </a>
-                                    <a href="{{ route('admin.schedule.sidebar.campaign.edit', $campaign->id) }}"
-                                        class="bg-black w-7 h-7 flex items-center justify-center rounded hover:bg-amber-600" title="Edit campaign">
-                                        <span class="material-symbols-outlined text-white !text-sm">edit</span>
-                                    </a>
-                                    <a href="javascript:void(0)"
-                                        data-report="{{ route('admin.schedule.sidebar.campaign.report', [
-                                            'campaign_no' => $campaign->campaign_no,
-                                            'token' => $campaign->report_token,
-                                        ]) }}"
-                                        class="bg-yellow-500 copy-link flex items-center justify-center rounded w-7 h-7 hover:bg-yellow-600" title="Copy report link">
-                                        <span class="material-symbols-outlined !text-sm text-white">content_copy</span>
-                                    </a>
-                                    <a href="{{ route('admin.schedule.sidebar.campaign.report', [
+                            <td class="actions-col border border-gray-200 !px-2 !py-3 min-w-[252px]">
+                                @include('admin.campaigns.partials.campaign-list-actions', [
+                                    'viewUrl' => route('admin.schedule.sidebar.campaign.show', $campaign->id),
+                                    'editUrl' => route('admin.schedule.sidebar.campaign.edit', $campaign->id),
+                                    'reportUrl' => route('admin.schedule.sidebar.campaign.report', [
                                         'campaign_no' => $campaign->campaign_no,
                                         'token' => $campaign->report_token,
-                                    ]) }}"
-                                        target="_blank"
-                                        class="bg-blue-600 w-7 h-7 flex items-center justify-center rounded hover:bg-blue-700" title="Open report">
-                                        <span class="material-symbols-outlined text-white !text-sm">assignment</span>
-                                    </a>
-                                    <form action="{{ route('admin.schedule.sidebar.campaign.destroy', $campaign->id) }}" method="post" class="inline"
-                                        onsubmit="return confirm('Delete this campaign? All blogroll links will be removed from remote sites and from the database.');">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button type="submit" class="bg-red-500 w-7 h-7 flex items-center justify-center rounded hover:bg-red-600 border-0 cursor-pointer" title="Delete campaign">
-                                            <span class="material-symbols-outlined text-white !text-sm">delete</span>
-                                        </button>
-                                    </form>
-                                    <form action="{{ route('admin.schedule.sidebar.campaign.purge.local', $campaign->id) }}" method="post" class="inline"
-                                        onsubmit="return confirm('Remove this campaign from the dashboard only? Remote blogroll links stay. You will not be able to edit this campaign here anymore.');">
-                                        @csrf
-                                        <button type="submit" class="bg-orange-500 w-7 h-7 flex items-center justify-center rounded hover:bg-orange-600 border-0 cursor-pointer" title="Dashboard only — keeps remote links">
-                                            <span class="material-symbols-outlined text-white !text-sm">database</span>
-                                        </button>
-                                    </form>
-                                </div>
+                                    ]),
+                                    'openReportInNewTab' => true,
+                                    'destroyAction' => route('admin.schedule.sidebar.campaign.destroy', $campaign->id),
+                                    'purgeAction' => route('admin.schedule.sidebar.campaign.purge.local', $campaign->id),
+                                    'destroyConfirm' => 'Delete this campaign? All blogroll links will be removed from remote sites and from the database.',
+                                    'purgeConfirm' => 'Remove this campaign from the dashboard only? Remote blogroll links stay. You will not be able to edit this campaign here anymore.',
+                                ])
                             </td>
 
                         </tr>

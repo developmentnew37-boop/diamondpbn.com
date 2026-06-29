@@ -154,14 +154,18 @@
                                 </td>
 
                                 {{-- Target URL --}}
+                                @php
+                                    $targetUrlCell = \App\Support\ReportDisplay::url($task->linkRow?->target_url);
+                                    $anchorCell = \App\Support\ReportDisplay::keyword($task->linkRow?->anchor_keyword);
+                                @endphp
                                 <td class="border !px-2 !py-2 max-w-[240px] truncate"
-                                    title="{{ $task->linkRow?->target_url }}">
-                                    {{ $task->linkRow?->target_url ?? '-' }}
+                                    title="{{ $targetUrlCell['title'] }}">
+                                    {{ $targetUrlCell['display'] }}
                                 </td>
 
                                 {{-- Anchor --}}
-                                <td class="border !px-2 !py-2">
-                                    {{ $task->linkRow?->anchor_keyword ?? '-' }}
+                                <td class="border !px-2 !py-2" title="{{ $anchorCell['title'] }}">
+                                    {{ $anchorCell['display'] }}
                                 </td>
 
                                 {{-- Nofollow --}}

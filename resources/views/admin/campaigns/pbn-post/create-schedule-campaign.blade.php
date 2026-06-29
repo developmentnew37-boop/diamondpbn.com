@@ -124,7 +124,51 @@
         .multi-bulk-x-scroll::-webkit-scrollbar-thumb:hover {
             background: #64748b;
         }
+
+        /* Checkbox row selection — plain tables with custom pagination (not DataTables) */
+        #myTable tbody tr[class*="bg-blue-100"],
+        #RandomDomainsTable tbody tr[class*="bg-blue-100"],
+        #domainSetTable tbody tr[class*="bg-blue-100"],
+        table.display tbody tr[class*="bg-blue-100"] {
+            background-color: #dbeafe !important;
+        }
+
+        /* Article selection modal — keep footer visible */
+        .dy-pop-box {
+            display: flex;
+            flex-direction: column;
+            max-height: calc(100vh - 24px);
+        }
+
+        .article-selected-modal-footer {
+            flex-shrink: 0;
+        }
+
+        #campaign-form {
+            overflow-x: clip;
+        }
+
+        #campaign-form .campaigns-section,
+        #campaign-form .article-opt-box,
+        #campaign-form .domains-sections,
+        #campaign-form [data-dropdown-container] {
+            overflow: visible;
+        }
+
+        #campaign-form [data-dropdown-container]:focus-within {
+            z-index: 40;
+        }
+
+        #campaign-form [data-dropdown] {
+            z-index: 50;
+            max-width: 100%;
+        }
     </style>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"
+        integrity="sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 @endpush
 
 
@@ -847,7 +891,7 @@
                             @endphp
                             @foreach ($tHead as $t)
                                 <th
-                                    class="border border-gray-200 font-sans !font-normal !px-2 !py-3 capitilize text-center text-xl capitalize">
+                                    class="border border-gray-200 font-sans !font-normal !px-1.5 sm:!px-2 !py-2 sm:!py-3 text-center text-[11px] sm:text-sm md:text-base capitalize leading-tight whitespace-normal break-words">
                                     {{ $t }}
                                 </th>
                             @endforeach
@@ -1213,13 +1257,16 @@
         <div class="dy-pop-box w-[96%] sm:w-[80%] max-w-[850px] max-h-[calc(100vh-24px)] sm:max-h-none flex flex-col items-stretch !shadow-2xl bg-gray-50 border border-gray-300 z-2 rounded !mt-3 sm:!mt-[70px] opacity-0 -translate-y-[20%] linear  duration-600 transition-all min-w-0"
             id="dy-article-box">
             {{-- pop top bar --}}
-            <div class="w-full flex justify-between items-center !bg-gray-200 !p-3">
+            <div class="w-full flex justify-between items-center !bg-gray-200 !p-3 relative shrink-0">
                 <h6>Selected Articles <span class="dy-article-count" id="selectedCount">(0)</span></h6>
                 <button type="button" class="cursor-pointer article-set-close" id='dy-close-btn'>
                     <span class="material-symbols-outlined">
                         close
                     </span>
                 </button>
+                <div
+                    class="w-5 h-5 border-3 border-[var(--primary-color)] border-t-transparent rounded-full animate-spin pagination-loader hidden">
+                </div>
             </div>
 
             <div class="w-full flex flex-col gap-3 !p-3 max-h-[560px] overflow-auto">
@@ -1412,6 +1459,14 @@
                         <input type="radio" name="keyword_data" id="add_multi_bulk_keyword_url"
                             class="keyword-method-inp" value="multi_bulk"
                             data-id="multi-bulk-keyword-url-container" hidden>
+                    </label>
+                    <label
+                        class="!p-2 sm:!p-3 bg-gray-50 border border-gray-300 border-b-0 text-xs sm:text-sm text-center duration-300 transition-all cursor-pointer keyword-tab-btn whitespace-nowrap"
+                        id="add_raw_html_keyword_url">
+                        Raw HTML
+                        <input type="radio" name="keyword_data" id="add_raw_html_keyword_url"
+                            class="keyword-method-inp" value="raw_html"
+                            data-id="raw-html-keyword-url-container" hidden>
                     </label>
                 </div>
                 {{-- border-b border-b-[var(--primary-color)] --}}
@@ -1680,17 +1735,73 @@
                     </div>
                 </div>
 
+                {{-- Raw HTML Anchors section --}}
+                <div class="w-full flex flex-col gap-3 max-h-[320px] overflow-hidden overflow-y-auto bg-gray-100 keyword-tab-sec hidden"
+                    id="raw-html-keyword-url-container">
+                    <div class="w-full flex flex-col gap-3 !p-4">
+                        <div class="w-full bg-blue-50 border border-blue-200 rounded !p-3">
+                            <h4 class="text-sm font-semibold text-blue-800 !mb-2">Instructions:</h4>
+                            <ul class="text-xs text-blue-700 list-disc !pl-5 space-y-1">
+                                <li>Paste anchor tags directly (e.g., <code>&lt;a href="url" rel="nofollow sponsored external"&gt;keyword&lt;/a&gt;</code>)</li>
+                                <li>One line per post, or separate multiple anchors per line with commas (max 5 per line)</li>
+                                <li>Total lines must equal Post Quantity: <strong id="raw-html-post-qty">0</strong></li>
+                                <li>System will automatically extract URLs, keywords, and all rel attributes</li>
+                                <li>Supports all current and future rel attributes (nofollow, sponsored, ugc, noopener, noreferrer, external, bookmark, author, license, etc.)</li>
+                            </ul>
+                        </div>
+
+                        <div class="w-full flex flex-col gap-2">
+                            <div class="flex items-center justify-between">
+                                <label for="raw-html-anchors"
+                                    class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">
+                                    Raw HTML Anchors
+                                </label>
+                                <span class="text-xs text-gray-600">Lines: <strong id="raw-html-line-count">0</strong></span>
+                            </div>
+                            <textarea id="raw-html-anchors"
+                                class="bg-gray-50 !p-3 text-sm outline-none border border-gray-300 w-full resize-none font-mono"
+                                rows="14"
+                                placeholder='<a href="https://example.com" rel="nofollow sponsored">keyword 1</a>
+<a href="https://example2.com" rel="ugc">keyword 2</a>, <a href="https://example3.com">keyword 3</a>
+<a href="https://example4.com" rel="noopener noreferrer">keyword 4</a>'></textarea>
+                        </div>
+
+                        <div class="w-full bg-yellow-50 border border-yellow-200 rounded !p-3">
+                            <p class="text-xs text-yellow-800">
+                                <strong>Note:</strong> Media links are not supported in Raw HTML mode. Use other tabs if you need media links.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
 
             </div>
             <div class="w-full flex flex-col sm:flex-row gap-2 sm:gap-0 justify-between sm:items-center !bg-gray-200 !px-3 !py-2">
-                <div class="flex flex-wrap gap-1 items-center">
-                    <input type="checkbox" name="no_follow" id="no_follow" value="1">
-                    <label for="no_follow" class="text-sm">No Follow</label>
-                    <p class="text-[12px]">(Check here to get Nofollow Link)</p>
-                    <input type="checkbox" name="sponsored_link" id="sponsored_link" value="1" class="!ml-3">
-                    <label for="sponsored_link" class="text-sm">Sponsor</label>
-                    <p class="text-[12px]">(Check here to add Sponsored rel)</p>
+                <div class="flex flex-wrap gap-3 items-center">
+                    <div class="flex gap-2 items-center">
+                        <input type="checkbox" name="no_follow" id="no_follow" value="1">
+                        <label for="no_follow" class="text-sm">No Follow</label>
+                    </div>
 
+                    <div class="flex gap-2 items-center">
+                        <input type="checkbox" name="sponsored_link" id="sponsored_link" value="1">
+                        <label for="sponsored_link" class="text-sm">Sponsored</label>
+                    </div>
+
+                    <div class="flex gap-2 items-center">
+                        <input type="checkbox" name="ugc_link" id="ugc_link" value="1">
+                        <label for="ugc_link" class="text-sm">UGC</label>
+                    </div>
+
+                    <div class="flex gap-2 items-center">
+                        <input type="checkbox" name="noopener_link" id="noopener_link" value="1">
+                        <label for="noopener_link" class="text-sm">Noopener</label>
+                    </div>
+
+                    <div class="flex gap-2 items-center">
+                        <input type="checkbox" name="noreferrer_link" id="noreferrer_link" value="1">
+                        <label for="noreferrer_link" class="text-sm">Noreferrer</label>
+                    </div>
                 </div>
                 <a href="#" type="button" id="add-keywords-links"
                     class="cursor-pointer bg-green-500 text-white rounded !p-3">
@@ -1715,113 +1826,8 @@
 
 @push('scripts')
     <script src="{{ asset('js/updated_dynamic_dropdown.js') }}"></script>
-    <script type='module' src="{{ asset('js/create-schedule-campaign.js') }}"></script>
+    <script type="module" src="{{ asset('js/create-schedule-campaign.js') }}"></script>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"
-        integrity="sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g=="
-        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script src="https://cdn.datatables.net/2.3.4/js/dataTables.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
-
-    <script>
-        $(document).ready(function() {
-            // 🌍 Make it GLOBAL so other JS files can use it
-            window.myDT = $('#myTable').DataTable({
-                pageLength: 50,
-                lengthMenu: [
-                    [10, 50, 100, 250, 500, -1],
-                    [10, 50, 100, 250, 500, "All"]
-                ],
-                responsive: true,
-                order: [
-                    [1, 'asc']
-                ],
-                columnDefs: [{
-                        orderable: false,
-                        targets: [0, 3]
-                    },
-                    {
-                        className: "text-center align-middle",
-                        targets: [0, 1, 3]
-                    }
-                ],
-                language: {
-                    search: "Search:",
-                    lengthMenu: "Show _MENU_ entries",
-                }
-            });
-            // ✅ Keep Select Manager in sync on every DataTables redraw
-            window.myDT.on('draw', function() {
-                if (window.articleSelectMgr) {
-                    window.articleSelectMgr.refresh();
-                }
-            });
-            window.randomDT = $('#RandomDomainsTable').DataTable({
-                pageLength: 50,
-                lengthMenu: [
-                    [10, 50, 100, 250, 500, -1], // -1 means “All”
-                    [10, 50, 100, 250, 500, "All"] // labels shown in dropdown
-                ],
-                responsive: true,
-                order: [
-                    [1, 'asc']
-                ], // default sort by sno
-                columnDefs: [{
-                        orderable: false,
-                        targets: [0, 2]
-                    }, // disable sort for checkbox + action
-                    {
-                        className: "!text-left !align-middle !px-2",
-                        targets: [0, 1, 3, 4, 5, 6]
-                    }, // center align checkbox + numeric cols
-                    {
-                        className: "!pl-4",
-                        targets: [1]
-                    } // center align checkbox + numeric cols
-                ],
-                language: {
-                    search: "Search:",
-                    lengthMenu: "Show _MENU_ entries",
-                }
-            });
-            window.domainSetDT = $('#domainSetTable').DataTable({
-                pageLength: 50,
-                lengthMenu: [
-                    [10, 50, 100, 250, 500, -1], // -1 means “All”
-                    [10, 50, 100, 250, 500, "All"] // labels shown in dropdown
-                ],
-                responsive: true,
-                order: [
-                    [1, 'asc']
-                ], // default sort by sno
-                columnDefs: [{
-                        orderable: false,
-                        targets: [0, 2]
-                    }, // disable sort for checkbox + action
-                    {
-                        className: "!text-center !align-middle !px-2",
-                        targets: [3, 4, 5, 6]
-                    }, // center align checkbox + numeric cols
-                    {
-                        className: "!pl-4",
-                        targets: [1]
-                    } // center align checkbox + numeric cols
-                ],
-                language: {
-                    search: "Search:",
-                    lengthMenu: "Show _MENU_ entries",
-                }
-            });
-            // -------------------------------
-            window.randomDT.on('draw', function() {
-                if (window.randomDomainSelectMgr) window.randomDomainSelectMgr.refresh();
-            });
-
-            window.domainSetDT.on('draw', function() {
-                if (window.domainSetSelectMgr) window.domainSetSelectMgr.refresh();
-            });
-        });
-    </script>
     {{-- Schedule Campaign: date distribution table (quantity per date) --}}
     <script>
         document.addEventListener('DOMContentLoaded', function() {

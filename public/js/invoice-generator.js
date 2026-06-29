@@ -17,11 +17,20 @@ document.addEventListener('DOMContentLoaded', () => {
     let productRowCount = 0;
     let currentCurrencySymbol = '$';
 
+    // Pre-load default logo if exists
+    preloadDefaultLogo();
+
     // Initialize with one product row
     addProductRow();
 
     // Theme color selection
     initializeThemeSelector();
+
+    // Set first theme option (blue) as active by default
+    const firstThemeOption = document.querySelector('.theme-option');
+    if (firstThemeOption) {
+        firstThemeOption.classList.add('active');
+    }
 
     // Add product row button
     addProductBtn.addEventListener('click', (e) => {
@@ -304,6 +313,26 @@ document.addEventListener('DOMContentLoaded', () => {
         if (customColorInput) {
             customColorInput.remove();
         }
+    }
+
+    function preloadDefaultLogo() {
+        // Check if default logo exists and pre-load it
+        const defaultLogoPath = '/invoice-logo.png';
+        const img = new Image();
+
+        img.onload = function() {
+            // Logo exists, show it in preview
+            logoPreview.src = defaultLogoPath;
+            logoPreview.classList.add('active');
+            uploadText.style.display = 'none';
+        };
+
+        img.onerror = function() {
+            // Logo doesn't exist, keep upload area visible
+            console.log('Default logo not found, showing upload area');
+        };
+
+        img.src = defaultLogoPath;
     }
 
     function initializeThemeSelector() {

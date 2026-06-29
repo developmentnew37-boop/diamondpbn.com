@@ -7,10 +7,6 @@
     $selectedPeriodTotal = collect($creationSummary['rows'] ?? [])->sum('count');
 @endphp
 
-{{-- @push('style')
-   @vite('resources/css/app.css')
-@endpush --}}
-
 @section('main-content')
 
     {{-- bread-crumbs --}}

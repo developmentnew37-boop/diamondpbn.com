@@ -8,11 +8,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap" rel="stylesheet" />
-    
-    <link rel="stylesheet" href="{{ asset('build/assets/app-Bnu7dOZh.css') }}">
-    <script src="{{ asset('build/assets/app-Cwyqw0uf.js') }}" defer></script> 
+    @include('partials.build-assets')
+    @include('partials.auth-secret-assets')
     <link rel="stylesheet" href="{{ asset('css/style.css') }}">
-    {{-- <script src="{{ asset('js/script.js') }}" defer></script> --}}
+    <script src="{{ asset('js/script.js') }}" defer></script>
 
 </head>
 
@@ -45,12 +44,16 @@
             <form action="{{ route('admin.verify.otp') }}" method="post" class="w-full">
                 @csrf
                 <div class="w-full flex flex-col gap-1 !p-2 !mt-1">
-                    <div class="w-full relative !mb-2">
-
-                        <input type="text" name="otp"
-                            inputmode="numeric" autocomplete="one-time-code"
-                            class="w-full rounded !py-3 !px-3 text-sm outline-0 themeFont border border-gray-300 focus:border-[var(--primary-color)]"
-                            placeholder="Enter Otp Code">
+                    <div class="w-full !mb-2">
+                        <label for="otp" class="text-sm !mb-2 block text-slate-700">Verification code</label>
+                        @include('partials.auth-secret-input', [
+                            'name' => 'otp',
+                            'id' => 'otp',
+                            'type' => 'password',
+                            'placeholder' => 'Enter OTP Code',
+                            'inputmode' => 'numeric',
+                            'autocomplete' => 'one-time-code',
+                        ])
                     </div>
                     @error('otp')
                         <div class="w-full flex flex-wrap text-sm text-red-600 !mb-2">

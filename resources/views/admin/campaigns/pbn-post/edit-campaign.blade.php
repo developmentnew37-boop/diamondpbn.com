@@ -135,7 +135,7 @@
             class="edit-campaign-panel w-full !p-4 duration-500 transition-all {{ $editTab === 'keywords' ? '' : 'hidden opacity-0 translate-y-5' }}">
             @php
                 $keywordEditTab = session('edit_campaign_keywords_tab', $preferredKeywordTab ?? 'batch');
-                if (! in_array($keywordEditTab, ['batch', 'multi', 'bulk'], true)) {
+                if (! in_array($keywordEditTab, ['batch', 'multi', 'bulk', 'multibulk'], true)) {
                     $keywordEditTab = 'batch';
                 }
             @endphp
@@ -174,6 +174,18 @@
                             <span class="heading-dots w-1 h-1 flex rounded-full duration-300 transition-all {{ $keywordEditTab === 'bulk' ? 'bg-[var(--primary-color)]' : 'bg-gray-300 group-hover:bg-[var(--primary-color)]' }}"></span>
                         </div>
                         <div class="heading-line w-15 h-1 flex rounded duration-300 transition-all {{ $keywordEditTab === 'bulk' ? 'bg-[var(--primary-color)]' : 'bg-gray-300 group-hover:bg-[var(--primary-color)]' }}"></div>
+                    </div>
+                </button>
+                <button type="button" data-keywords-edit-tab="multibulk"
+                    class="keywords-edit-tab group flex flex-col gap-3 rounded !p-2 cursor-pointer text-lg w-fit {{ $keywordEditTab === 'multibulk' ? 'text-[var(--primary-color)]' : 'duration-300 transition-all hover:text-[var(--primary-color)]' }}">
+                    <span>Add Multi Bulk Keyword &amp; Url</span>
+                    <div class="w-full flex items-center gap-1">
+                        <div class="flex items-center gap-1">
+                            <span class="heading-dots w-1 h-1 flex rounded-full duration-300 transition-all {{ $keywordEditTab === 'multibulk' ? 'bg-[var(--primary-color)]' : 'bg-gray-300 group-hover:bg-[var(--primary-color)]' }}"></span>
+                            <span class="heading-dots w-1 h-1 flex rounded-full duration-300 transition-all {{ $keywordEditTab === 'multibulk' ? 'bg-[var(--primary-color)]' : 'bg-gray-300 group-hover:bg-[var(--primary-color)]' }}"></span>
+                            <span class="heading-dots w-1 h-1 flex rounded-full duration-300 transition-all {{ $keywordEditTab === 'multibulk' ? 'bg-[var(--primary-color)]' : 'bg-gray-300 group-hover:bg-[var(--primary-color)]' }}"></span>
+                        </div>
+                        <div class="heading-line w-15 h-1 flex rounded duration-300 transition-all {{ $keywordEditTab === 'multibulk' ? 'bg-[var(--primary-color)]' : 'bg-gray-300 group-hover:bg-[var(--primary-color)]' }}"></div>
                     </div>
                 </button>
             </div>
@@ -282,11 +294,32 @@
                         </div>
 
                         <div class="w-full flex flex-wrap justify-between items-center gap-3 !mt-2 !pt-2 border-t border-gray-200">
-                            <div class="flex gap-2 items-center">
-                                <input type="checkbox" name="no_follow" id="edit-no-follow" value="1"
-                                    {{ ! empty($initialNofollow) ? 'checked' : '' }}>
-                                <label for="edit-no-follow" class="text-sm">No Follow</label>
-                                <span class="text-[12px] text-gray-500">(Check here to get Nofollow Link)</span>
+                            <div class="flex flex-wrap gap-3 items-center">
+                                <div class="flex gap-2 items-center">
+                                    <input type="checkbox" name="no_follow" id="edit-no-follow" value="1"
+                                        {{ ! empty($initialNofollow) ? 'checked' : '' }}>
+                                    <label for="edit-no-follow" class="text-sm">No Follow</label>
+                                </div>
+                                <div class="flex gap-2 items-center">
+                                    <input type="checkbox" name="sponsored" id="edit-sponsored" value="1"
+                                        {{ ! empty($initialSponsored) ? 'checked' : '' }}>
+                                    <label for="edit-sponsored" class="text-sm">Sponsored</label>
+                                </div>
+                                <div class="flex gap-2 items-center">
+                                    <input type="checkbox" name="ugc" id="edit-ugc" value="1"
+                                        {{ ! empty($initialUgc) ? 'checked' : '' }}>
+                                    <label for="edit-ugc" class="text-sm">UGC</label>
+                                </div>
+                                <div class="flex gap-2 items-center">
+                                    <input type="checkbox" name="noopener" id="edit-noopener" value="1"
+                                        {{ ! empty($initialNoopener) ? 'checked' : '' }}>
+                                    <label for="edit-noopener" class="text-sm">Noopener</label>
+                                </div>
+                                <div class="flex gap-2 items-center">
+                                    <input type="checkbox" name="noreferrer" id="edit-noreferrer" value="1"
+                                        {{ ! empty($initialNoreferrer) ? 'checked' : '' }}>
+                                    <label for="edit-noreferrer" class="text-sm">Noreferrer</label>
+                                </div>
                             </div>
                             <button type="submit" id="edit-multi-keyword-submit"
                                 class="!px-4 !py-3 rounded-lg bg-green-600 text-white hover:opacity-90 disabled:opacity-70 disabled:cursor-not-allowed">
@@ -341,13 +374,147 @@
                             </div>
                         </div>
                         <div class="w-full flex flex-wrap justify-between items-center gap-3 !mt-2 !pt-2 border-t border-gray-200">
-                            <div class="flex gap-2 items-center">
-                                <input type="checkbox" name="no_follow" id="edit-bulk-no-follow" value="1"
-                                    {{ ! empty($initialNofollow) ? 'checked' : '' }}>
-                                <label for="edit-bulk-no-follow" class="text-sm">No Follow</label>
-                                <span class="text-[12px] text-gray-500">(Check here to get Nofollow Link)</span>
+                            <div class="flex flex-wrap gap-3 items-center">
+                                <div class="flex gap-2 items-center">
+                                    <input type="checkbox" name="no_follow" id="edit-bulk-no-follow" value="1"
+                                        {{ ! empty($initialNofollow) ? 'checked' : '' }}>
+                                    <label for="edit-bulk-no-follow" class="text-sm">No Follow</label>
+                                </div>
+                                <div class="flex gap-2 items-center">
+                                    <input type="checkbox" name="sponsored" id="edit-bulk-sponsored" value="1"
+                                        {{ ! empty($initialSponsored) ? 'checked' : '' }}>
+                                    <label for="edit-bulk-sponsored" class="text-sm">Sponsored</label>
+                                </div>
+                                <div class="flex gap-2 items-center">
+                                    <input type="checkbox" name="ugc" id="edit-bulk-ugc" value="1"
+                                        {{ ! empty($initialUgc) ? 'checked' : '' }}>
+                                    <label for="edit-bulk-ugc" class="text-sm">UGC</label>
+                                </div>
+                                <div class="flex gap-2 items-center">
+                                    <input type="checkbox" name="noopener" id="edit-bulk-noopener" value="1"
+                                        {{ ! empty($initialNoopener) ? 'checked' : '' }}>
+                                    <label for="edit-bulk-noopener" class="text-sm">Noopener</label>
+                                </div>
+                                <div class="flex gap-2 items-center">
+                                    <input type="checkbox" name="noreferrer" id="edit-bulk-noreferrer" value="1"
+                                        {{ ! empty($initialNoreferrer) ? 'checked' : '' }}>
+                                    <label for="edit-bulk-noreferrer" class="text-sm">Noreferrer</label>
+                                </div>
                             </div>
                             <button type="submit" id="edit-bulk-textarea-submit"
+                                class="!px-4 !py-3 rounded-lg bg-green-600 text-white hover:opacity-90 disabled:opacity-70 disabled:cursor-not-allowed">
+                                Save &amp; sync to remote posts
+                            </button>
+                        </div>
+                    </form>
+                @endif
+            </div>
+
+            <div data-keywords-edit-panel="multibulk"
+                class="keywords-edit-panel w-full duration-500 transition-all {{ $keywordEditTab === 'multibulk' ? '' : 'hidden opacity-0 translate-y-5' }}">
+                <h3 class="text-lg w-fit font-medium bg-[var(--primary-color)] text-white !px-3 !py-2 rounded !mt-4">
+                    Add Multi Bulk Keyword &amp; Url
+                </h3>
+                <p class="text-sm text-gray-600 max-w-4xl !mt-2">
+                    Edit multiple keywords and URLs per post. Each column represents one keyword/URL pair.
+                    Paste one value per line (one line = one post).
+                    Post quantity: <strong>{{ (int) $postQuantity }}</strong>.
+                </p>
+                @if ($postQuantity < 1)
+                    <p class="text-gray-500 !mt-4">No campaign articles found.</p>
+                @else
+                    @php
+                        // Build data for multi-bulk view (5 columns max)
+                        $multiBulkColumns = [[], [], [], [], []]; // 5 columns
+
+                        $orderedArticles = \App\Models\Admin\CampaignArticle::where('campaign_id', $campaign->id)
+                            ->orderBy('id')
+                            ->get();
+
+                        foreach ($orderedArticles as $ca) {
+                            $keywords = [];
+                            $urls = [];
+
+                            if (($ca->keyword_type ?? '') === 'json') {
+                                $keywords = json_decode($ca->keyword, true) ?? [];
+                                $urls = json_decode($ca->url, true) ?? [];
+                            } else {
+                                $keywords = [$ca->keyword ?? ''];
+                                $urls = [$ca->url ?? ''];
+                            }
+
+                            // Fill up to 5 columns
+                            for ($i = 0; $i < 5; $i++) {
+                                $multiBulkColumns[$i]['keywords'][] = $keywords[$i] ?? '';
+                                $multiBulkColumns[$i]['urls'][] = $urls[$i] ?? '';
+                            }
+                        }
+                    @endphp
+
+                    <form action="{{ route('admin.campaign.multi.keywords.update', $campaign->id) }}" method="post"
+                        class="w-full flex flex-col gap-3 !mt-4" id="edit-multibulk-form">
+                        @csrf
+                        <input type="hidden" name="keywordmethod" value="multiple">
+                        <input type="hidden" name="keywordsDataHolder" id="editMultiBulkKeywordsDataHolder" value="">
+
+                        <div class="w-full flex gap-3 bg-gray-100 border border-gray-200 rounded !p-3 overflow-x-auto">
+                            @for ($col = 0; $col < 5; $col++)
+                                <div class="flex-1 min-w-[200px] flex flex-col gap-2">
+                                    <div class="flex items-center justify-between">
+                                        <label class="text-sm font-medium text-gray-700">
+                                            Column {{ $col + 1 }}
+                                        </label>
+                                        <span class="text-xs text-gray-500" id="multibulk-col{{ $col }}-count">({{ $postQuantity }})</span>
+                                    </div>
+
+                                    <label class="text-xs text-gray-600">URLs</label>
+                                    <textarea
+                                        id="multibulk-urls-{{ $col }}"
+                                        class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none multibulk-urls-textarea"
+                                        rows="14"
+                                        placeholder="https://example.com/{{ $col + 1 }}"
+                                        data-col="{{ $col }}">{{ implode("\n", $multiBulkColumns[$col]['urls']) }}</textarea>
+
+                                    <label class="text-xs text-gray-600">Keywords</label>
+                                    <textarea
+                                        id="multibulk-keywords-{{ $col }}"
+                                        class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none multibulk-keywords-textarea"
+                                        rows="14"
+                                        placeholder="keyword {{ $col + 1 }}"
+                                        data-col="{{ $col }}">{{ implode("\n", $multiBulkColumns[$col]['keywords']) }}</textarea>
+                                </div>
+                            @endfor
+                        </div>
+
+                        <div class="w-full flex flex-wrap justify-between items-center gap-3 !mt-2 !pt-2 border-t border-gray-200">
+                            <div class="flex flex-wrap gap-3 items-center">
+                                <div class="flex gap-2 items-center">
+                                    <input type="checkbox" name="no_follow" id="edit-multibulk-no-follow" value="1"
+                                        {{ ! empty($initialNofollow) ? 'checked' : '' }}>
+                                    <label for="edit-multibulk-no-follow" class="text-sm">No Follow</label>
+                                </div>
+                                <div class="flex gap-2 items-center">
+                                    <input type="checkbox" name="sponsored" id="edit-multibulk-sponsored" value="1"
+                                        {{ ! empty($initialSponsored) ? 'checked' : '' }}>
+                                    <label for="edit-multibulk-sponsored" class="text-sm">Sponsored</label>
+                                </div>
+                                <div class="flex gap-2 items-center">
+                                    <input type="checkbox" name="ugc" id="edit-multibulk-ugc" value="1"
+                                        {{ ! empty($initialUgc) ? 'checked' : '' }}>
+                                    <label for="edit-multibulk-ugc" class="text-sm">UGC</label>
+                                </div>
+                                <div class="flex gap-2 items-center">
+                                    <input type="checkbox" name="noopener" id="edit-multibulk-noopener" value="1"
+                                        {{ ! empty($initialNoopener) ? 'checked' : '' }}>
+                                    <label for="edit-multibulk-noopener" class="text-sm">Noopener</label>
+                                </div>
+                                <div class="flex gap-2 items-center">
+                                    <input type="checkbox" name="noreferrer" id="edit-multibulk-noreferrer" value="1"
+                                        {{ ! empty($initialNoreferrer) ? 'checked' : '' }}>
+                                    <label for="edit-multibulk-noreferrer" class="text-sm">Noreferrer</label>
+                                </div>
+                            </div>
+                            <button type="submit" id="edit-multibulk-submit"
                                 class="!px-4 !py-3 rounded-lg bg-green-600 text-white hover:opacity-90 disabled:opacity-70 disabled:cursor-not-allowed">
                                 Save &amp; sync to remote posts
                             </button>
@@ -538,18 +705,142 @@
                     return;
                 }
                 var nf = bulkNoFollow && bulkNoFollow.checked;
+                var sp = document.getElementById('edit-bulk-sponsored');
+                var sponsored = sp && sp.checked;
+                var ug = document.getElementById('edit-bulk-ugc');
+                var ugc = ug && ug.checked;
+                var no = document.getElementById('edit-bulk-noopener');
+                var noopener = no && no.checked;
+                var nr = document.getElementById('edit-bulk-noreferrer');
+                var noreferrer = nr && nr.checked;
                 var payload = [];
                 for (var i = 0; i < postQty; i++) {
                     payload.push({
                         media: '',
                         url: [urls[i]],
                         keyword: [kws[i]],
-                        nofollow: nf
+                        nofollow: nf,
+                        sponsored: sponsored,
+                        ugc: ugc,
+                        noopener: noopener,
+                        noreferrer: noreferrer
                     });
                 }
                 bulkHolder.value = JSON.stringify(payload);
                 bulkTextareaSubmit.disabled = true;
                 bulkTextareaSubmit.textContent = 'Updating...';
+            });
+        }
+
+        // Multi-bulk form handling
+        var multiBulkForm = document.getElementById('edit-multibulk-form');
+        var multiBulkSubmit = document.getElementById('edit-multibulk-submit');
+        var multiBulkHolder = document.getElementById('editMultiBulkKeywordsDataHolder');
+        var multiBulkNoFollow = document.getElementById('edit-multibulk-no-follow');
+
+        if (multiBulkForm && multiBulkSubmit && multiBulkHolder) {
+            multiBulkForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+
+                var nf = multiBulkNoFollow && multiBulkNoFollow.checked;
+                var sp = document.getElementById('edit-multibulk-sponsored');
+                var sponsored = sp && sp.checked;
+                var ug = document.getElementById('edit-multibulk-ugc');
+                var ugc = ug && ug.checked;
+                var no = document.getElementById('edit-multibulk-noopener');
+                var noopener = no && no.checked;
+                var nr = document.getElementById('edit-multibulk-noreferrer');
+                var noreferrer = nr && nr.checked;
+
+                // Get all keyword and URL textareas
+                var keywordTextareas = [];
+                var urlTextareas = [];
+
+                for (var col = 0; col < 5; col++) {
+                    var kwTextarea = document.getElementById('multibulk-keywords-' + col);
+                    var urlTextarea = document.getElementById('multibulk-urls-' + col);
+
+                    if (kwTextarea && urlTextarea) {
+                        keywordTextareas.push(kwTextarea);
+                        urlTextareas.push(urlTextarea);
+                    }
+                }
+
+                // Split each textarea by lines
+                var keywordColumns = keywordTextareas.map(function(ta) {
+                    return toNonEmptyLines(ta.value);
+                });
+
+                var urlColumns = urlTextareas.map(function(ta) {
+                    return toNonEmptyLines(ta.value);
+                });
+
+                // Build payload - one object per post
+                var payload = [];
+
+                for (var postIdx = 0; postIdx < postQty; postIdx++) {
+                    var keywords = [];
+                    var urls = [];
+
+                    // Collect keywords and URLs from each column for this post
+                    for (var col = 0; col < 5; col++) {
+                        var kw = keywordColumns[col] && keywordColumns[col][postIdx] ? keywordColumns[col][postIdx].trim() : '';
+                        var url = urlColumns[col] && urlColumns[col][postIdx] ? urlColumns[col][postIdx].trim() : '';
+
+                        // Only add if both keyword and URL exist
+                        if (kw !== '' && url !== '') {
+                            keywords.push(kw);
+                            urls.push(url);
+                        }
+                    }
+
+                    // Each post must have at least one keyword/URL pair
+                    if (keywords.length === 0 || urls.length === 0) {
+                        alert('Post #' + (postIdx + 1) + ' must have at least one keyword and URL pair.');
+                        return;
+                    }
+
+                    payload.push({
+                        media: '',
+                        url: urls,
+                        keyword: keywords,
+                        nofollow: nf,
+                        sponsored: sponsored,
+                        ugc: ugc,
+                        noopener: noopener,
+                        noreferrer: noreferrer
+                    });
+                }
+
+                if (payload.length !== postQty) {
+                    alert('Please ensure all ' + postQty + ' posts have at least one keyword and URL.');
+                    return;
+                }
+
+                multiBulkHolder.value = JSON.stringify(payload);
+                multiBulkSubmit.disabled = true;
+                multiBulkSubmit.textContent = 'Updating...';
+                multiBulkForm.submit();
+            });
+
+            // Add line counters for each column
+            var allTextareas = document.querySelectorAll('.multibulk-keywords-textarea, .multibulk-urls-textarea');
+            allTextareas.forEach(function(ta) {
+                ta.addEventListener('input', function() {
+                    var col = this.getAttribute('data-col');
+                    var countEl = document.getElementById('multibulk-col' + col + '-count');
+                    if (countEl) {
+                        var lines = toNonEmptyLines(this.value).length;
+                        countEl.textContent = '(' + lines + ')';
+
+                        // Highlight if line count doesn't match post quantity
+                        if (lines !== postQty && lines > 0) {
+                            countEl.classList.add('text-red-600', 'font-bold');
+                        } else {
+                            countEl.classList.remove('text-red-600', 'font-bold');
+                        }
+                    }
+                });
             });
         }
 

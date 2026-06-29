@@ -36,7 +36,7 @@
         if ($rawTab === 'single') {
             $rawTab = 'normal';
         }
-        $editTab = in_array($rawTab, ['campaign', 'normal', 'bulk'], true) ? $rawTab : 'normal';
+        $editTab = in_array($rawTab, ['campaign', 'normal', 'bulk', 'rawanchor'], true) ? $rawTab : 'normal';
     @endphp
 
     <div class="page-header">
@@ -124,6 +124,18 @@
                         <span class="heading-dots w-1 h-1 flex rounded-full duration-300 transition-all {{ $editTab === 'bulk' ? 'bg-[var(--primary-color)]' : 'bg-gray-300 group-hover:bg-[var(--primary-color)]' }}"></span>
                     </div>
                     <div class="heading-line w-15 h-1 flex rounded duration-300 transition-all {{ $editTab === 'bulk' ? 'bg-[var(--primary-color)]' : 'bg-gray-300 group-hover:bg-[var(--primary-color)]' }}"></div>
+                </div>
+            </button>
+            <button type="button" data-ss-edit-tab="rawanchor"
+                class="ss-edit-tab group flex flex-col gap-3 rounded !p-2 cursor-pointer text-lg w-fit {{ $editTab === 'rawanchor' ? 'text-[var(--primary-color)]' : 'duration-300 transition-all hover:text-[var(--primary-color)]' }}">
+                <span>Raw HTML Anchors</span>
+                <div class="w-full flex items-center gap-1">
+                    <div class="flex items-center gap-1">
+                        <span class="heading-dots w-1 h-1 flex rounded-full duration-300 transition-all {{ $editTab === 'rawanchor' ? 'bg-[var(--primary-color)]' : 'bg-gray-300 group-hover:bg-[var(--primary-color)]' }}"></span>
+                        <span class="heading-dots w-1 h-1 flex rounded-full duration-300 transition-all {{ $editTab === 'rawanchor' ? 'bg-[var(--primary-color)]' : 'bg-gray-300 group-hover:bg-[var(--primary-color)]' }}"></span>
+                        <span class="heading-dots w-1 h-1 flex rounded-full duration-300 transition-all {{ $editTab === 'rawanchor' ? 'bg-[var(--primary-color)]' : 'bg-gray-300 group-hover:bg-[var(--primary-color)]' }}"></span>
+                    </div>
+                    <div class="heading-line w-15 h-1 flex rounded duration-300 transition-all {{ $editTab === 'rawanchor' ? 'bg-[var(--primary-color)]' : 'bg-gray-300 group-hover:bg-[var(--primary-color)]' }}"></div>
                 </div>
             </button>
         </div>
@@ -256,6 +268,66 @@
                 </form>
             @endif
         </div>
+
+        {{-- Raw HTML Anchors Panel --}}
+        <div id="ss-edit-panel-rawanchor" data-ss-edit-panel="rawanchor"
+            class="ss-edit-panel w-full !p-2 duration-500 transition-all {{ $editTab === 'rawanchor' ? '' : 'hidden opacity-0 translate-y-5' }}">
+            <h3 class="text-lg w-fit font-medium bg-[var(--primary-color)] text-white !px-3 !py-2 rounded !mb-2">
+                Update with Raw HTML Anchors
+            </h3>
+            <p class="text-sm text-gray-600 !mb-4">
+                Paste raw HTML anchor tags. The system will extract URLs, keywords, and rel attributes automatically.
+            </p>
+
+            @if (empty($allLinksForBulk))
+                <p class="text-gray-500">No published links to edit.</p>
+                <a href="{{ route('admin.schedule.sidebar.campaign.show', $campaign->id) }}" class="inline-block !mt-2 !px-4 !py-2 bg-gray-200 rounded">Back</a>
+            @else
+                <form action="{{ route('admin.schedule.sidebar.campaign.bulk.update', $campaign->id) }}" method="POST" class="w-full" id="ss-rawanchor-form">
+                    @csrf
+                    <input type="hidden" name="edit_kw_tab" value="rawanchor">
+                    @foreach ($allLinksForBulk as $linkRow)
+                        <input type="hidden" name="batch_representative_link_id[]" value="{{ $linkRow['link_id'] }}">
+                    @endforeach
+
+                    <div class="w-full flex flex-col gap-3">
+                        <div class="w-full bg-blue-50 border border-blue-200 rounded !p-3">
+                            <h4 class="text-sm font-semibold text-blue-800 !mb-2">Instructions:</h4>
+                            <ul class="text-xs text-blue-700 list-disc !pl-5 space-y-1">
+                                <li>Paste anchor tags directly (e.g., <code>&lt;a href="url" rel="nofollow sponsored"&gt;keyword&lt;/a&gt;</code>)</li>
+                                <li>One line per sidebar link, or separate multiple anchors per line with commas (max 5 per line)</li>
+                                <li>Total lines must equal link count: <strong>{{ $bulkCount }}</strong></li>
+                                <li>System will automatically extract URLs, keywords, and all rel attributes</li>
+                                <li>Supports all rel attributes (nofollow, sponsored, ugc, noopener, noreferrer, etc.)</li>
+                            </ul>
+                        </div>
+
+                        <div class="w-full flex flex-col gap-2">
+                            <div class="flex items-center justify-between">
+                                <label for="ss-raw-html-anchors-edit" class="text-sm font-medium">Raw HTML Anchors</label>
+                                <span class="text-xs text-gray-500" id="ss-raw-html-anchors-edit-count">(0 lines)</span>
+                            </div>
+                            <textarea name="raw_html_anchors" id="ss-raw-html-anchors-edit"
+                                class="bg-gray-50 !p-3 text-sm outline-none border border-gray-300 w-full resize-none font-mono"
+                                rows="15"
+                                placeholder='<a href="https://example.com" rel="nofollow">keyword</a>&#10;<a href="https://example2.com" rel="sponsored ugc">keyword2</a>, <a href="https://example3.com">keyword3</a>&#10;...'></textarea>
+                        </div>
+                    </div>
+
+                    <div class="!mt-2 text-xs text-gray-500">
+                        Required lines: {{ $bulkCount }}
+                    </div>
+
+                    <div class="!mt-4 flex gap-2">
+                        <button type="submit" id="ss-rawanchor-submit" class="!px-4 !py-2 bg-[var(--primary-color)] text-white rounded hover:opacity-90">
+                            Update from raw anchors &amp; sync to remote
+                        </button>
+                        <a href="{{ route('admin.schedule.sidebar.campaign.show', $campaign->id) }}"
+                            class="!px-4 !py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">Cancel</a>
+                    </div>
+                </form>
+            @endif
+        </div>
     </div>
 
     @push('scripts')
@@ -344,6 +416,39 @@
             if (bs) { bs.disabled = false; bs.textContent = 'Update bulk data and sync to remote'; }
             if (ns) { ns.disabled = false; ns.textContent = 'Save change'; }
             if (cs) { cs.disabled = false; cs.textContent = 'Update campaign no'; }
+        }
+
+        // Raw HTML Anchors form handling
+        var raf = document.getElementById('ss-rawanchor-form');
+        var ras = document.getElementById('ss-rawanchor-submit');
+        if (raf && ras) {
+            var rawTa = document.getElementById('ss-raw-html-anchors-edit');
+            function nonEmptyCount(val) {
+                return (val || '').split(/\r\n|\r|\n/).filter(function(line) { return line.trim() !== ''; }).length;
+            }
+            function refreshRawCount() {
+                var rc = document.getElementById('ss-raw-html-anchors-edit-count');
+                if (rc && rawTa) rc.textContent = '(' + nonEmptyCount(rawTa.value) + ' lines)';
+            }
+            if (rawTa) rawTa.addEventListener('input', refreshRawCount);
+            refreshRawCount();
+            raf.addEventListener('submit', function(e) {
+                var expected = {{ $bulkCount }};
+                var count = rawTa ? nonEmptyCount(rawTa.value) : 0;
+                if (count !== expected) {
+                    e.preventDefault();
+                    alert('Raw HTML Anchors must have exactly ' + expected + ' non-empty lines (found ' + count + ').');
+                    return;
+                }
+                ras.disabled = true;
+                ras.textContent = 'Updating...';
+            });
+        }
+
+        // Reset button states on alert display
+        if (document.querySelector('.bg-green-100') || document.querySelector('.bg-red-100')) {
+            if (mbs) { mbs.disabled = false; mbs.textContent = 'Update multi bulk data & sync to remote'; }
+            if (ras) { ras.disabled = false; ras.textContent = 'Update from raw anchors & sync to remote'; }
         }
     })();
     </script>

@@ -235,6 +235,45 @@ body {
     background-color: rgba(255, 255, 255, 0.05);
 }
 
+.submenu-item-with-badge {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-right: 14px;
+}
+
+.submenu-item-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.submenu-count-badge {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    color: #fff;
+}
+
+.submenu-count-badge-red {
+    background-color: #ef4444;
+}
+
+.submenu-count-badge-blue {
+    background-color: #3b82f6;
+}
+
 /* Navbar Styles */
 .navbar {
     position: fixed;
@@ -454,6 +493,11 @@ body {
     color: var(--danger-color);
 }
 
+.main-wrapper {
+    overflow-x: clip;
+    max-width: 100%;
+}
+
 /* Main Content */
 .main-content {
     margin-left: var(--sidebar-width);
@@ -533,12 +577,21 @@ body {
     opacity: 0;
     visibility: hidden;
     transition: all var(--transition-speed);
-    z-index: 999;
+    z-index: 1001;
 }
 
 .sidebar-overlay.active {
     opacity: 1;
     visibility: visible;
+}
+
+/* Modal z-index utilities (used by campaign create wizards) */
+.z-1100 {
+    z-index: 1100 !important;
+}
+
+.z-1200 {
+    z-index: 1200 !important;
 }
 
 /* Responsive Design */
@@ -559,6 +612,7 @@ body {
 
     .sidebar.mobile-open {
         transform: translateX(0);
+        z-index: 1002;
     }
 
     .navbar {
@@ -681,8 +735,31 @@ body {
     flex: 0 0 auto;
     min-height: 44px;
     justify-content: center;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
+    line-height: 1.25;
     max-width: min(280px, 85vw);
+}
+
+#keywords-data-table thead th {
+    font-size: 0.6875rem;
+    line-height: 1.25;
+    padding: 0.5rem 0.375rem;
+    white-space: normal;
+    word-break: break-word;
+}
+
+@media (min-width: 640px) {
+    #keywords-data-table thead th {
+        font-size: 0.875rem;
+        padding: 0.625rem 0.5rem;
+    }
+}
+
+@media (min-width: 768px) {
+    #keywords-data-table thead th {
+        font-size: 1rem;
+        padding: 0.75rem 0.5rem;
+    }
 }
 
 @media (min-width: 640px) {
@@ -712,6 +789,24 @@ body {
     .keyword-mobile-input-wrap,
     .keyword-mobile-input-main,
     .keyword-mobile-qty {
+        width: 100% !important;
+    }
+
+    .keyword-mobile-stack .keyword-mobile-main > div:first-child,
+    .keyword-mobile-stack .keyword-mobile-main > div:nth-child(2) {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .keywords-area-parent {
+        flex-direction: column !important;
+    }
+
+    .dy-key-pop-box {
+        border-radius: 0 !important;
+    }
+
+    #bulk-keyword-url-container > div {
         width: 100% !important;
     }
 
@@ -791,8 +886,25 @@ body {
 }
 
 .main-content .overflow-x-auto > table.searchable-table,
-.main-content .overflow-x-auto > table.display {
+.main-content .overflow-x-auto > table.display,
+.main-content .overflow-x-auto > table.campaign-list-table {
     min-width: max(720px, 100%);
+}
+
+/* DataTables wrapper should not break horizontal scroll on mobile */
+.main-content .dataTables_wrapper {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 639px) {
+    .main-content .content-card .theme-btn,
+    .main-content .content-card .pending-toolbar-btn {
+        width: 100%;
+        justify-content: center;
+    }
 }
 
 .card-title {
@@ -800,4 +912,46 @@ body {
     font-weight: 600;
     margin-bottom: 20px;
     color: var(--text-primary);
+}
+
+/* Public campaign reports — keep long URLs/keywords inside their columns */
+.report-table {
+    table-layout: fixed;
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.report-table .report-td-truncate {
+    overflow: hidden;
+    max-width: 1px;
+    vertical-align: top;
+}
+
+.report-table .report-clip,
+.report-table a.report-clip {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+
+.report-table .report-td-nowrap {
+    white-space: nowrap;
+    width: 1%;
+    vertical-align: top;
+}
+
+.report-table .report-td-domain {
+    overflow: hidden;
+    max-width: 1px;
+    vertical-align: top;
+}
+
+.report-table .report-td-blog a.report-clip {
+    color: #2563eb;
+}
+
+.report-table .report-td-blog a.report-clip:hover {
+    text-decoration: underline;
 }

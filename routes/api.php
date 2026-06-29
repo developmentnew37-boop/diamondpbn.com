@@ -1,13 +1,17 @@
 <?php
 
+use App\Http\Controllers\Api\admin\ArticleController;
 use App\Http\Controllers\Api\admin\ArticleSetController;
 use App\Http\Controllers\Api\admin\DomainCategoryController;
 use App\Http\Controllers\Api\admin\DomainController;
 use App\Http\Controllers\Api\admin\DomainSetController;
-use App\Http\Controllers\Api\admin\ArticleController;
-use Illuminate\Http\Request;
+use App\Http\Controllers\Api\DomainWebhookController;
 use Illuminate\Support\Facades\Route;
 
+// Public webhook endpoint (no authentication required)
+Route::post('/webhook/domains', [DomainWebhookController::class, 'receiveDomain'])
+    ->middleware('throttle:120,1')
+    ->name('api.webhook.domains');
 
 //
 Route::prefix('admin')->name('admin.api.')->middleware('admin.api.auth')->group(function () {

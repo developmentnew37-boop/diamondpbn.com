@@ -2,36 +2,35 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\InsufficientCampaignArticlesException;
+use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
+use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
+use App\Http\Controllers\Admin\Concerns\ValidatesBulkCampaignIds;
 use App\Http\Controllers\Controller;
+use App\Jobs\BulkRetryCampaignPostsJob;
+use App\Jobs\BulkUpdateCampaignPostsJob;
+use App\Jobs\DeleteCampaignJob;
+use App\Jobs\PublishCampaignPostJob;
+use App\Models\Admin\Article;
 use App\Models\Admin\ArticleCategory;
-use App\Models\Admin\ArticleSet;
-use App\Models\Admin\Domain;
-use App\Models\Admin\DomainCategory;
-use App\Models\Admin\DomainSet;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
+use App\Models\Admin\Campaign;
 use App\Models\Admin\CampaignArticle;
 use App\Models\Admin\CampaignDomain;
 use App\Models\Admin\CampaignPost;
-use App\Models\Admin\Campaign;
-use Illuminate\Support\Facades\DB;
-use App\Jobs\BulkUpdateCampaignPostsJob;
-use App\Jobs\BulkRetryCampaignPostsJob;
-use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
-use App\Http\Controllers\Admin\Concerns\ValidatesBulkCampaignIds;
-use App\Jobs\DeleteCampaignJob;
-use App\Jobs\PublishCampaignPostJob;
-use App\Services\PurgeLocalCampaignDataService;
+use App\Models\Admin\Domain;
+use App\Models\Admin\DomainCategory;
+use App\Models\Admin\DomainSet;
+use App\Services\CampaignArticleReservationService;
 use App\Services\CampaignKeywordPairValidator;
-use App\Services\CampaignPostContentBuilder;
+use App\Services\PurgeLocalCampaignDataService;
 use App\Support\WordPressApiFetchedPost;
-use App\Models\Admin\Article;
-use App\Models\Admin\ArticleLanguage;
-use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
-use Spatie\SimpleExcel\SimpleExcelWriter;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
-use Illuminate\Support\Facades\Http;
+use Spatie\SimpleExcel\SimpleExcelWriter;
 
 class CampaignController extends Controller
 {
@@ -50,7 +49,6 @@ class CampaignController extends Controller
      * Supports search by campaign number and owner filtering (Super Admin only).
      * Excludes sticky campaigns (those are displayed separately).
      *
-     * @param \Illuminate\Http\Request $request
      * @return \Illuminate\View\View
      */
     public function index(Request $request)
@@ -64,7 +62,7 @@ class CampaignController extends Controller
         // ✅ Clean empty search from URL
         if ($request->has('search') && trim($request->search) === '') {
             return redirect()->to(
-                url()->current() . '?' . http_build_query(
+                url()->current().'?'.http_build_query(
                     $request->except('search')
                 )
             );
@@ -74,11 +72,12 @@ class CampaignController extends Controller
         $admin = Auth::guard('admin')->user();
         // ✅ Base query
         $query = Campaign::query()
+            ->with('domainCategory:id,name')
             ->where('is_sticky_campaign', false);
 
         // 🔍 Search by campaign_no
         if ($request->filled('search')) {
-            $search = '%' . trim($request->search) . '%';
+            $search = '%'.trim($request->search).'%';
             $query->where('campaign_no', 'LIKE', $search);
         }
 
@@ -99,8 +98,6 @@ class CampaignController extends Controller
         );
     }
 
-
-
     /**
      * Show the form for creating a new PBN post campaign.
      *
@@ -112,11 +109,11 @@ class CampaignController extends Controller
      */
     public function create()
     {
-        $campaignId = 'CMP-' . now()->format('YmdHis') . '-' . random_int(1000, 9999);
+        $campaignId = 'CMP-'.now()->format('YmdHis').'-'.random_int(1000, 9999);
         $adminId = auth('admin')->id();
 
         // Cache the create campaign data for 10 minutes to improve performance
-        $cacheKey = 'campaign_create_data_' . $adminId;
+        $cacheKey = 'campaign_create_data_'.$adminId;
 
         $data = cache()->remember($cacheKey, 600, function () use ($adminId) {
             // Optimize: Load only necessary columns
@@ -127,11 +124,11 @@ class CampaignController extends Controller
             // Note: Removed admin_id filter to allow admins/super admins to access all article sets
             $articleSet = DB::table('article_sets')
                 ->leftJoin('article_set_items', 'article_sets.id', '=', 'article_set_items.article_set_id')
-                ->leftJoin('articles', function($join) {
+                ->leftJoin('articles', function ($join) {
                     $join->on('article_set_items.article_id', '=', 'articles.id')
-                         ->where('articles.status', '!=', 1)
-                         ->whereNull('articles.deleted_at')
-                         ->whereNull('articles.lock_at');
+                        ->where('articles.status', '!=', 1)
+                        ->whereNull('articles.deleted_at')
+                        ->whereNull('articles.lock_at');
                 })
                 ->select('article_sets.id', 'article_sets.name', DB::raw('COUNT(articles.id) as articles_count'))
                 ->groupBy('article_sets.id', 'article_sets.name')
@@ -139,16 +136,16 @@ class CampaignController extends Controller
 
             // Optimize: Load only necessary columns
             // Note: Removed admin_id filter to allow admins/super admins to access all domain sets
-            $domainSets = DomainSet::select('id', 'name')->get();
+            $domainSets = DomainSet::select('id', 'name', 'qty')->orderBy('name')->get();
 
             // Optimize: Use direct join query for article languages
             // Note: Removed admin_id filter to allow admins/super admins to access all articles
             $articleLanguages = DB::table('article_languages')
-                ->leftJoin('articles', function($join) {
+                ->leftJoin('articles', function ($join) {
                     $join->on('article_languages.id', '=', 'articles.article_language_id')
-                         ->where('articles.status', 0)
-                         ->whereNull('articles.deleted_at')
-                         ->whereNull('articles.lock_at');
+                        ->where('articles.status', 0)
+                        ->whereNull('articles.deleted_at')
+                        ->whereNull('articles.lock_at');
                 })
                 ->select('article_languages.id', 'article_languages.name', DB::raw('COUNT(articles.id) as article_count'))
                 ->groupBy('article_languages.id', 'article_languages.name')
@@ -169,13 +166,12 @@ class CampaignController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-
     private function generateUniqueCampaignNo(string $input, ?int $ignoreId = null): string
     {
         $base = Str::slug($input);
 
         if ($base === '') {
-            $base = 'campaign-' . now()->timestamp;
+            $base = 'campaign-'.now()->timestamp;
         }
 
         $slug = $base;
@@ -183,8 +179,8 @@ class CampaignController extends Controller
 
         while (
             Campaign::where('campaign_no', $slug)
-            ->when($ignoreId, fn($q) => $q->where('id', '!=', $ignoreId))
-            ->exists()
+                ->when($ignoreId, fn ($q) => $q->where('id', '!=', $ignoreId))
+                ->exists()
         ) {
             $slug = "{$base}-{$counter}";
             $counter++;
@@ -197,65 +193,64 @@ class CampaignController extends Controller
      * Build raw_rel_attr string from checkboxes and custom input.
      * Priority: raw_rel_attr from Raw HTML mode > combined checkbox + custom values.
      *
-     * @param array $row Keyword data row from frontend
+     * @param  array  $row  Keyword data row from frontend
      * @return string|null Combined rel attribute string or null if empty
      */
     /**
      * Build raw_rel_attr string from checkboxes or use existing raw_rel_attr from Raw HTML mode.
      * Mirrors sidebar campaign behavior.
      *
-     * @param array $row Keyword data row from frontend
+     * @param  array  $row  Keyword data row from frontend
      * @return string|null Combined rel attribute string or null if empty
      */
     private function buildRawRelAttr(array $row): ?string
     {
         // Priority 1: If raw_rel_attr exists (from Raw HTML Anchors mode), use it directly
         // This preserves ALL rel attributes including custom ones like "external", "bookmark"
-        if (!empty($row['raw_rel_attr'])) {
+        if (! empty($row['raw_rel_attr'])) {
             return trim($row['raw_rel_attr']);
         }
 
         // Priority 2: Build from standard checkbox values only
         $relTokens = [];
 
-        if (!empty($row['nofollow'])) {
+        if (! empty($row['nofollow'])) {
             $relTokens[] = 'nofollow';
         }
-        if (!empty($row['sponsored'])) {
+        if (! empty($row['sponsored'])) {
             $relTokens[] = 'sponsored';
         }
-        if (!empty($row['ugc'])) {
+        if (! empty($row['ugc'])) {
             $relTokens[] = 'ugc';
         }
-        if (!empty($row['noopener'])) {
+        if (! empty($row['noopener'])) {
             $relTokens[] = 'noopener';
         }
-        if (!empty($row['noreferrer'])) {
+        if (! empty($row['noreferrer'])) {
             $relTokens[] = 'noreferrer';
         }
 
         return count($relTokens) > 0 ? implode(' ', $relTokens) : null;
     }
 
-
     public function store(Request $request)
     {
 
         // ✅ Validation (matches your REAL incoming formats)
         $validated = $request->validate([
-            'campaign_no'           => 'required|string',
-            'domain_category'       => 'nullable|integer|exists:domain_categories,id',
-            'post_quantity'         => 'required|integer|min:1',
+            'campaign_no' => 'required|string',
+            'domain_category' => 'nullable|integer|exists:domain_categories,id',
+            'post_quantity' => 'required|integer|min:1',
 
-            'article_niche'         => 'nullable|integer|exists:article_categories,id',
-            'sel_articles_opt'      =>  'required|in:own_article,system_article,language_article',
+            'article_niche' => 'nullable|integer|exists:article_categories,id',
+            'sel_articles_opt' => 'required|in:own_article,system_article,language_article',
             'selected_articles_val' => 'required|string',   // CSV: "163,164,165,..."
 
-            'keywordmethod'         => 'nullable|string|in:normal,bulk,multiple,multi_bulk,raw_html',
-            'keywordsDataHolder'    => 'required|string',   // JSON string array
+            'keywordmethod' => 'nullable|string|in:normal,bulk,multiple,multi_bulk,raw_html',
+            'keywordsDataHolder' => 'required|string',   // JSON string array
 
-            'sel_domains'           => 'required|integer|in:0,1,2',
-            'campaigns_domains'     => 'required|string',   // JSON: ["48","49",...]
+            'sel_domains' => 'required|integer|in:0,1,2',
+            'campaigns_domains' => 'required|string',   // JSON: ["48","49",...]
             'is_sticky' => 'nullable|in:0,1',
         ]);
 
@@ -274,14 +269,14 @@ class CampaignController extends Controller
 
         // Domains: JSON -> array[int]
         $domainIds = json_decode((string) $request->campaigns_domains, true);
-        if (!is_array($domainIds)) {
+        if (! is_array($domainIds)) {
             return back()->with('cus__error', 'Domains data is invalid JSON.')->withInput();
         }
         $domainIds = array_values(array_filter(array_map('intval', $domainIds)));
 
         // Keywords: JSON -> array
         $keywords = json_decode((string) $request->keywordsDataHolder, true);
-        if (!is_array($keywords)) {
+        if (! is_array($keywords)) {
             return back()->with('keywordsDataHolder', 'Keywords data is invalid JSON.')->withInput();
         }
 
@@ -304,157 +299,191 @@ class CampaignController extends Controller
 
         $campaignNo = $this->generateUniqueCampaignNo($request->campaign_no);
 
-        // ✅ Insert into 4 tables atomically
-        $campaign = DB::transaction(function () use ($request, $campaignNo, $postQty, $articleIds, $domainIds, $keywords, $articleType, $isSticky) {
+        $articleReservationContext = CampaignArticleReservationService::contextFromRequest($request);
 
-            // 1) campaigns
-            $campaign = Campaign::create([
-                'campaign_no'         => $campaignNo,
-                'domain_category_id'  => $request->domain_category ?: null,
-                'article_category_id' => $request->article_niche ?: null,
-                'admin_id'            => auth('admin')->id(),
-                'article_type'        => $articleType,
-                'status'              => 'queued',
-                'is_sticky_campaign'  => $isSticky,
-                'total_targets'       => $postQty,
-                'completed_targets'   => 0,
-                'failed_targets'      => 0,
-            ]);
+        $reservationService = app(CampaignArticleReservationService::class);
+        $substitutionCount = 0;
 
-            // 2) campaign_domains (store and keep map by index)
-            $campaignDomainIds = [];
-            foreach ($domainIds as $i => $domainId) {
-                $cd = CampaignDomain::create([
-                    'campaign_id' => $campaign->id,
-                    'domain_id'   => $domainId,
-                    'sort_order'  => $i + 1,
+        try {
+            // ✅ Insert into 4 tables atomically
+            $campaign = DB::transaction(function () use (
+                $request,
+                $campaignNo,
+                $postQty,
+                $articleIds,
+                $domainIds,
+                $keywords,
+                $articleType,
+                $isSticky,
+                $articleReservationContext,
+                $reservationService,
+                &$substitutionCount,
+            ) {
+
+                // 1) campaigns
+                $campaign = Campaign::create([
+                    'campaign_no' => $campaignNo,
+                    'domain_category_id' => $request->domain_category ?: null,
+                    'article_category_id' => $request->article_niche ?: null,
+                    'admin_id' => auth('admin')->id(),
+                    'article_type' => $articleType,
+                    'status' => 'queued',
+                    'is_sticky_campaign' => $isSticky,
+                    'total_targets' => $postQty,
+                    'completed_targets' => 0,
+                    'failed_targets' => 0,
                 ]);
-                $campaignDomainIds[$i] = $cd->id;
-            }
 
-            // 3) campaign_articles (store and keep map by index)
-            $campaignArticleIds = [];
-            $method = (string) ($request->keywordmethod ?? 'normal'); // normal | bulk | multiple | multi_bulk | raw_html
-            $isMultiple = in_array($method, ['multiple', 'multi_bulk', 'raw_html'], true);
+                // 2) campaign_domains (store and keep map by index)
+                $campaignDomainIds = [];
+                foreach ($domainIds as $i => $domainId) {
+                    $cd = CampaignDomain::create([
+                        'campaign_id' => $campaign->id,
+                        'domain_id' => $domainId,
+                        'sort_order' => $i + 1,
+                    ]);
+                    $campaignDomainIds[$i] = $cd->id;
+                }
 
-            foreach ($articleIds as $i => $articleId) {
-                $row = $keywords[$i] ?? [];
+                // 3) campaign_articles (store and keep map by index)
+                $campaignArticleIds = [];
+                $method = (string) ($request->keywordmethod ?? 'normal'); // normal | bulk | multiple | multi_bulk | raw_html
+                $isMultiple = in_array($method, ['multiple', 'multi_bulk', 'raw_html'], true);
+                $reservedArticleIds = [];
 
-                $kwVal  = $row['keyword'] ?? null; // string OR array
-                $urlVal = $row['url'] ?? null;     // string OR array
+                foreach ($articleIds as $i => $articleId) {
+                    $row = $keywords[$i] ?? [];
 
-                // ✅ Rule: keywordmethod decides types (not the incoming shape)
-                $kwType  = $isMultiple ? 'json' : 'single';
-                $urlType = $isMultiple ? 'json' : 'single';
+                    $kwVal = $row['keyword'] ?? null; // string OR array
+                    $urlVal = $row['url'] ?? null;     // string OR array
 
-                // ✅ Normalize storage exactly based on method
-                if ($isMultiple) {
-                    // Always store arrays as JSON. If single string comes, wrap into array.
-                    $kwArr  = is_array($kwVal)  ? $kwVal  : (is_null($kwVal) ? [] : [$kwVal]);
-                    $urlArr = is_array($urlVal) ? $urlVal : (is_null($urlVal) ? [] : [$urlVal]);
+                    // ✅ Rule: keywordmethod decides types (not the incoming shape)
+                    $kwType = $isMultiple ? 'json' : 'single';
+                    $urlType = $isMultiple ? 'json' : 'single';
 
-                    // Handle multi-bulk additional_links
-                    if ($method === 'multi_bulk' && isset($row['additional_links']) && is_array($row['additional_links'])) {
-                        foreach ($row['additional_links'] as $additionalLink) {
-                            if (isset($additionalLink['keyword'])) {
-                                $kwArr[] = $additionalLink['keyword'];
+                    // ✅ Normalize storage exactly based on method
+                    if ($isMultiple) {
+                        // Always store arrays as JSON. If single string comes, wrap into array.
+                        $kwArr = is_array($kwVal) ? $kwVal : (is_null($kwVal) ? [] : [$kwVal]);
+                        $urlArr = is_array($urlVal) ? $urlVal : (is_null($urlVal) ? [] : [$urlVal]);
+
+                        // Handle multi-bulk additional_links
+                        if ($method === 'multi_bulk' && isset($row['additional_links']) && is_array($row['additional_links'])) {
+                            foreach ($row['additional_links'] as $additionalLink) {
+                                if (isset($additionalLink['keyword'])) {
+                                    $kwArr[] = $additionalLink['keyword'];
+                                }
+                                if (isset($additionalLink['url'])) {
+                                    $urlArr[] = $additionalLink['url'];
+                                }
                             }
-                            if (isset($additionalLink['url'])) {
-                                $urlArr[] = $additionalLink['url'];
-                            }
+                        }
+
+                        // Optional: trim + remove empty
+                        $kwArr = array_values(array_filter(array_map(fn ($v) => trim((string) $v), $kwArr), fn ($v) => $v !== ''));
+                        $urlArr = array_values(array_filter(array_map(fn ($v) => trim((string) $v), $urlArr), fn ($v) => $v !== ''));
+
+                        $kwStore = json_encode($kwArr, JSON_UNESCAPED_UNICODE);
+                        $urlStore = json_encode($urlArr, JSON_UNESCAPED_UNICODE);
+                    } else {
+                        // Always store single string. If array comes, take first non-empty.
+                        $kwStore = is_array($kwVal) ? ($kwVal[0] ?? null) : $kwVal;
+                        $urlStore = is_array($urlVal) ? ($urlVal[0] ?? null) : $urlVal;
+
+                        $kwStore = is_null($kwStore) ? null : trim((string) $kwStore);
+                        $urlStore = is_null($urlStore) ? null : trim((string) $urlStore);
+
+                        if ($kwStore === '') {
+                            $kwStore = null;
+                        }
+                        if ($urlStore === '') {
+                            $urlStore = null;
                         }
                     }
 
-                    // Optional: trim + remove empty
-                    $kwArr  = array_values(array_filter(array_map(fn($v) => trim((string)$v), $kwArr), fn($v) => $v !== ''));
-                    $urlArr = array_values(array_filter(array_map(fn($v) => trim((string)$v), $urlArr), fn($v) => $v !== ''));
+                    $reservation = $reservationService->reserve(
+                        (int) $articleId,
+                        $articleType,
+                        $articleReservationContext,
+                        $reservedArticleIds,
+                        markStatusUsed: true,
+                    );
 
-                    $kwStore  = json_encode($kwArr, JSON_UNESCAPED_UNICODE);
-                    $urlStore = json_encode($urlArr, JSON_UNESCAPED_UNICODE);
-                } else {
-                    // Always store single string. If array comes, take first non-empty.
-                    $kwStore = is_array($kwVal) ? ($kwVal[0] ?? null) : $kwVal;
-                    $urlStore = is_array($urlVal) ? ($urlVal[0] ?? null) : $urlVal;
+                    $articleRow = $reservation['article'];
+                    $reservedArticleIds[] = $articleRow->id;
 
-                    $kwStore  = is_null($kwStore)  ? null : trim((string)$kwStore);
-                    $urlStore = is_null($urlStore) ? null : trim((string)$urlStore);
+                    if ($reservation['substituted']) {
+                        $substitutionCount++;
+                    }
 
-                    if ($kwStore === '') $kwStore = null;
-                    if ($urlStore === '') $urlStore = null;
+                    $ca = CampaignArticle::create([
+                        'campaign_id' => $campaign->id,
+                        'article_id' => $articleRow->id,
+                        'article_title_snapshot' => $articleRow->name,
+                        'article_body_snapshot' => $articleRow->description,
+                        'keyword' => $kwStore,
+                        'url' => $urlStore,
+                        'media' => $row['media'] ?? null,
+                        'keyword_type' => $kwType,
+                        'url_type' => $urlType,
+                        'nofollow' => ! empty($row['nofollow']),
+                        'sponsored' => ! empty($row['sponsored']),
+                        'ugc' => ! empty($row['ugc']),
+                        'noopener' => ! empty($row['noopener']),
+                        'noreferrer' => ! empty($row['noreferrer']),
+                        'raw_rel_attr' => $this->buildRawRelAttr($row),
+                    ]);
+
+                    $campaignArticleIds[$i] = $ca->id;
+                }
+                // 4) campaign_posts (1 domain row ↔ 1 article row)
+                for ($i = 0; $i < $postQty; $i++) {
+                    CampaignPost::create([
+                        'campaign_id' => $campaign->id,
+                        'campaign_domain_id' => $campaignDomainIds[$i],
+                        'campaign_article_id' => $campaignArticleIds[$i],
+                        'status' => 'queued',
+                        'is_sticky' => $isSticky,
+                        'attempt_count' => 0,
+                    ]);
                 }
 
-                $articleRow = Article::find($articleId);
-                if (! $articleRow) {
-                    throw new \Exception("Article {$articleId} not found.");
-                }
+                // ** dispatching the job **
+                $postIds = CampaignPost::where('campaign_id', $campaign->id)
+                    ->pluck('id')
+                    ->all();
 
-                $ca = CampaignArticle::create([
-                    'campaign_id'              => $campaign->id,
-                    'article_id'               => (int) $articleId,
-                    'article_title_snapshot'   => $articleRow->name,
-                    'article_body_snapshot'    => $articleRow->description,
-                    'keyword'                  => $kwStore,
-                    'url'                      => $urlStore,
-                    'media'                    => $row['media'] ?? null,
-                    'keyword_type'             => $kwType,
-                    'url_type'                 => $urlType,
-                    'nofollow'                 => ! empty($row['nofollow']),
-                    'sponsored'                => ! empty($row['sponsored']),
-                    'ugc'                      => ! empty($row['ugc']),
-                    'noopener'                 => ! empty($row['noopener']),
-                    'noreferrer'               => ! empty($row['noreferrer']),
-                    'raw_rel_attr'             => $this->buildRawRelAttr($row),
-                ]);
+                DB::afterCommit(function () use ($postIds) {
+                    foreach ($postIds as $id) {
+                        PublishCampaignPostJob::dispatch($id)->onQueue('campaigns');
+                    }
+                });
+                // ** ends here **
 
-                $campaignArticleIds[$i] = $ca->id;
-
-                // article lock_at thing
-
-                // 🔒 LOCK ARTICLE SAFELY
-                $affected = Article::where('id', $articleId)
-                    ->whereNull('lock_at')
-                    ->update(['lock_at' => now(), 'status' => 1]);
-
-                if ($affected === 0) {
-                    throw new \Exception("Article {$articleId} is already locked and cannot be reused.");
-                }
-            }
-            // 4) campaign_posts (1 domain row ↔ 1 article row)
-            for ($i = 0; $i < $postQty; $i++) {
-                CampaignPost::create([
-                    'campaign_id'         => $campaign->id,
-                    'campaign_domain_id'  => $campaignDomainIds[$i],
-                    'campaign_article_id' => $campaignArticleIds[$i],
-                    'status'              => 'queued',
-                    'is_sticky' =>  $isSticky,
-                    'attempt_count'       => 0,
-                ]);
-            }
-
-            // ** dispatching the job **
-            $postIds = CampaignPost::where('campaign_id', $campaign->id)
-                ->pluck('id')
-                ->all();
-
-            DB::afterCommit(function () use ($postIds) {
-                foreach ($postIds as $id) {
-                    PublishCampaignPostJob::dispatch($id)->onQueue('campaigns');
-                }
+                return $campaign;
             });
-            // ** ends here **
+        } catch (InsufficientCampaignArticlesException $e) {
+            return back()->with('cus__error', $e->getMessage())->withInput();
+        } catch (\Throwable $e) {
+            report($e);
 
-            return $campaign;
-        });
+            return back()->with('cus__error', 'Could not create campaign: '.$e->getMessage())->withInput();
+        }
 
         // return redirect()
         //     ->route('admin.campaign.create')
         //     ->with('cus__success', "Campaign {$campaign->campaign_no} created successfully ({$campaign->total_targets} posts).");
 
         $prefix = $isSticky ? 'Sticky ' : '';
+        $successMessage = "{$prefix} Campaign {$campaign->campaign_no} created successfully ({$campaign->total_targets} posts).";
+
+        if ($substitutionCount > 0) {
+            $successMessage .= " {$substitutionCount} article(s) were auto-replaced because they were already in use.";
+        }
 
         return back()->with(
             'cus__success',
-            "{$prefix} Campaign {$campaign->campaign_no} created successfully ({$campaign->total_targets} posts)."
+            $successMessage
         );
     }
     // ****** Ends here ******
@@ -496,9 +525,6 @@ class CampaignController extends Controller
         );
     }
 
-
-
-
     public function report(string $campaign_no, string $token)
     {
         // 1️⃣ Validate campaign via token (PUBLIC & SECURE)
@@ -531,7 +557,7 @@ class CampaignController extends Controller
 
         $posts = CampaignPost::with([
             'campaignDomain.domain',
-            'campaignArticle'
+            'campaignArticle',
         ])
             ->join(
                 'campaign_domains',
@@ -543,9 +569,6 @@ class CampaignController extends Controller
             ->orderBy('campaign_domains.sort_order', 'asc')
             ->select('campaign_posts.*')
             ->get();
-
-
-
 
         // 4️⃣ Max keyword/URL pairs across posts (mixed single + multi-link in one campaign)
         $maxKeywordCount = 1;
@@ -590,7 +613,7 @@ class CampaignController extends Controller
         // 📦 Fetch posts
         $posts = CampaignPost::with([
             'campaignDomain.domain',
-            'campaignArticle'
+            'campaignArticle',
         ])
             ->where('campaign_id', $campaign->id)
             ->get();
@@ -612,7 +635,7 @@ class CampaignController extends Controller
         foreach ($posts as $post) {
             $ca = $post->campaignArticle;
 
-            if (!$ca) {
+            if (! $ca) {
                 continue;
             }
 
@@ -668,13 +691,13 @@ class CampaignController extends Controller
         foreach ($posts as $post) {
 
             $row = [
-                'S.No'     => $sno++,
-                'Domain'   => optional($post->campaignDomain?->domain)->name ?? '-',
+                'S.No' => $sno++,
+                'Domain' => optional($post->campaignDomain?->domain)->name ?? '-',
                 'BlogPost' => $post->remote_url ?? '-',
             ];
 
             if ($hasStickyPost) {
-                $row['Post'] = (!empty($post->is_sticky) && $post->is_sticky)
+                $row['Post'] = (! empty($post->is_sticky) && $post->is_sticky)
                     ? 'Sticky'
                     : '';
             }
@@ -683,24 +706,24 @@ class CampaignController extends Controller
 
             if ($ca && $ca->keyword_type === 'json') {
                 $keywords = json_decode($ca->keyword ?? '[]', true) ?? [];
-                $urls     = json_decode($ca->url ?? '[]', true) ?? [];
+                $urls = json_decode($ca->url ?? '[]', true) ?? [];
             } else {
                 $keywords = [$ca->keyword ?? ''];
-                $urls     = [$ca->url ?? ''];
+                $urls = [$ca->url ?? ''];
             }
 
             for ($i = 0; $i < $maxPairs; $i++) {
                 if ($i === 0) {
                     $row['Keyword'] = $keywords[0] ?? '';
-                    $row['URL']     = $urls[0] ?? '';
+                    $row['URL'] = $urls[0] ?? '';
                 } else {
-                    $row["Keyword " . ($i + 1)] = $keywords[$i] ?? '';
-                    $row["URL " . ($i + 1)]     = $urls[$i] ?? '';
+                    $row['Keyword '.($i + 1)] = $keywords[$i] ?? '';
+                    $row['URL '.($i + 1)] = $urls[$i] ?? '';
                 }
             }
 
             $row['Status'] = $post->status === 'success' ? 'Live' : 'Not Live';
-            $row['Date']   = optional($post->created_at)->format('d M Y');
+            $row['Date'] = optional($post->created_at)->format('d M Y');
 
             $writer->addRow($row);
         }
@@ -720,20 +743,20 @@ class CampaignController extends Controller
         foreach ($articles as $ca) {
             $k = $ca->keyword === null ? '' : (string) $ca->keyword;
             $u = $ca->url === null ? '' : (string) $ca->url;
-            $key = $k . "\n" . $u;
+            $key = $k."\n".$u;
             if (($ca->keyword_type ?? 'single') === 'json') {
                 $hasJsonKeywords = true;
             }
 
-            if (!isset($batches[$key])) {
+            if (! isset($batches[$key])) {
                 $batches[$key] = [
-                    'keyword'           => $k,
-                    'url'               => $u,
-                    'keyword_type'      => $ca->keyword_type ?? 'single',
-                    'url_type'          => $ca->url_type ?? 'single',
-                    'count'             => 0,
-                    'article_ids'       => [],
-                    'post_ids'          => [],
+                    'keyword' => $k,
+                    'url' => $u,
+                    'keyword_type' => $ca->keyword_type ?? 'single',
+                    'url_type' => $ca->url_type ?? 'single',
+                    'count' => 0,
+                    'article_ids' => [],
+                    'post_ids' => [],
                     'representative_id' => $ca->id,
                 ];
             }
@@ -777,7 +800,7 @@ class CampaignController extends Controller
         );
     }
 
-    // this is single post page edit function where we fetch data from remote site 
+    // this is single post page edit function where we fetch data from remote site
     public function editCampaignPost(string $id)
     {
         //
@@ -803,21 +826,21 @@ class CampaignController extends Controller
         $ca = $campaignPost->campaignArticle;
         if ($ca) {
             if (($ca->keyword_type ?? '') === 'json') {
-                $kwDec  = json_decode($ca->keyword, true);
+                $kwDec = json_decode($ca->keyword, true);
                 $urlDec = json_decode($ca->url, true);
                 if (is_array($kwDec) && is_array($urlDec)) {
                     $n = min(count($kwDec), count($urlDec));
                     for ($i = 0; $i < $n; $i++) {
                         $keywordPairs[] = [
                             'keyword' => (string) ($kwDec[$i] ?? ''),
-                            'url'     => (string) ($urlDec[$i] ?? ''),
+                            'url' => (string) ($urlDec[$i] ?? ''),
                         ];
                     }
                 }
             } else {
                 $keywordPairs[] = [
                     'keyword' => (string) ($ca->keyword ?? ''),
-                    'url'     => (string) ($ca->url ?? ''),
+                    'url' => (string) ($ca->url ?? ''),
                 ];
             }
         }
@@ -836,7 +859,7 @@ class CampaignController extends Controller
         //
         $campaignPost = CampaignPost::find($id);
 
-        if (!$campaignPost) {
+        if (! $campaignPost) {
             return back()->with('cus__error', 'The requested campaign post is invalid');
         }
 
@@ -849,14 +872,12 @@ class CampaignController extends Controller
         $domainName = optional($campaignPost->campaignDomain?->domain)->name;
         $api_key = optional($campaignPost->campaignDomain?->domain)->api_key;
 
-        if (!$domainName || !$api_key) {
+        if (! $domainName || ! $api_key) {
             return back()->with(
                 'cus__error',
                 'Domain or API key is missing for this campaign post.'
             );
         }
-
-
 
         $url = "https://{$domainName}/wp-json/external/v1/posts/update/{$campaignPost->remote_id}?api_key={$api_key}";
 
@@ -866,10 +887,9 @@ class CampaignController extends Controller
             ->timeout(120)
             ->asJson()
             ->post($url, [
-                'title'   => $validated['name'],
+                'title' => $validated['name'],
                 'content' => $validated['description'], // raw HTML ✅
             ]);
-
 
         if ($response->failed()) {
             return back()->with('cus__error', 'Failed to update the post on the remote domain.');
@@ -882,18 +902,16 @@ class CampaignController extends Controller
             ->with('cus__success', "Successfully updated the campaign post on {$domainName}.");
     }
 
-
-
     public function deleteCampaignPost(string $id)
     {
         $campaignPost = CampaignPost::with(['campaign'])->find($id);
 
-        if (!$campaignPost) {
+        if (! $campaignPost) {
             return back()->with('cus__error', 'The requested campaign post is invalid');
         }
 
         $campaign = $campaignPost->campaign;
-        if (!$campaign) {
+        if (! $campaign) {
             return back()->with('cus__error', 'Campaign not found');
         }
 
@@ -905,7 +923,7 @@ class CampaignController extends Controller
 
             /** 🔒 Lock campaign row so counts stay correct */
             $campaign = Campaign::lockForUpdate()->find($campaignId);
-            if (!$campaign) {
+            if (! $campaign) {
                 throw new \RuntimeException('Campaign not found');
             }
 
@@ -913,7 +931,7 @@ class CampaignController extends Controller
             $isLastPost = $campaign->total_targets === 1;
 
             $campaignArticle = CampaignArticle::find($campaignPost->campaign_article_id);
-            $campaignDomain  = CampaignDomain::find($campaignPost->campaign_domain_id);
+            $campaignDomain = CampaignDomain::find($campaignPost->campaign_domain_id);
 
             /** 🔓 Unlock article if queued */
             if ($campaignArticle && $postStatus === 'queued') {
@@ -921,7 +939,7 @@ class CampaignController extends Controller
                 if ($article) {
                     $article->update([
                         'lock_at' => null,
-                        'status'  => 0,
+                        'status' => 0,
                     ]);
                 }
             }
@@ -951,7 +969,7 @@ class CampaignController extends Controller
 
                     if ($response->failed()) {
                         throw new \Exception(
-                            'Remote WordPress delete failed: ' . $response->body()
+                            'Remote WordPress delete failed: '.$response->body()
                         );
                     }
                 }
@@ -1003,15 +1021,15 @@ class CampaignController extends Controller
         ?array $onlyArticleIds = null
     ): array {
         if (is_array($kwInput) && is_array($urlInput)) {
-            $newKwList  = array_values(array_map(fn ($v) => trim((string) $v), $kwInput));
+            $newKwList = array_values(array_map(fn ($v) => trim((string) $v), $kwInput));
             $newUrlList = array_values(array_map(fn ($v) => trim((string) $v), $urlInput));
-            $newPairs   = [];
-            $len        = min(count($newKwList), count($newUrlList));
+            $newPairs = [];
+            $len = min(count($newKwList), count($newUrlList));
             for ($i = 0; $i < $len; $i++) {
                 $newPairs[] = [$newKwList[$i] ?? '', $newUrlList[$i] ?? ''];
             }
         } else {
-            $newKw  = trim((string) $kwInput);
+            $newKw = trim((string) $kwInput);
             $newUrl = trim((string) $urlInput);
             $newPairs = ($newKw !== '' || $newUrl !== '') ? [[$newKw, $newUrl]] : [];
         }
@@ -1021,12 +1039,12 @@ class CampaignController extends Controller
         }
 
         $oldKeyword = $representative->keyword === null ? '' : (string) $representative->keyword;
-        $oldUrl     = $representative->url === null ? '' : (string) $representative->url;
-        $isJson     = ($representative->keyword_type ?? '') === 'json';
+        $oldUrl = $representative->url === null ? '' : (string) $representative->url;
+        $isJson = ($representative->keyword_type ?? '') === 'json';
 
         $oldPairs = [];
         if ($isJson) {
-            $kwArr  = json_decode($oldKeyword, true);
+            $kwArr = json_decode($oldKeyword, true);
             $urlArr = json_decode($oldUrl, true);
             if (is_array($kwArr) && is_array($urlArr)) {
                 $n = min(count($kwArr), count($urlArr));
@@ -1045,23 +1063,23 @@ class CampaignController extends Controller
             fn ($p) => trim((string) ($p[0] ?? '')) !== '' && trim((string) ($p[1] ?? '')) !== ''
         ));
 
-        $removePairs  = [];
+        $removePairs = [];
         $replacePairs = [];
-        $addPairs     = [];
+        $addPairs = [];
 
         // Match exact old/new pairs first (handles middle-row delete without false remove of shifted links).
         $oldUsed = array_fill(0, count($oldPairs), false);
         $newUsed = array_fill(0, count($pairsToStore), false);
         $oldTokenMap = [];
         foreach ($oldPairs as $oi => $op) {
-            $token = (string) ($op[0] ?? '') . "\n" . (string) ($op[1] ?? '');
+            $token = (string) ($op[0] ?? '')."\n".(string) ($op[1] ?? '');
             if (! isset($oldTokenMap[$token])) {
                 $oldTokenMap[$token] = [];
             }
             $oldTokenMap[$token][] = $oi;
         }
         foreach ($pairsToStore as $ni => $np) {
-            $token = (string) ($np[0] ?? '') . "\n" . (string) ($np[1] ?? '');
+            $token = (string) ($np[0] ?? '')."\n".(string) ($np[1] ?? '');
             if (! empty($oldTokenMap[$token])) {
                 $oi = array_shift($oldTokenMap[$token]);
                 if ($oi !== null && isset($oldUsed[$oi]) && ! $oldUsed[$oi]) {
@@ -1123,23 +1141,23 @@ class CampaignController extends Controller
             return ['queued' => false, 'skipped' => true];
         }
 
-        $newIsJson    = count($pairsToStore) > 1;
+        $newIsJson = count($pairsToStore) > 1;
         if (count($pairsToStore) === 0) {
-            $kwStore  = $newIsJson ? '[]' : '';
+            $kwStore = $newIsJson ? '[]' : '';
             $urlStore = $newIsJson ? '[]' : '';
         } elseif (count($pairsToStore) === 1 && ! $newIsJson) {
-            $kwStore  = $pairsToStore[0][0];
+            $kwStore = $pairsToStore[0][0];
             $urlStore = $pairsToStore[0][1];
         } else {
-            $kwStore  = json_encode(array_column($pairsToStore, 0));
+            $kwStore = json_encode(array_column($pairsToStore, 0));
             $urlStore = json_encode(array_column($pairsToStore, 1));
         }
 
         CampaignArticle::whereIn('id', $caIds)->update([
-            'keyword'      => $kwStore,
-            'url'          => $urlStore,
+            'keyword' => $kwStore,
+            'url' => $urlStore,
             'keyword_type' => $newIsJson ? 'json' : 'single',
-            'url_type'     => $newIsJson ? 'json' : 'single',
+            'url_type' => $newIsJson ? 'json' : 'single',
         ]);
 
         $postIds = CampaignPost::whereIn('campaign_article_id', $caIds)
@@ -1172,11 +1190,11 @@ class CampaignController extends Controller
 
         $validated = $request->validate([
             'batch_keyword' => 'required|array|min:1',
-            'batch_url'     => 'required|array|min:1',
+            'batch_url' => 'required|array|min:1',
         ]);
 
         $campaign = $campaignPost->campaign;
-        $ca       = CampaignArticle::where('campaign_id', $campaign->id)
+        $ca = CampaignArticle::where('campaign_id', $campaign->id)
             ->whereKey($campaignPost->campaign_article_id)
             ->first();
         if (! $ca) {
@@ -1224,15 +1242,15 @@ class CampaignController extends Controller
         }
 
         $representativeIds = $request->input('batch_representative_id', []);
-        $batchKeywords     = $request->input('batch_keyword', []);
-        $batchUrls         = $request->input('batch_url', []);
+        $batchKeywords = $request->input('batch_keyword', []);
+        $batchUrls = $request->input('batch_url', []);
 
         if (! is_array($representativeIds)) {
             return back()->with('cus__error', 'Invalid form data.');
         }
 
         $batchKeywords = is_array($batchKeywords) ? array_values($batchKeywords) : [];
-        $batchUrls     = is_array($batchUrls) ? array_values($batchUrls) : [];
+        $batchUrls = is_array($batchUrls) ? array_values($batchUrls) : [];
         $queuedBatches = 0;
 
         foreach ($representativeIds as $index => $repId) {
@@ -1242,7 +1260,7 @@ class CampaignController extends Controller
                 continue;
             }
 
-            $kwInput  = $batchKeywords[$index] ?? null;
+            $kwInput = $batchKeywords[$index] ?? null;
             $urlInput = $batchUrls[$index] ?? null;
 
             $result = $this->applyCampaignKeywordUrlBatch($campaign, $representative, $kwInput, $urlInput, null);
@@ -1264,7 +1282,7 @@ class CampaignController extends Controller
 
         $msg = $queuedBatches > 0
             ? "Batches updated in database. {$queuedBatches} batch(es) queued for remote sync. Run the queue worker to process: php artisan queue:work --queue=bulk_updates"
-            : "No keyword/URL changes were made, or no published posts to update.";
+            : 'No keyword/URL changes were made, or no published posts to update.';
 
         return redirect()
             ->route('admin.campaign.edit', $campaign->id)
@@ -1286,8 +1304,8 @@ class CampaignController extends Controller
         }
 
         $request->validate([
-            'keywordmethod'      => 'required|in:multiple',
-            'keywordsDataHolder'   => 'required|string',
+            'keywordmethod' => 'required|in:multiple',
+            'keywordsDataHolder' => 'required|string',
         ]);
 
         $keywords = json_decode((string) $request->keywordsDataHolder, true);
@@ -1364,7 +1382,7 @@ class CampaignController extends Controller
                         : (bool) ($ca->noreferrer ?? false);
 
                     CampaignArticle::where('id', $ca->id)->update([
-                        'media'    => $mediaVal,
+                        'media' => $mediaVal,
                         'nofollow' => $nofollow,
                         'sponsored' => $sponsored,
                         'ugc' => $ugc,
@@ -1438,13 +1456,13 @@ class CampaignController extends Controller
             }
             $boxes[] = [
                 'quantity' => $groupQty,
-                'media'    => $groupPayload['media'],
+                'media' => $groupPayload['media'],
                 'nofollow' => $groupPayload['nofollow'],
                 'sponsored' => $groupPayload['sponsored'],
                 'ugc' => $groupPayload['ugc'],
                 'noopener' => $groupPayload['noopener'],
                 'noreferrer' => $groupPayload['noreferrer'],
-                'rows'     => $groupPayload['rows'],
+                'rows' => $groupPayload['rows'],
             ];
         };
 
@@ -1480,11 +1498,11 @@ class CampaignController extends Controller
      */
     private function articleRowPayloadForEdit(CampaignArticle $ca): array
     {
-        $kw  = $ca->keyword;
+        $kw = $ca->keyword;
         $url = $ca->url;
 
         if (($ca->keyword_type ?? '') === 'json') {
-            $kwArr  = json_decode((string) $kw, true);
+            $kwArr = json_decode((string) $kw, true);
             $urlArr = json_decode((string) $url, true);
             if (! is_array($kwArr)) {
                 $kwArr = [];
@@ -1493,7 +1511,7 @@ class CampaignController extends Controller
                 $urlArr = [];
             }
         } else {
-            $kwArr  = [trim((string) $kw)];
+            $kwArr = [trim((string) $kw)];
             $urlArr = [trim((string) $url)];
         }
 
@@ -1501,7 +1519,7 @@ class CampaignController extends Controller
         $rows = [];
         for ($i = 0; $i < $n; $i++) {
             $rows[] = [
-                'url'     => (string) ($urlArr[$i] ?? ''),
+                'url' => (string) ($urlArr[$i] ?? ''),
                 'keyword' => (string) ($kwArr[$i] ?? ''),
             ];
         }
@@ -1513,13 +1531,13 @@ class CampaignController extends Controller
         $media = $media === null || trim((string) $media) === '' ? null : trim((string) $media);
 
         return [
-            'media'    => $media,
+            'media' => $media,
             'nofollow' => (bool) $ca->nofollow,
             'sponsored' => (bool) ($ca->sponsored ?? false),
             'ugc' => (bool) ($ca->ugc ?? false),
             'noopener' => (bool) ($ca->noopener ?? false),
             'noreferrer' => (bool) ($ca->noreferrer ?? false),
-            'rows'     => $rows,
+            'rows' => $rows,
         ];
     }
 
@@ -1530,12 +1548,12 @@ class CampaignController extends Controller
     {
         return json_encode(
             [
-                'm'    => $payload['media'],
-                'nf'   => $payload['nofollow'],
-                'sp'   => $payload['sponsored'],
-                'ug'   => $payload['ugc'],
-                'no'   => $payload['noopener'],
-                'nr'   => $payload['noreferrer'],
+                'm' => $payload['media'],
+                'nf' => $payload['nofollow'],
+                'sp' => $payload['sponsored'],
+                'ug' => $payload['ugc'],
+                'no' => $payload['noopener'],
+                'nr' => $payload['noreferrer'],
                 'rows' => $payload['rows'],
             ],
             JSON_UNESCAPED_UNICODE
@@ -1550,8 +1568,7 @@ class CampaignController extends Controller
     {
         $campaign = Campaign::find($id);
 
-
-        if (!$campaign) {
+        if (! $campaign) {
             return back()->with('cus__error', 'The requested campaign is invalid');
         }
 
@@ -1582,7 +1599,7 @@ class CampaignController extends Controller
     {
         $retryPost = CampaignPost::with('campaign')->find($id);
 
-        if (!$retryPost) {
+        if (! $retryPost) {
             return back()->with('cus__error', 'The post is invalid or not present in the database');
         }
 
@@ -1595,12 +1612,12 @@ class CampaignController extends Controller
         }
 
         $retryPost->update([
-            'status'         => 'queued',
-            'attempt_count'  => 0,
-            'next_retry_at'  => null,
-            'locked_at'      => null,
-            'lock_token'     => null,
-            'last_error'     => null,
+            'status' => 'queued',
+            'attempt_count' => 0,
+            'next_retry_at' => null,
+            'locked_at' => null,
+            'lock_token' => null,
+            'last_error' => null,
         ]);
 
         PublishCampaignPostJob::dispatch($retryPost->id)->onQueue('campaigns');
@@ -1611,8 +1628,6 @@ class CampaignController extends Controller
         );
     }
 
-
-
     /**
      * Queue campaign deletion: remote deletes + DB cleanup run in background (DeleteCampaignJob).
      */
@@ -1620,7 +1635,7 @@ class CampaignController extends Controller
     {
         $campaign = Campaign::find($id);
 
-        if (!$campaign) {
+        if (! $campaign) {
             return back()->with('cus__error', 'Campaign not found');
         }
 
@@ -1637,7 +1652,7 @@ class CampaignController extends Controller
     public function purgeLocalOnly(string $id)
     {
         $campaign = Campaign::find($id);
-        if (!$campaign) {
+        if (! $campaign) {
             return back()->with('cus__error', 'Campaign not found');
         }
         $this->authorizeCampaignAccess($campaign);
@@ -1674,7 +1689,7 @@ class CampaignController extends Controller
 
         return redirect()
             ->route('admin.campaign.index')
-            ->with('cus__success', $n . ' campaign(s) removed from this dashboard only. Remote posts were not deleted.');
+            ->with('cus__success', $n.' campaign(s) removed from this dashboard only. Remote posts were not deleted.');
     }
 
     /**
@@ -1698,6 +1713,6 @@ class CampaignController extends Controller
 
         return redirect()
             ->route('admin.campaign.index')
-            ->with('cus__success', 'Bulk retry queued for ' . $n . ' campaign(s). All failed posts will be retried in the background. Run the queue worker to process them.');
+            ->with('cus__success', 'Bulk retry queued for '.$n.' campaign(s). All failed posts will be retried in the background. Run the queue worker to process them.');
     }
 }

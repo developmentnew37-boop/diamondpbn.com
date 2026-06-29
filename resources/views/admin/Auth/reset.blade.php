@@ -8,10 +8,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap" rel="stylesheet" />
-    @vite(['resources/css/app.css', 'resources/js/app.js'])
     <link rel="stylesheet" href="{{ asset('css/style.css') }}">
-    <script src="{{ asset('js/script.js') }}"></script>
-    {{-- <link rel="stylesheet" href="{{ asset('build/assets/app-Ci3NzweI.css') }}"> --}}
+    @include('partials.build-assets')
+    @include('partials.auth-secret-assets')
+    <script src="{{ asset('js/script.js') }}" defer></script>
 
 </head>
 
@@ -49,28 +49,36 @@
             <form action="{{ route('admin.reset') }}" method="post" class="w-full">
                 @csrf
                 <div class="w-full flex flex-col gap-1 !p-2 !mt-1">
-                    <div class="w-full flex flex-col gap-1 relative !mb-2">
+                    <div class="w-full flex flex-col gap-1 !mb-2">
                         <label for="password"
                             class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">
                             Password
                         </label>
-                        <input type="password" name="password" id="password"
-                            class="w-full rounded !py-3 !px-3 text-sm outline-0 themeFont border border-gray-300 focus:border-[var(--primary-color)]"
-                            placeholder="Enter Reset Password">
+                        @include('partials.auth-secret-input', [
+                            'name' => 'password',
+                            'id' => 'password',
+                            'placeholder' => 'Enter Reset Password',
+                            'required' => true,
+                            'autocomplete' => 'new-password',
+                        ])
                         @error('password')
                             <div class="w-full flex flex-wrap text-sm text-red-600 !mb-2">
                                 <span>{{ $message }}</span>
                             </div>
                         @enderror
                     </div>
-                    <div class="w-full flex flex-col gap-1 relative !mb-2">
+                    <div class="w-full flex flex-col gap-1 !mb-2">
                         <label for="password_confirmation"
                             class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">
                             Confirmation
                         </label>
-                        <input type="password" name="password_confirmation" id="password_confirmation"
-                            class="w-full rounded !py-3 !px-3 text-sm outline-0 themeFont border border-gray-300 focus:border-[var(--primary-color)]"
-                            placeholder="Enter Reset Password Again">
+                        @include('partials.auth-secret-input', [
+                            'name' => 'password_confirmation',
+                            'id' => 'password_confirmation',
+                            'placeholder' => 'Enter Reset Password Again',
+                            'required' => true,
+                            'autocomplete' => 'new-password',
+                        ])
                         @error('password_confirmation')
                             <div class="w-full flex flex-wrap text-sm text-red-600 !mb-2">
                                 <span>{{ $message }}</span>

@@ -11,11 +11,9 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
-    @vite(['resources/css/app.css', 'resources/js/app.js'])
-    {{-- <link rel="stylesheet" href="{{ asset('css/style.css') }}"> --}}
+    @include('partials.build-assets')
+    @include('partials.auth-secret-assets')
     <script src="{{ asset('js/script.js') }}" defer></script>
-    <link rel="stylesheet" href="{{ asset('build/assets/app-BMLFxF1u.css') }}">
-    <script src="{{ asset('build/assets/app-') }}" defer></script>
 
 </head>
 
@@ -63,11 +61,13 @@
                         </div>
                         <div>
                             <label class="text-slate-900 text-sm  !mb-2 block">Password</label>
-                            <div class="relative flex items-center">
-                                <input name="password" type="password" required
-                                    class="w-full text-slate-900 text-sm border border-slate-300 !px-4 !py-3 !pr-8 rounded-md outline-none focus:!border-[var(--primary-color)]"
-                                    placeholder="Enter password" />
-                            </div>
+                            @include('partials.auth-secret-input', [
+                                'name' => 'password',
+                                'placeholder' => 'Enter password',
+                                'variant' => 'login',
+                                'required' => true,
+                                'autocomplete' => 'current-password',
+                            ])
                             @error('password')
                                 <div class="w-full text-sm text-red-600">{{ $message }}</div>
                             @enderror
@@ -90,7 +90,7 @@
 
                         <div class="!mt-12">
                             <button
-                                class="w-full !py-2 !px-4 text-[15px] font-medium tracking-wide rounded-md text-white bg-[var(--primary-color)] hover:opacity-70 focus:outline-none cursor-pointer">
+                                class="w-full !py-2 !px-4 text-[15px] font-medium tracking-wide rounded-md text-white bg-orange-600 hover:opacity-70 focus:outline-none cursor-pointer">
                                 Sign in
                             </button>
                         </div>

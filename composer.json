@@ -53,7 +53,7 @@
         ],
         "dev": [
             "Composer\\Config::disableProcessTimeout",
-            "npx concurrently -c \"#93c5fd,#c4b5fd,#fdba74\" \"php artisan serve\" \"php artisan queue:listen --tries=1 --queue=default,deletions,campaigns,sidebar_campaigns\" \"npm run dev\" --names='server,queue,vite'"
+            "npx concurrently -c \"#93c5fd,#c4b5fd,#fdba74\" \"php artisan serve\" \"php artisan queue:listen --tries=1 --queue=default,deletions,campaigns,sidebar_campaigns,scheduled_campaigns,scheduled_sidebar_campaigns,wp_scheduled_campaigns,wp_scheduled_sync,schedule_campaign_bulk_updates,schedule_campaign_deletions,schedule_sidebar_bulk_updates,schedule_sidebar_deletions,wp_scheduled_campaign_bulk_updates,wp_scheduled_campaign_deletions,domainCheck,plugin_deployments,webhook-secret,bulk_updates,bulk_blogroll_updates,sidebar_deletions,hidden_links_campaigns,update_hidden_links,delete_hidden_links,delete_hidden_links_campaign,bulk_retry,bulk_retry_sidebar_campaigns,bulk_retry_scheduled_campaigns,bulk_retry_scheduled_sidebar_campaigns,bulk_retry_hidden_links_campaigns,article_permanent_purge\" \"npm run dev\" --names='server,queue,vite'"
         ],
         "test": [
             "@php artisan config:clear --ansi",

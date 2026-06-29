@@ -2,16 +2,16 @@
 
 namespace App\Http\Controllers\Admin;
 
-use App\Http\Controllers\Controller;
-use App\Models\Admin\Domain;
-use Illuminate\Http\Request;
-use App\Models\Admin\DomainCategory;
-use App\Models\Admin\ArticleCategory;
-use App\Models\Admin\ArticleSet;
-use App\Models\Admin\DomainSet;
-use App\Models\Admin\Campaign;
-use App\Models\Admin\ArticleLanguage;
 use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
+use App\Http\Controllers\Controller;
+use App\Models\Admin\ArticleCategory;
+use App\Models\Admin\ArticleLanguage;
+use App\Models\Admin\ArticleSet;
+use App\Models\Admin\Campaign;
+use App\Models\Admin\Domain;
+use App\Models\Admin\DomainCategory;
+use App\Models\Admin\DomainSet;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class StickyPostCampaignController extends Controller
@@ -34,7 +34,7 @@ class StickyPostCampaignController extends Controller
         // ✅ Clean empty search from URL
         if ($request->has('search') && trim($request->search) === '') {
             return redirect()->to(
-                url()->current() . '?' . http_build_query(
+                url()->current().'?'.http_build_query(
                     $request->except('search')
                 )
             );
@@ -44,11 +44,12 @@ class StickyPostCampaignController extends Controller
 
         // ✅ Base query
         $query = Campaign::query()
+            ->with('domainCategory:id,name')
             ->where('is_sticky_campaign', true);
 
         // 🔍 Search by campaign_no
         if ($request->filled('search')) {
-            $search = '%' . trim($request->search) . '%';
+            $search = '%'.trim($request->search).'%';
             $query->where('campaign_no', 'LIKE', $search);
         }
         $admin = Auth::guard('admin')->user();
@@ -70,10 +71,10 @@ class StickyPostCampaignController extends Controller
 
     public function create()
     {
-        $campaignId = 'STK-' . now()->format('YmdHis') . '-' . random_int(1000, 9999);
+        $campaignId = 'STK-'.now()->format('YmdHis').'-'.random_int(1000, 9999);
         // // domain + article category
         $domainCategory = DomainCategory::all();
-        $articleCategory =  ArticleCategory::all();
+        $articleCategory = ArticleCategory::all();
         // // ** now fetching the user the articles ** //
         $articleSet = ArticleSet::withCount('articles')->where('admin_id', auth('admin')->id())->get();
         // ** now providing user domain sets
@@ -85,6 +86,7 @@ class StickyPostCampaignController extends Controller
                 ->where('status', '!=', '1');
         }])->having('article_count', '>', 0)->get();
         $is_sticky = 1;
+
         return view('admin.campaigns.pbn-post.create-campaign', compact('campaignId', 'domainCategory', 'articleCategory', 'articleSet', 'domainSets', 'articleLanguages', 'is_sticky'));
     }
 }

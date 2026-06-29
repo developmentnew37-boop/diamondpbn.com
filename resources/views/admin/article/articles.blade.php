@@ -2,6 +2,144 @@
 
 @section('title', 'Articles here')
 
+@push('style')
+    <style>
+        .articles-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+        }
+
+        .articles-toolbar-group {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+            width: 100%;
+        }
+
+        .articles-toolbar-bulk-form {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+            width: 100%;
+        }
+
+        @media (min-width: 768px) and (max-width: 1023.98px) {
+            .articles-toolbar {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 0.75rem;
+            }
+
+            .articles-toolbar-group {
+                grid-column: 1 / -1;
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 0.75rem;
+                width: 100%;
+            }
+
+            .articles-toolbar-group > .articles-control-select {
+                width: 100%;
+                min-width: 0;
+            }
+
+            .articles-toolbar-divider {
+                display: none;
+            }
+
+            .articles-toolbar-bulk-form {
+                grid-column: 1 / -1;
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                gap: 0.75rem;
+                width: 100%;
+            }
+
+            .articles-toolbar-bulk-form .articles-control-select {
+                width: 100%;
+                min-width: 0;
+            }
+
+            .articles-toolbar-bulk-form .articles-control-btn {
+                width: auto;
+            }
+
+            .articles-search-wrap {
+                grid-column: 1 / -1;
+                width: 100%;
+                max-width: none;
+            }
+        }
+
+        @media (min-width: 1024px) {
+            .articles-toolbar-group {
+                width: auto;
+                flex: 1 1 auto;
+                min-width: 0;
+            }
+
+            .articles-toolbar-bulk-form {
+                width: auto;
+            }
+        }
+
+        .articles-toolbar-divider {
+            display: none;
+            width: 1px;
+            height: 2.5rem;
+            background-color: #e5e7eb;
+            flex-shrink: 0;
+        }
+
+        @media (min-width: 768px) {
+            .articles-toolbar-divider {
+                display: block;
+            }
+        }
+
+        .articles-control-select {
+            width: 100%;
+            min-height: 46px;
+        }
+
+        @media (min-width: 640px) {
+            .articles-control-select {
+                width: auto;
+                min-width: 11rem;
+            }
+        }
+
+        .articles-control-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 46px;
+            padding: 0.75rem 1rem;
+            font-size: 0.875rem;
+            white-space: nowrap;
+            border-radius: 0.25rem;
+            transition: background-color 0.3s ease;
+        }
+
+        .articles-search-wrap {
+            width: 100%;
+        }
+
+        @media (min-width: 1024px) {
+            .articles-search-wrap {
+                width: auto;
+                min-width: 280px;
+                max-width: 320px;
+                flex-shrink: 0;
+            }
+        }
+    </style>
+@endpush
 
 @section('main-content')
 
@@ -66,85 +204,70 @@
                     </h2>
 
 
-                    <div class="w-full flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-start lg:justify-between !mt-2 min-w-0">
-                        <div class="w-full lg:w-auto lg:flex-1 lg:min-w-0 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
-                            <div class="w-full sm:w-44 shrink-0">
-                                <select name="" id="article_category"
-                                    class="bg-gray-100  border border-gray-200 !w-full !p-3 text-sm w-full rounded outline-none focus:border-orange-600">
-                                    <option value="">select category</option>
-                                    @if (isset($categories) && count($categories) > 0)
-                                        @foreach ($categories as $category)
-                                            <option value="{{ $category->id }}"
-                                                {{ request('category') == $category->id ? 'selected' : '' }}>
-                                                {{ $category->name }}
-                                            </option>
-                                        @endforeach
-                                    @endif
-                                </select>
-                            </div>
-                            <div class="w-full sm:w-44 shrink-0">
-                                <select name="" id="article_langauge"
-                                    class="bg-gray-100  border border-gray-200 !w-full !p-3 text-sm w-full rounded outline-none focus:border-orange-600">
-                                    <option value="">select language</option>
-                                    @if (isset($languages) && count($languages) > 0)
-                                        @foreach ($languages as $language)
-                                            <option value="{{ $language->id }}"
-                                                {{ request('language') == $language->id ? 'selected' : '' }}>
-                                                {{ $language->name }}</option>
-                                        @endforeach
-                                    @endif
-                                </select>
-                            </div>
-                            <div class="w-full sm:flex-1 sm:min-w-0">
-                                {{-- {{ route('admin.domain.category.delete') }} --}}
-                                <form action="{{ route('admin.articles.delete') }}"
-                                    class="w-full flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2" method="post">
-                                    @csrf
-                                    <select name="actions" id=""
-                                        class="bg-gray-100 border border-gray-200 !p-3 text-sm w-full sm:flex-1 sm:min-w-[10rem] rounded outline-none focus:border-orange-600">
-                                        <option value="">Bulk actions</option>
-                                        <option value="1">Delete</option>
-                                    </select>
-                                    <input type="hidden" name="bulk_ids" id="valHolders">
-                                    <button type="submit"
-                                        class="flex !p-3 !px-4 text-sm font-normal justify-center duration:600 transition-all bg-[var(--sidebar-bg)] hover:bg-[var(--primary-color)] text-white rounded cursor-pointer shrink-0 w-full sm:w-auto">
-                                        Apply
-                                    </button>
-                                </form>
-
-
-                            </div>
-                        </div>
-                        <div class="w-full lg:w-auto lg:max-w-md xl:max-w-lg flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-stretch lg:items-center lg:justify-end lg:shrink-0 min-w-0">
-
-                            {{-- Search Box --}}
-
-                            <div class="relative w-full sm:flex-1 sm:min-w-[12rem] max-h-12 overflow-hidden min-w-0">
-                                <form method="GET" action="{{ url()->current() }}" class="relative w-full">
-
-                                    {{-- keep other parameters --}}
-                                    @foreach (request()->except('search') as $key => $value)
-                                        <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                    <div class="articles-toolbar !mt-3">
+                        <div class="articles-toolbar-group">
+                            <select name="" id="article_category"
+                                class="articles-control-select bg-gray-100 border border-gray-200 !p-3 text-sm rounded outline-none focus:border-[var(--primary-color)]">
+                                <option value="">select category</option>
+                                @if (isset($categories) && count($categories) > 0)
+                                    @foreach ($categories as $category)
+                                        <option value="{{ $category->id }}"
+                                            {{ request('category') == $category->id ? 'selected' : '' }}>
+                                            {{ $category->name }}
+                                        </option>
                                     @endforeach
+                                @endif
+                            </select>
 
-                                    <input type="search" name="search" placeholder="search here" id="search_category"
-                                        value="{{ request('search') }}"
-                                        class="bg-gray-100 shadow border border-gray-200 !p-3 !pr-[50px] max-h-12 text-sm w-full rounded outline-none">
+                            <select name="" id="article_langauge"
+                                class="articles-control-select bg-gray-100 border border-gray-200 !p-3 text-sm rounded outline-none focus:border-[var(--primary-color)]">
+                                <option value="">select language</option>
+                                @if (isset($languages) && count($languages) > 0)
+                                    @foreach ($languages as $language)
+                                        <option value="{{ $language->id }}"
+                                            {{ request('language') == $language->id ? 'selected' : '' }}>
+                                            {{ $language->name }}</option>
+                                    @endforeach
+                                @endif
+                            </select>
 
-                                    <button type="submit"
-                                        class="w-12 h-12 flex items-center justify-center bg-[var(--sidebar-bg)] absolute top-0 right-0 rounded-r">
-                                        <svg class="w-5 h-5 text-white !text-sm" fill="none" stroke="currentColor"
-                                            viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                                        </svg>
-                                    </button>
+                            <span class="articles-toolbar-divider" aria-hidden="true"></span>
 
-                                </form>
+                            <form action="{{ route('admin.articles.delete') }}"
+                                class="articles-toolbar-bulk-form" method="post">
+                                @csrf
+                                <select name="actions"
+                                    class="articles-control-select bg-gray-100 border border-gray-200 !p-3 text-sm rounded outline-none focus:border-[var(--primary-color)]">
+                                    <option value="">Bulk actions</option>
+                                    <option value="1">Delete</option>
+                                </select>
+                                <input type="hidden" name="bulk_ids" id="valHolders">
+                                <button type="submit"
+                                    class="articles-control-btn bg-[var(--sidebar-bg)] hover:bg-[var(--primary-color)] text-white cursor-pointer w-full sm:w-auto">
+                                    Apply
+                                </button>
+                            </form>
+                        </div>
 
+                        <div class="articles-search-wrap relative max-h-12">
+                            <form method="GET" action="{{ url()->current() }}" class="relative w-full">
+                                @foreach (request()->except('search') as $key => $value)
+                                    <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                                @endforeach
 
-                            </div>
+                                <input type="search" name="search" placeholder="search here" id="search_category"
+                                    value="{{ request('search') }}"
+                                    class="bg-gray-100 shadow border border-gray-200 !p-3 !pr-[50px] max-h-12 text-sm w-full rounded outline-none focus:border-[var(--primary-color)]">
 
+                                <button type="submit"
+                                    class="w-12 h-12 flex items-center justify-center bg-[var(--sidebar-bg)] hover:bg-[var(--primary-color)] absolute top-0 right-0 rounded-r transition-colors">
+                                    <svg class="w-5 h-5 text-white !text-sm" fill="none" stroke="currentColor"
+                                        viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                                    </svg>
+                                </button>
+                            </form>
                         </div>
                     </div>
 

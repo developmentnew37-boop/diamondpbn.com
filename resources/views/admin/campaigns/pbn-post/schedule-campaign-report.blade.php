@@ -56,7 +56,7 @@
 
         {{-- TABLE --}}
         <div class="overflow-x-auto !mt-3 w-full max-w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
-            <table class="display w-full min-w-[980px] border border-gray-200 text-sm whitespace-nowrap searchable-table">
+            <table class="report-table display w-full min-w-[980px] border border-gray-200 text-sm searchable-table">
                 <thead>
                     <tr class="bg-gray-800 text-white">
                         <th class="border !px-2 !py-3">Sno</th>
@@ -105,13 +105,14 @@
                         <tr class="hover:bg-gray-50">
                             <td class="border !px-2 !py-3 text-center">{{ $index + 1 }}</td>
 
-                            <td class="border !px-2 !py-3">{{ $domain }}</td>
+                            <td class="border !px-2 !py-3 report-td-domain">
+                                @include('partials.report-cell-text', ['display' => $domain, 'title' => $domain !== '-' ? $domain : ''])
+                            </td>
 
                             @php $blogLink = \App\Support\ReportDisplay::externalLink($post->remote_url); @endphp
-                            <td class="border !px-2 !py-3 max-w-[18rem] align-top">
+                            <td class="border !px-2 !py-3 report-td-truncate report-td-blog">
                                 @if ($blogLink['href'] !== '')
-                                    <a href="{{ $blogLink['href'] }}" target="_blank" rel="noopener"
-                                        class="block w-full overflow-hidden text-ellipsis whitespace-nowrap text-blue-600 hover:underline"
+                                    <a href="{{ $blogLink['href'] }}" target="_blank" rel="noopener" class="report-clip"
                                         title="{{ $blogLink['title'] }}">{{ $blogLink['display'] }}</a>
                                 @else
                                     -
@@ -124,31 +125,35 @@
                                         $kwCell = \App\Support\ReportDisplay::keyword($keywords[$i] ?? null);
                                         $urlCell = \App\Support\ReportDisplay::url($urls[$i] ?? null);
                                     @endphp
-                                    <td class="border !px-2 !py-3 max-w-[12rem] align-top"
-                                        @if ($kwCell['title'] !== '') title="{{ $kwCell['title'] }}" @endif>{{ $kwCell['display'] }}</td>
-                                    <td class="border !px-2 !py-3 max-w-[18rem] align-top"
-                                        @if ($urlCell['title'] !== '') title="{{ $urlCell['title'] }}" @endif>{{ $urlCell['display'] }}</td>
+                                    <td class="border !px-2 !py-3 report-td-truncate">
+                                        @include('partials.report-cell-text', ['display' => $kwCell['display'], 'title' => $kwCell['title']])
+                                    </td>
+                                    <td class="border !px-2 !py-3 report-td-truncate">
+                                        @include('partials.report-cell-text', ['display' => $urlCell['display'], 'title' => $urlCell['title']])
+                                    </td>
                                 @endfor
                             @else
                                 @php
                                     $kwCell = \App\Support\ReportDisplay::keyword($keywords[0] ?? null);
                                     $urlCell = \App\Support\ReportDisplay::url($urls[0] ?? null);
                                 @endphp
-                                <td class="border !px-2 !py-3 max-w-[12rem] align-top"
-                                    @if ($kwCell['title'] !== '') title="{{ $kwCell['title'] }}" @endif>{{ $kwCell['display'] }}</td>
-                                <td class="border !px-2 !py-3 max-w-[18rem] align-top"
-                                    @if ($urlCell['title'] !== '') title="{{ $urlCell['title'] }}" @endif>{{ $urlCell['display'] }}</td>
+                                <td class="border !px-2 !py-3 report-td-truncate">
+                                    @include('partials.report-cell-text', ['display' => $kwCell['display'], 'title' => $kwCell['title']])
+                                </td>
+                                <td class="border !px-2 !py-3 report-td-truncate">
+                                    @include('partials.report-cell-text', ['display' => $urlCell['display'], 'title' => $urlCell['title']])
+                                </td>
                             @endif
-                            <td class="border !px-2 !py-3 text-center">
+                            <td class="border !px-2 !py-3 text-center report-td-nowrap">
                                 {{ optional($post->schedule_at)->format('d-M-Y') ?? '-' }}
                             </td>
-                            <td class="border !px-2 !py-3 text-center">
+                            <td class="border !px-2 !py-3 text-center report-td-nowrap">
                                 <span class="!px-2 !py-1 rounded text-xs font-semibold {{ $statusClass }}">
                                     {{ $statusText }}
                                 </span>
                             </td>
 
-                            <td class="border !px-2 !py-3">
+                            <td class="border !px-2 !py-3 report-td-nowrap">
                                 {{ optional($post->schedule_at)->format('d M Y') ?? '-' }}
                             </td>
                         </tr>

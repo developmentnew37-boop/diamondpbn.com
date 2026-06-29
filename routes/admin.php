@@ -1,6 +1,5 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Admin\AdminAuthenticatorController;
 use App\Http\Controllers\Admin\AdminController;
 use App\Http\Controllers\Admin\AdminOtpController;
@@ -14,15 +13,21 @@ use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DomainCategoryController;
 use App\Http\Controllers\Admin\DomainController;
 use App\Http\Controllers\Admin\DomainSetController;
+use App\Http\Controllers\Admin\DomainStatusCheckerController;
 use App\Http\Controllers\Admin\HiddenLinkCampaignController;
 use App\Http\Controllers\Admin\InvoiceController;
+use App\Http\Controllers\Admin\PendingDomainController;
+use App\Http\Controllers\Admin\PluginDeploymentController;
+use App\Http\Controllers\Admin\PluginPackageController;
 use App\Http\Controllers\Admin\ProfileController;
 use App\Http\Controllers\Admin\ScheduleCampaignController;
 use App\Http\Controllers\Admin\ScheduleSidebarCampaignController;
 use App\Http\Controllers\Admin\SidebarCampaignController;
 use App\Http\Controllers\Admin\StickyPostCampaignController;
+use App\Http\Controllers\Admin\TransferDomainController;
+use App\Http\Controllers\Admin\WebhookSecretController;
 use App\Http\Controllers\Admin\WpScheduledCampaignController;
-use App\Models\Admin\ArticleSet;
+use Illuminate\Support\Facades\Route;
 
 Route::prefix('admin')->middleware('admin.guest')->group(function () {
     Route::get('/login', [AdminAuthenticatorController::class, 'show'])->name('admin.login');
@@ -36,7 +41,7 @@ Route::prefix('admin')->middleware('admin.guest')->group(function () {
     Route::get('/forgotpassword', [AdminPasswordResetController::class, 'show'])->name('admin.forgot');
     Route::post('/forgot-password/post', [AdminPasswordResetController::class, 'sendResetLink'])->name('admin.forgot.post');
 
-    //reset password Links
+    // reset password Links
     Route::get('/reset-password/{token}', [AdminPasswordResetController::class, 'showResetForm'])->name('admin.reset.form');
     Route::post('/reset-password', [AdminPasswordResetController::class, 'resetPassword'])->name('admin.reset');
 });
@@ -47,7 +52,7 @@ Route::prefix('admin')->middleware('admin.guest')->group(function () {
  */
 $noCampaignAuth = \App\Http\Middleware\Admin\CanCreateCampaigns::class;
 
-/* campaign report route*/ // route('admin.campaign.report)
+/* campaign report route */ // route('admin.campaign.report)
 Route::get(
     '/campaign/report/{campaign_no}/{token}',
     [CampaignController::class, 'report']
@@ -59,7 +64,7 @@ Route::get(
     [CampaignController::class, 'exportReport']
 )->name('admin.campaign.report.export')->withoutMiddleware($noCampaignAuth);
 
-/* sidebar campaign report route*/ // route('admin.campaign.report)
+/* sidebar campaign report route */ // route('admin.campaign.report)
 Route::get(
     '/sidebar/campaign/report/{campaign_no}/{token}',
     [SidebarCampaignController::class, 'report']
@@ -123,12 +128,11 @@ Route::get(
 //     [CampaignController::class, 'exportReportCsv']
 // )->name('admin.campaign.report.export.csv');
 
-
 Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function () {
 
-    // logout route 
+    // logout route
     Route::post('/admin/logout', [AdminAuthenticatorController::class, 'logout'])->name('logout');
-    //logout route ends here
+    // logout route ends here
 
     // Dashboard Route Here
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
@@ -149,11 +153,9 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     // Domain Category Routes Here
 
     /** Bulk Domain Delete Function **/
-
     Route::post('/domain/category/delete', [DomainCategoryController::class, 'delete'])->name('domain.category.delete');
 
     /** Bulk Domain Delete Function ends here **/
-
     Route::resource('/domain/category', DomainCategoryController::class)->names('domain.category');
 
     /** domain category registration ends here **/
@@ -167,31 +169,86 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     /** -- -- -- -- -- -- **/
 
     /** redirect to domain list page base on domain category **/
-
     Route::post('/domain/redirect/list', [DomainController::class, 'redirect__func'])->name('redirect.to.list');
     Route::get('/domain/extract', [DomainController::class, 'extractByCategory'])->name('domain.extract');
 
     /** ends here **/
 
     /** Bulk Domain Delete Function **/
-
     Route::post('/domain/delete', [DomainController::class, 'delete'])->name('domain.delete');
 
-    /** ends here **/
+    Route::get('/domain/status-checker', [DomainStatusCheckerController::class, 'index'])->name('domain.status-checker');
+    Route::post('/domain/status-checker/start', [DomainStatusCheckerController::class, 'start'])
+        ->middleware('throttle:10,1')
+        ->name('domain.status-checker.start');
+    Route::get('/domain/status-checker/{uuid}/progress', [DomainStatusCheckerController::class, 'progress'])
+        ->middleware('throttle:120,1')
+        ->name('domain.status-checker.progress');
 
+    /** ends here **/
     Route::resource('/domain', DomainController::class);
 
     /** Domain Routes Ends Here **/
 
-    /** Domain Set Routes Start Here **/
+    /** Plugin Manager (separate from Domains — /admin/plugin-manager) **/
+    Route::prefix('plugin-manager')
+        ->name('plugin-manager.')
+        ->middleware(\App\Http\Middleware\Admin\CanCreateCampaigns::class)
+        ->group(function () {
+            Route::get('/', [PluginPackageController::class, 'index'])->name('index');
+            Route::post('/packages', [PluginPackageController::class, 'store'])->name('packages.store');
+            Route::delete('/packages/{uuid}', [PluginPackageController::class, 'destroy'])->name('packages.destroy');
+            Route::get('/packages/{uuid}/download', [PluginPackageController::class, 'adminDownload'])->name('packages.download');
 
+            Route::get('/deploy', [PluginDeploymentController::class, 'create'])->name('deploy.create');
+            Route::post('/deploy', [PluginDeploymentController::class, 'start'])
+                ->middleware('throttle:10,1')
+                ->name('deploy.start');
+
+            Route::get('/deployments', [PluginDeploymentController::class, 'index'])->name('deployments.index');
+            Route::get('/deployments/{uuid}', [PluginDeploymentController::class, 'show'])->name('deployments.show');
+            Route::get('/deployments/{uuid}/progress', [PluginDeploymentController::class, 'progress'])
+                ->middleware('throttle:120,1')
+                ->name('deployments.progress');
+            Route::post('/deployments/{uuid}/retry-failed', [PluginDeploymentController::class, 'retryFailed'])
+                ->name('deployments.retry-failed');
+            Route::post('/deployments/{uuid}/cancel', [PluginDeploymentController::class, 'cancel'])
+                ->name('deployments.cancel');
+            Route::get('/deployments/{uuid}/export-failures', [PluginDeploymentController::class, 'exportFailures'])
+                ->name('deployments.export-failures');
+        });
+
+    /** Webhook Secrets Routes Start Here **/
+    Route::resource('/webhook-secrets', WebhookSecretController::class)
+        ->names('webhook-secrets')
+        ->except(['show']);
+    Route::post('/webhook-secrets/rotation-settings', [WebhookSecretController::class, 'updateRotationSettings'])
+        ->name('webhook-secrets.rotation-settings');
+    Route::post('/webhook-secrets/{webhookSecret}/regenerate', [WebhookSecretController::class, 'regenerate'])->name('webhook-secrets.regenerate');
+
+    /** Pending Domains Routes Start Here **/
+    Route::post('/pending-domains/bulk-reject', [PendingDomainController::class, 'bulkReject'])->name('pending-domains.bulk.reject');
+    Route::post('/pending-domains/{pendingDomain}/reject', [PendingDomainController::class, 'reject'])->name('pending-domains.reject');
+    Route::resource('/pending-domains', PendingDomainController::class)
+        ->names('pending-domains')
+        ->only(['index', 'show', 'destroy']);
+
+    /** Transfer Domains Routes Start Here **/
+    Route::get('/transfer-domains/step1', [TransferDomainController::class, 'step1'])->name('transfer-domains.step1');
+    Route::match(['get', 'post'], '/transfer-domains/step2', [TransferDomainController::class, 'step2'])->name('transfer-domains.step2');
+    Route::post('/transfer-domains/create-category', [TransferDomainController::class, 'createCategory'])->name('transfer-domains.create-category');
+    Route::post('/transfer-domains/process', [TransferDomainController::class, 'process'])->name('transfer-domains.process');
+
+    /** Webhook & Pending Domains Routes End Here **/
+
+    /** Domain Set Routes Start Here **/
     Route::post('/domains/set/delete', [DomainSetController::class, 'delete'])->name('set.delete');
 
     Route::resource('/domains/set', DomainSetController::class);
 
     /* domains section ends here */
 
-    /*Article category Routes Here*/
+    /* Article category Routes Here */
 
     /* bulk delete route for article category */
 
@@ -199,7 +256,7 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
 
     Route::resource('/article/category', ArticleCategoryController::class)->names('articles.category');
 
-    /*Article language Routes Here*/
+    /* Article language Routes Here */
 
     Route::resource('/article/language', ArticleLanguageController::class)->names('articles.language');
 
@@ -245,16 +302,15 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     //     return view('admin.campaigns.pbn-post.create-campaign');
     // })->name('post.campaign');
 
-
-    /* campaign report route ends here*/
+    /* campaign report route ends here */
 
     Route::get('/campaign/retry/{id}', [CampaignController::class, 'retry'])->name('campaign.retry');
 
-    Route::get('/campaign/editpost/{id}',[CampaignController::class,'editcampaignpost'])->name('campaign.edit.post'); // admin.campaign.blogpost
+    Route::get('/campaign/editpost/{id}', [CampaignController::class, 'editcampaignpost'])->name('campaign.edit.post'); // admin.campaign.blogpost
 
-    Route::post('/campaign/updatecampaignpost/{id}',[CampaignController::class,'updateCampaignPost'])->name('campaign.update.post'); // admin.campaign.blogpost
+    Route::post('/campaign/updatecampaignpost/{id}', [CampaignController::class, 'updateCampaignPost'])->name('campaign.update.post'); // admin.campaign.blogpost
 
-    Route::get('/campaign/deleteCampaignPost/{id}',[CampaignController::class,'deleteCampaignPost'])->name('campaign.delete.post'); // admin.campaign.blogpost
+    Route::get('/campaign/deleteCampaignPost/{id}', [CampaignController::class, 'deleteCampaignPost'])->name('campaign.delete.post'); // admin.campaign.blogpost
 
     Route::post('/campaign/bulk/update/{id}', [CampaignController::class, 'bulkUpdateCampaignPosts'])->name('campaign.bulk.update');
 
@@ -367,33 +423,30 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     // Domain routes here...
 });
 
+// LOGIN
 
+// Route::post('/login', [AdminLoginController::class, 'login'])
+//     ->name('admin.login.submit');
 
-    // LOGIN
+// // FORGOT PASSWORD (send reset link)
+// Route::get('/forgot-password', [AdminForgotPasswordController::class, 'showLinkRequestForm'])
+//     ->name('admin.password.request');
 
+// Route::post('/forgot-password', [AdminForgotPasswordController::class, 'sendResetLinkEmail'])
+//     ->name('admin.password.email');
 
-    // Route::post('/login', [AdminLoginController::class, 'login'])
-    //     ->name('admin.login.submit');
+// // RESET PASSWORD (token link)
+// Route::get('/reset-password/{token}', [AdminResetPasswordController::class, 'showResetForm'])
+//     ->name('admin.password.reset');
 
-    // // FORGOT PASSWORD (send reset link)
-    // Route::get('/forgot-password', [AdminForgotPasswordController::class, 'showLinkRequestForm'])
-    //     ->name('admin.password.request');
+// Route::post('/reset-password', [AdminResetPasswordController::class, 'reset'])
+//     ->name('admin.password.update');
 
-    // Route::post('/forgot-password', [AdminForgotPasswordController::class, 'sendResetLinkEmail'])
-    //     ->name('admin.password.email');
+// // PROTECTED ADMIN AREA
+// Route::middleware('auth:admin')->group(function () {
+//     Route::get('/', [AdminDashboardController::class, 'index'])
+//         ->name('admin.dashboard');
 
-    // // RESET PASSWORD (token link)
-    // Route::get('/reset-password/{token}', [AdminResetPasswordController::class, 'showResetForm'])
-    //     ->name('admin.password.reset');
-
-    // Route::post('/reset-password', [AdminResetPasswordController::class, 'reset'])
-    //     ->name('admin.password.update');
-
-    // // PROTECTED ADMIN AREA
-    // Route::middleware('auth:admin')->group(function () {
-    //     Route::get('/', [AdminDashboardController::class, 'index'])
-    //         ->name('admin.dashboard');
-
-    //     Route::post('/logout', [AdminLoginController::class, 'logout'])
-    //         ->name('admin.logout');
-    // });
+//     Route::post('/logout', [AdminLoginController::class, 'logout'])
+//         ->name('admin.logout');
+// });

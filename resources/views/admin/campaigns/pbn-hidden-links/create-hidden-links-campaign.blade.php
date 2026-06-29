@@ -52,6 +52,26 @@
             top: 15px;
             right: 40px;
         }
+
+        /* Custom dropdowns: avoid clipping + page-wide horizontal scroll */
+        #sidebar-campaign {
+            overflow-x: clip;
+        }
+
+        #sidebar-campaign .campaigns-section,
+        #sidebar-campaign .domains-sections,
+        #sidebar-campaign [data-dropdown-container] {
+            overflow: visible;
+        }
+
+        #sidebar-campaign [data-dropdown-container]:focus-within {
+            z-index: 40;
+        }
+
+        #sidebar-campaign [data-dropdown] {
+            z-index: 50;
+            max-width: 100%;
+        }
     </style>
 @endpush
 
@@ -128,7 +148,7 @@
 
 
     <form action="{{ route('admin.hidden.link.campaign.store') }}" method="POST"
-        class="w-full max-w-full min-w-0 flex flex-wrap justify-between items-start content-card overflow-x-hidden" id="sidebar-campaign">
+        class="w-full max-w-full min-w-0 flex flex-wrap justify-between items-start content-card" id="sidebar-campaign">
         @csrf
         <h2 class="text-base sm:text-xl capitalize !mb-4 bg-[var(--primary-color)] text-white w-full max-w-full sm:w-fit !p-2 rounded">Create Hidden Link
             Campaigns
@@ -302,7 +322,7 @@
                             @endphp
                             @foreach ($tHead as $t)
                                 <th
-                                    class="border border-gray-200 font-sans !font-normal !px-2 !py-3 capitilize text-xl capitalize">
+                                    class="border border-gray-200 font-sans !font-normal !px-1.5 sm:!px-2 !py-2 sm:!py-3 text-center text-[11px] sm:text-sm md:text-base capitalize leading-tight whitespace-normal break-words">
                                     {{ $t }}
                                 </th>
                             @endforeach
@@ -680,20 +700,27 @@
             </div>
             <div class="w-full flex flex-col gap-3 !p-3 max-h-[560px] overflow-auto">
 
-                <div class="w-full border-b border-[var(--primary-color)] flex items-center gap-2">
+                <div class="w-full border-b border-[var(--primary-color)] flex items-center gap-1 overflow-x-auto overflow-y-hidden scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-200 flex-nowrap">
                     <label
-                        class="!p-3 bg-[var(--primary-color)] border border-[var(--primary-color)] duration-300 transition-all text-white border-b-0 text-sm text-center cursor-pointer keyword-tab-btn"
+                        class="!px-3 !py-2.5 sm:!px-4 sm:!py-3 bg-[var(--primary-color)] border border-[var(--primary-color)] duration-300 transition-all text-white border-b-0 text-xs sm:text-sm text-center cursor-pointer keyword-tab-btn whitespace-nowrap flex-shrink-0 rounded-t hover:opacity-90"
                         id="add_keyword_url">
                         Add Keyword & Url
                         <input type="radio" name="keyword-data" id="add_keyword_url" class="keyword-method-inp"
                             value="normal" data-id="keyword-url-container" checked hidden>
                     </label>
                     <label
-                        class="!p-3 bg-gray-50 border border-gray-300 border-b-0 text-sm text-center duration-300 transition-all cursor-pointer keyword-tab-btn"
+                        class="!px-3 !py-2.5 sm:!px-4 sm:!py-3 bg-gray-50 border border-gray-300 border-b-0 text-xs sm:text-sm text-center duration-300 transition-all cursor-pointer keyword-tab-btn whitespace-nowrap flex-shrink-0 rounded-t hover:bg-gray-100"
                         for="add_bulk_keyword_url">
                         Add Bulk Keyword & Url
                         <input type="radio" name="keyword-data" id="add_bulk_keyword_url" class="keyword-method-inp"
                             value="bulk" data-id="bulk-keyword-url-container" hidden>
+                    </label>
+                    <label
+                        class="!px-3 !py-2.5 sm:!px-4 sm:!py-3 bg-gray-50 border border-gray-300 border-b-0 text-xs sm:text-sm text-center duration-300 transition-all cursor-pointer keyword-tab-btn whitespace-nowrap flex-shrink-0 rounded-t hover:bg-gray-100"
+                        for="add_rawanchor_keyword_url">
+                        Raw HTML Anchors
+                        <input type="radio" name="keyword-data" id="add_rawanchor_keyword_url" class="keyword-method-inp"
+                            value="rawanchor" data-id="rawanchor-keyword-url-container" hidden>
                     </label>
                 </div>
                 {{-- border-b border-b-[var(--primary-color)] --}}
@@ -785,16 +812,76 @@
 
                 </div>
 
+                {{-- Raw HTML Anchors Container --}}
+                <div class="w-full flex flex-col gap-3 max-h-[320px] overflow-x-hidden overflow-y-auto bg-gray-100 keyword-tab-sec hidden !p-3"
+                    id="rawanchor-keyword-url-container">
+                    <div class="w-full flex flex-col gap-3">
+                        <div class="w-full bg-blue-50 border border-blue-200 rounded !p-3">
+                            <h4 class="text-sm font-semibold text-blue-800 !mb-2">Instructions:</h4>
+                            <ul class="text-xs text-blue-700 list-disc !pl-5 space-y-1">
+                                <li>Paste anchor tags directly (e.g., <code>&lt;a href="url" rel="nofollow sponsored"&gt;keyword&lt;/a&gt;</code>)</li>
+                                <li>One line per hidden link, or separate multiple anchors per line with commas</li>
+                                <li>Total anchors must equal Hidden Link Quantity: <strong id="raw-html-hidden-qty">0</strong></li>
+                                <li>System will automatically extract URLs, keywords, and all rel attributes</li>
+                                <li>Supports all rel attributes (nofollow, sponsored, ugc, noopener, noreferrer, etc.)</li>
+                            </ul>
+                        </div>
+
+                        <div class="w-full flex flex-col gap-2">
+                            <div class="flex items-center justify-between">
+                                <label for="raw-html-anchors"
+                                    class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">
+                                    Raw HTML Anchors
+                                </label>
+                                <span class="text-xs text-gray-600">
+                                    Lines: <strong id="raw-html-line-count">0</strong>
+                                    · Anchors: <strong id="raw-html-anchor-count">0</strong>
+                                </span>
+                            </div>
+                            <textarea id="raw-html-anchors"
+                                class="bg-gray-50 !p-3 text-sm outline-none border border-gray-300 w-full resize-none font-mono"
+                                rows="14"
+                                placeholder='<a href="https://example.com" rel="nofollow sponsored">keyword 1</a>
+<a href="https://example2.com" rel="ugc">keyword 2</a>, <a href="https://example3.com">keyword 3</a>
+<a href="https://example4.com" rel="noopener noreferrer">keyword 4</a>'></textarea>
+                        </div>
+
+                        <div class="w-full bg-yellow-50 border border-yellow-200 rounded !p-3">
+                            <p class="text-xs text-yellow-800">
+                                <strong>Note:</strong> Rel attributes from anchor tags will override the checkboxes below.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
 
             </div>
-            <div class="w-full flex flex-col sm:flex-row gap-2 sm:gap-0 justify-between sm:items-center !bg-gray-200 !px-3 !py-2">
-                <div class="flex flex-wrap gap-1 items-center">
-                    <input type="checkbox" name="no_follow" id="no_follow" value="1">
-                    <label for="no_follow" class="text-sm">No Follow</label>
-                    <input type="checkbox" name="sponsored_link" id="sponsored_link" value="1" class="!ml-3">
-                    <label for="sponsored_link" class="text-sm">Sponsor</label>
-                    <p class="text-[12px]">(Check here to get Nofollow Link)</p>
+            <div class="w-full flex flex-col sm:flex-row gap-2 sm:gap-0 justify-between sm:items-center !bg-gray-200 !px-3 !py-2 min-h-[60px]">
+                <div class="flex flex-wrap gap-3 items-center min-w-0">
+                    <div class="flex gap-2 items-center">
+                        <input type="checkbox" name="no_follow" id="no_follow" value="1">
+                        <label for="no_follow" class="text-sm">No Follow</label>
+                    </div>
 
+                    <div class="flex gap-2 items-center">
+                        <input type="checkbox" name="sponsored_link" id="sponsored_link" value="1">
+                        <label for="sponsored_link" class="text-sm">Sponsored</label>
+                    </div>
+
+                    <div class="flex gap-2 items-center">
+                        <input type="checkbox" name="ugc_link" id="ugc_link" value="1">
+                        <label for="ugc_link" class="text-sm">UGC</label>
+                    </div>
+
+                    <div class="flex gap-2 items-center">
+                        <input type="checkbox" name="noopener_link" id="noopener_link" value="1">
+                        <label for="noopener_link" class="text-sm">Noopener</label>
+                    </div>
+
+                    <div class="flex gap-2 items-center">
+                        <input type="checkbox" name="noreferrer_link" id="noreferrer_link" value="1">
+                        <label for="noreferrer_link" class="text-sm">Noreferrer</label>
+                    </div>
                 </div>
                 <a href="#" type="button" id="add-keywords-links"
                     class="cursor-pointer bg-green-500 text-white rounded !p-3">

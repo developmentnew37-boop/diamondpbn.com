@@ -1,0 +1,62 @@
+<?php
+
+return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Status check history retention
+    |--------------------------------------------------------------------------
+    */
+
+    'keep_last_per_admin' => (int) env('DOMAIN_STATUS_CHECK_KEEP_LAST', 5),
+
+    'retention_days' => (int) env('DOMAIN_STATUS_CHECK_RETENTION_DAYS', 7),
+
+    'stale_hours' => (int) env('DOMAIN_STATUS_CHECK_STALE_HOURS', 24),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Safe batch deletion (scalability)
+    |--------------------------------------------------------------------------
+    |
+    | Deletes run in small chunks with a per-run cap so pruning never locks
+    | the database or blocks HTTP requests for long periods.
+    |
+    */
+
+    'delete_chunk_size' => (int) env('DOMAIN_STATUS_CHECK_DELETE_CHUNK', 25),
+
+    /** Max parent check rows deleted per job / scheduled run. */
+    'max_deletes_per_run' => (int) env('DOMAIN_STATUS_CHECK_MAX_DELETES_PER_RUN', 100),
+
+    /** Max admins processed when trimming all histories in one scheduled run. */
+    'max_admins_per_run' => (int) env('DOMAIN_STATUS_CHECK_MAX_ADMINS_PER_RUN', 20),
+
+    /*
+    |--------------------------------------------------------------------------
+    | HTTP checks (WordPress /wp-json/external/v1/status)
+    |--------------------------------------------------------------------------
+    |
+    | request_timeout: total wait per domain (slow sites may need 60–90s).
+    | connect_timeout: TCP/TLS handshake only — increase if DNS/SSL is slow.
+    | chunk_size: domains checked in parallel per queue job (lower = gentler).
+    | job_timeout: must exceed request_timeout + buffer (see job class).
+    |
+    */
+
+    'chunk_size' => (int) env('DOMAIN_STATUS_CHECK_CHUNK_SIZE', 8),
+
+    'request_timeout' => (int) env('DOMAIN_STATUS_CHECK_REQUEST_TIMEOUT', 60),
+
+    'connect_timeout' => (int) env('DOMAIN_STATUS_CHECK_CONNECT_TIMEOUT', 20),
+
+    'retry_request_timeout' => (int) env('DOMAIN_STATUS_CHECK_RETRY_REQUEST_TIMEOUT', 90),
+
+    'retry_connect_timeout' => (int) env('DOMAIN_STATUS_CHECK_RETRY_CONNECT_TIMEOUT', 25),
+
+    /** Queue job max seconds (one parallel batch). */
+    'job_timeout' => (int) env('DOMAIN_STATUS_CHECK_JOB_TIMEOUT', 180),
+
+    'lock_seconds' => (int) env('DOMAIN_STATUS_CHECK_LOCK_SECONDS', 240),
+
+];

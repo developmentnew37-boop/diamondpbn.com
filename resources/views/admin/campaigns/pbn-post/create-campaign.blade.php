@@ -123,6 +123,91 @@
         .multi-bulk-x-scroll::-webkit-scrollbar-thumb:hover {
             background: #64748b;
         }
+
+        /* Custom dropdowns: avoid clipping + page-wide horizontal scroll */
+        #campaign-form {
+            overflow-x: clip;
+        }
+
+        #campaign-form .campaigns-section,
+        #campaign-form .article-opt-box,
+        #campaign-form .domains-sections,
+        #campaign-form [data-dropdown-container] {
+            overflow: visible;
+        }
+
+        #campaign-form [data-dropdown-container]:focus-within {
+            z-index: 40;
+        }
+
+        #campaign-form [data-dropdown] {
+            z-index: 50;
+            max-width: 100%;
+        }
+
+        /* URL Keywords modal — mobile layout */
+        .dy-key-pop-box {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .keyword-method-tabs {
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+        }
+
+        .keyword-method-tabs-inner {
+            display: flex;
+            flex-wrap: nowrap;
+            gap: 0.25rem;
+            min-width: min-content;
+        }
+
+        @media (min-width: 640px) {
+            .keyword-method-tabs-inner {
+                flex-wrap: wrap;
+                min-width: 0;
+            }
+        }
+
+        .keyword-tab-btn {
+            flex: 0 0 auto;
+            white-space: nowrap;
+            line-height: 1.25;
+        }
+
+        .keyword-modal-rel-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem 1rem;
+            align-items: center;
+        }
+
+        @media (max-width: 639px) {
+            .keyword-modal-rel-grid {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 0.5rem 0.75rem;
+            }
+
+            .keyword-modal-rel-item {
+                display: flex;
+                align-items: center;
+                gap: 0.375rem;
+                min-height: 2rem;
+            }
+
+            .keyword-modal-rel-item input[type="checkbox"] {
+                width: 1rem;
+                height: 1rem;
+                flex-shrink: 0;
+            }
+
+            .keyword-modal-rel-item label {
+                font-size: 0.8125rem;
+                line-height: 1.2;
+            }
+        }
     </style>
 
     {{-- ------ pushing the link -------- --}}
@@ -213,7 +298,7 @@
 
 
     <form action="{{ route('admin.campaign.store') }}" method="POST" id="campaign-form"
-        class="w-full max-w-full min-w-0 flex flex-wrap justify-between items-start content-card overflow-x-hidden">
+        class="w-full max-w-full min-w-0 flex flex-wrap justify-between items-start content-card">
         @csrf
 
         <h2 class="text-base sm:text-xl capitalize !mb-4 bg-[var(--primary-color)] text-white w-full max-w-full sm:w-fit !p-2 rounded">Create Post Campaigns
@@ -221,7 +306,7 @@
         {{-- xxxxxxxxxxxxxxxxxx campaigns button xxxxxxxxxxxxxxxxxxxxxxxxxxxx --}}
         <div class="campaign-create-tabs w-full !p-2">
             <button data-id="campaign-info" type="button"
-                class="group flex flex-col gap-3  rounded !p-2 cursor-pointer text-[var(--primary-color)] duration-300 transition-all hover:text-[var(--primary-color)]  w-fit text-lg tab-switcher">
+                class="group flex flex-col gap-1.5 sm:gap-3 rounded !p-1.5 sm:!p-2 cursor-pointer text-[var(--primary-color)] duration-300 transition-all hover:text-[var(--primary-color)] w-fit text-xs sm:text-base lg:text-lg tab-switcher">
                 <span>Campaign Info</span>
                 <div class="w-full flex items-center gap-1">
                     <div class="flex items-center gap-1">
@@ -238,7 +323,7 @@
                 </div>
             </button>
             <button data-id="add-articles" type="button"
-                class="group flex flex-col gap-3  rounded !p-2 cursor-pointer duration-300 transition-all hover:text-[var(--primary-color)]  w-fit text-lg tab-switcher">
+                class="group flex flex-col gap-1.5 sm:gap-3 rounded !p-1.5 sm:!p-2 cursor-pointer duration-300 transition-all hover:text-[var(--primary-color)] w-fit text-xs sm:text-base lg:text-lg tab-switcher">
                 <span>Add Articles</span>
                 <div class="w-full flex items-center gap-1">
                     <div class="flex items-center gap-1">
@@ -255,7 +340,7 @@
                 </div>
             </button>
             <button data-id="add-keywords-url" type="button"
-                class="group flex flex-col gap-3  rounded !p-2 cursor-pointer duration-300 transition-all hover:text-[var(--primary-color)]  w-fit text-lg tab-switcher">
+                class="group flex flex-col gap-1.5 sm:gap-3 rounded !p-1.5 sm:!p-2 cursor-pointer duration-300 transition-all hover:text-[var(--primary-color)] w-fit text-xs sm:text-base lg:text-lg tab-switcher">
                 <span>Add keywords & Url</span>
                 <div class="w-full flex items-center gap-1">
                     <div class="flex items-center gap-1">
@@ -272,7 +357,7 @@
                 </div>
             </button>
             <button data-id="select-domains" type="button"
-                class="group flex flex-col gap-3  rounded !p-2 cursor-pointer duration-300 transition-all hover:text-[var(--primary-color)]  w-fit text-lg tab-switcher">
+                class="group flex flex-col gap-1.5 sm:gap-3 rounded !p-1.5 sm:!p-2 cursor-pointer duration-300 transition-all hover:text-[var(--primary-color)] w-fit text-xs sm:text-base lg:text-lg tab-switcher">
                 <span>Select Domains Category</span>
                 <div class="w-full flex items-center gap-1">
                     <div class="flex items-center gap-1">
@@ -372,7 +457,7 @@
                 </div>
                 <div class="w-full flex gap-3 !mt-2">
                     <a href="javascript:void(0)" id="continue_campaign_step_01"
-                        class="flex !px-4 !py-3 text-lg font-normal items-center gap-1 justify-center duration:500 transition-all bg-black hover:bg-[var(--primary-color)] text-white rounded-lg ">
+                        class="flex !px-3 sm:!px-4 !py-2.5 sm:!py-3 text-sm sm:text-lg font-normal items-center gap-1 justify-center duration:500 transition-all bg-black hover:bg-[var(--primary-color)] text-white rounded-lg">
                         Continue
                         <span class="material-symbols-outlined">
                             arrow_circle_right
@@ -546,7 +631,7 @@
 
                                 {{-- Dropdown --}}
                                 <div data-dropdown id="dropdown"
-                                    class="hidden absolute z-1000 w-full top-full !mt-2 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden">
+                                    class="hidden absolute z-50 w-full top-full !mt-2 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden">
                                     {{-- Search Box --}}
                                     <div class="!p-3 border-b border-gray-200">
                                         <div class="relative">
@@ -686,7 +771,7 @@
 
                                 {{-- Dropdown --}}
                                 <div data-dropdown id="dropdown"
-                                    class="hidden absolute z-1000 w-full top-full !mt-2 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden">
+                                    class="hidden absolute z-50 w-full top-full !mt-2 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden">
                                     {{-- Search Box --}}
                                     <div class="!p-3 border-b border-gray-200">
                                         <div class="relative">
@@ -753,14 +838,14 @@
                 {{-- continue button section --}}
                 <div class="w-full flex justify-between gap-3 !mt-2">
                     <a href="javascript:void(0)" id=""
-                        class="flex !px-4 !py-3 text-lg font-normal items-center gap-1 justify-center duration:500 transition-all bg-gray-200 text-gray-400  rounded-lg ">
+                        class="flex !px-3 sm:!px-4 !py-2.5 sm:!py-3 text-sm sm:text-lg font-normal items-center gap-1 justify-center duration:500 transition-all bg-gray-200 text-gray-400 rounded-lg">
                         Back
                         <span class="material-symbols-outlined">
                             arrow_circle_left
                         </span>
                     </a>
                     <a href="javascript:void(0)" id="continue_campaign_step_02"
-                        class="flex !px-4 !py-3 text-lg font-normal items-center gap-1 justify-center duration:500 transition-all bg-black hover:bg-[var(--primary-color)] text-white rounded-lg ">
+                        class="flex !px-3 sm:!px-4 !py-2.5 sm:!py-3 text-sm sm:text-lg font-normal items-center gap-1 justify-center duration:500 transition-all bg-black hover:bg-[var(--primary-color)] text-white rounded-lg">
                         Continue
                         <span class="material-symbols-outlined">
                             arrow_circle_right
@@ -774,7 +859,7 @@
         <div class="w-full !p-4 duration-500 transition-all campaigns-section" id="add-keywords-url">
             <div class="w-full">
                 <button id="add-keywords-url-btn" type="button"
-                    class="bg-[var(--primary-color)] !p-3 text-white text-center rounded cursor-pointer">Add keywords &
+                    class="bg-[var(--primary-color)] !px-3 !py-2 sm:!p-3 text-sm sm:text-base text-white text-center rounded cursor-pointer w-full sm:w-auto">Add keywords &
                     Urls</button>
             </div>
 
@@ -794,7 +879,7 @@
                             @endphp
                             @foreach ($tHead as $t)
                                 <th
-                                    class="border border-gray-200 font-sans !font-normal !px-2 !py-3 capitilize text-center text-xl capitalize">
+                                    class="border border-gray-200 font-sans !font-normal !px-1.5 sm:!px-2 !py-2 sm:!py-3 text-center text-[11px] sm:text-sm md:text-base capitalize leading-tight whitespace-normal break-words">
                                     {{ $t }}
                                 </th>
                             @endforeach
@@ -822,14 +907,14 @@
             {{-- continue button section --}}
             <div class="w-full flex justify-between gap-3 !mt-4">
                 <a href="javascript:void(0)" id=""
-                    class="flex !px-4 !py-3 text-lg font-normal items-center gap-1 justify-center duration:500 transition-all bg-gray-200 text-gray-400  rounded-lg ">
+                    class="flex !px-3 sm:!px-4 !py-2.5 sm:!py-3 text-sm sm:text-lg font-normal items-center gap-1 justify-center duration:500 transition-all bg-gray-200 text-gray-400 rounded-lg">
                     Back
                     <span class="material-symbols-outlined">
                         arrow_circle_left
                     </span>
                 </a>
                 <a href="javascript:void(0)" id="continue_campaign_step_03"
-                    class="flex !px-4 !py-3 text-lg font-normal items-center gap-1 justify-center duration:500 transition-all bg-black hover:bg-[var(--primary-color)] text-white rounded-lg ">
+                    class="flex !px-3 sm:!px-4 !py-2.5 sm:!py-3 text-sm sm:text-lg font-normal items-center gap-1 justify-center duration:500 transition-all bg-black hover:bg-[var(--primary-color)] text-white rounded-lg">
                     Continue
                     <span class="material-symbols-outlined">
                         arrow_circle_right
@@ -1019,7 +1104,7 @@
                                             <button data-option-item type="button"
                                                 class="option-item w-full !px-4  !py-3 text-left hover:bg-gray-100 flex items-center justify-between transition-colors"
                                                 data-value="{{ $set->id }}" data-label="{{ $set->name }}">
-                                                <span class="text-sm ">{{ $set->name . '- (' . $set->qty . ')' }}</span>
+                                                <span class="text-sm">{{ $set->name }} - ({{ (int) ($set->qty ?? 0) }})</span>
                                             </button>
                                         @endforeach
                                     @else
@@ -1125,14 +1210,14 @@
 
             <div class="w-full flex justify-between gap-3 !mt-4">
                 <a href="javascript:void(0)" id=""
-                    class="flex !px-4 !py-3 text-lg font-normal items-center gap-1 justify-center duration:500 transition-all bg-gray-200 text-gray-400  rounded-lg ">
+                    class="flex !px-3 sm:!px-4 !py-2.5 sm:!py-3 text-sm sm:text-lg font-normal items-center gap-1 justify-center duration:500 transition-all bg-gray-200 text-gray-400 rounded-lg">
                     Back
                     <span class="material-symbols-outlined">
                         arrow_circle_left
                     </span>
                 </a>
                 <button type="submit" href="javascript:void(0)" id="continue_campaign_step_04"
-                    class="flex !px-4 !py-3 text-lg font-normal bg-green-500 items-center gap-1 justify-center duration:500 transition-all bg-black text-white rounded-lg ">
+                    class="flex !px-3 sm:!px-4 !py-2.5 sm:!py-3 text-sm sm:text-lg font-normal bg-green-500 items-center gap-1 justify-center duration:500 transition-all text-white rounded-lg">
 
                     <span class="material-symbols-outlined check-icon">
                         check_circle
@@ -1317,121 +1402,129 @@
 
     {{-- this is first pop layer | it is keywords data pop --}}
     <div
-        class="w-screen h-screen flex justify-center items-start fixed top-0 left-0 z-1100 overflow-hidden hidden dy-key-parent-div">
+        class="w-screen h-[100dvh] sm:h-screen flex justify-center items-start fixed top-0 left-0 z-[1100] overflow-hidden hidden dy-key-parent-div">
         <div
-            class="dy-key-set-overlay w-screen h-screen bg-black opacity-0 absolute top-0 left-0  duration-300 transition-all">
+            class="dy-key-set-overlay w-screen h-screen bg-black opacity-0 absolute top-0 left-0 duration-300 transition-all">
         </div>
-        <div class="dy-key-pop-box w-[96%] sm:w-[90%] max-w-[min(96vw,1280px)] max-h-[calc(100vh-24px)] sm:max-h-none flex flex-col items-stretch !shadow-2xl bg-gray-50 border border-gray-300 z-2 rounded !mt-3 sm:!mt-[70px] opacity-0 -translate-y-[20%] linear  duration-600 transition-all min-w-0"
+        <div class="dy-key-pop-box w-full sm:w-[90%] max-w-[min(100vw,1280px)] h-[100dvh] sm:h-auto max-h-[100dvh] sm:max-h-none flex flex-col !shadow-2xl bg-gray-50 border-0 sm:border border-gray-300 z-2 rounded-none sm:rounded !mt-0 sm:!mt-[70px] opacity-0 -translate-y-[20%] linear duration-600 transition-all min-w-0"
             id="dy-key-article-box">
             {{-- pop top bar --}}
-            <div class="w-full flex justify-between items-center !bg-gray-200 !p-3">
-                <h6>URL Keywords</h6>
-                <p>Post Quantity <span class="dy-post-count" id="PostQuantity">(0)</span></p>
-                <button type="button" class="cursor-pointer article-set-close" id='dy-key-close-btn'>
-                    <span class="material-symbols-outlined">
-                        close
-                    </span>
+            <div class="w-full flex items-center justify-between gap-3 !bg-gray-200 !px-3 !py-2.5 shrink-0 border-b border-gray-300">
+                <div class="min-w-0">
+                    <h6 class="text-sm sm:text-base font-semibold leading-tight m-0">URL Keywords</h6>
+                    <p class="text-xs text-gray-600 m-0 !mt-0.5">Post Quantity <span class="dy-post-count font-medium" id="PostQuantity">(0)</span></p>
+                </div>
+                <button type="button" class="cursor-pointer article-set-close shrink-0 flex items-center justify-center w-9 h-9 rounded hover:bg-gray-300/60" id='dy-key-close-btn' aria-label="Close">
+                    <span class="material-symbols-outlined !text-xl">close</span>
                 </button>
             </div>
-            <div class="w-full flex flex-col gap-3 !p-3 max-h-[560px] overflow-auto">
+            <div class="dy-key-pop-body w-full flex flex-col gap-3 !p-3 flex-1 min-h-0 overflow-y-auto">
 
-                <div class="w-full border-b border-[var(--primary-color)] flex flex-wrap items-stretch gap-1 sm:gap-2">
+                <div class="keyword-method-tabs w-full border-b border-[var(--primary-color)] overflow-x-auto pb-0">
+                    <div class="keyword-method-tabs-inner">
                     <label
-                        class="!p-3 bg-[var(--primary-color)] border border-[var(--primary-color)] duration-300 transition-all text-white border-b-0 text-sm text-center cursor-pointer keyword-tab-btn"
+                        class="keyword-tab-btn !px-2.5 !py-2 sm:!p-3 bg-[var(--primary-color)] border border-[var(--primary-color)] duration-300 transition-all text-white border-b-0 text-xs sm:text-sm text-center cursor-pointer"
                         id="add_keyword_url">
                         Add Keyword & Url
                         <input type="radio" name="keyword_data" id="add_keyword_url" class="keyword-method-inp"
                             value="normal" data-id="keyword-url-container" checked hidden>
                     </label>
                     <label
-                        class="!p-3 bg-gray-50 border border-gray-300 border-b-0 text-sm text-center duration-300 transition-all cursor-pointer keyword-tab-btn"
+                        class="keyword-tab-btn !px-2.5 !py-2 sm:!p-3 bg-gray-50 border border-gray-300 border-b-0 text-xs sm:text-sm text-center duration-300 transition-all cursor-pointer"
                         id="add_bulk_keyword_url">
-                        Add Bulk Keyword & Url
+                        Bulk Keyword & Url
                         <input type="radio" name="keyword_data" id="add_bulk_keyword_url" class="keyword-method-inp"
                             value="bulk" data-id="bulk-keyword-url-container" hidden>
                     </label>
                     <label
-                        class="!p-3 bg-gray-50 border border-gray-300 border-b-0 text-sm text-center duration-300 transition-all cursor-pointer keyword-tab-btn"
+                        class="keyword-tab-btn !px-2.5 !py-2 sm:!p-3 bg-gray-50 border border-gray-300 border-b-0 text-xs sm:text-sm text-center duration-300 transition-all cursor-pointer"
                         id="add_multi_level_keyword_url">
-                        Add Multi Level Keyword & Url
+                        Multi Level
                         <input type="radio" name="keyword_data" id="add_multi_level_keyword_url"
                             class="keyword-method-inp" value="multiple" data-id="multi-level-keyword-url-container"
                             hidden>
                     </label>
                     <label
-                        class="!p-3 bg-gray-50 border border-gray-300 border-b-0 text-sm text-center duration-300 transition-all cursor-pointer keyword-tab-btn"
+                        class="keyword-tab-btn !px-2.5 !py-2 sm:!p-3 bg-gray-50 border border-gray-300 border-b-0 text-xs sm:text-sm text-center duration-300 transition-all cursor-pointer"
                         id="add_multi_bulk_keyword_url">
-                        Add Multi-bulk URL/Keyword
+                        Multi-bulk
                         <input type="radio" name="keyword_data" id="add_multi_bulk_keyword_url"
                             class="keyword-method-inp" value="multi_bulk"
                             data-id="multi-bulk-keyword-url-container" hidden>
                     </label>
+                    <label
+                        class="keyword-tab-btn !px-2.5 !py-2 sm:!p-3 bg-gray-50 border border-gray-300 border-b-0 text-xs sm:text-sm text-center duration-300 transition-all cursor-pointer"
+                        id="add_raw_html_keyword_url">
+                        Raw HTML
+                        <input type="radio" name="keyword_data" id="add_raw_html_keyword_url"
+                            class="keyword-method-inp" value="raw_html"
+                            data-id="raw-html-keyword-url-container" hidden>
+                    </label>
+                    </div>
                 </div>
-                {{-- border-b border-b-[var(--primary-color)] --}}
-                <div class="w-full flex flex-col max-h-[280px] overflow-hidden overflow-y-auto  keyword-tab-sec"
+                <div class="w-full flex flex-col keyword-tab-sec min-h-0"
                     id="keyword-url-container">
                     {{-- keyword url box here --}}
-                    <div class="flex w-full bg-orange-100 keyword-url-box static-box relative keyword-mobile-stack">
-                        <div class="w-3/5 flex flex-col gap-2 !p-4 !pt-[45px] keyword-mobile-main">
-                            <div class="w-full flex items-center">
+                    <div class="flex w-full flex-col lg:flex-row bg-orange-100 keyword-url-box static-box relative keyword-mobile-stack rounded border border-orange-200">
+                        <div class="w-full lg:w-3/5 flex flex-col gap-3 !p-3 sm:!p-4 !pt-10 keyword-mobile-main">
+                            <div class="w-full flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2">
                                 <label for=""
-                                    class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-1/5 keyword-mobile-label">Client
+                                    class="text-sm font-medium flex items-center shrink-0 after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-full sm:w-1/5 keyword-mobile-label">Client
                                     Url</label>
-                                <div class="w-4/5 flex items-center justify-between keyword-mobile-input-wrap">
+                                <div class="w-full sm:w-4/5 flex flex-col sm:flex-row gap-2 sm:items-center keyword-mobile-input-wrap">
                                     <input type="text" placeholder="Enter Url"
-                                        class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-[78%] client-url keyword-mobile-input-main">
+                                        class="bg-white !p-2.5 text-sm outline-none border border-gray-300 w-full sm:w-[78%] client-url keyword-mobile-input-main rounded">
                                     <input type="text" value="0"
-                                        class="bg-gray-50 !p-2 text-sm outline-none text-center border border-gray-300 w-1/5 client-url-quantity num-inp keyword-mobile-qty">
+                                        class="bg-white !p-2.5 text-sm outline-none text-center border border-gray-300 w-full sm:w-1/5 client-url-quantity num-inp keyword-mobile-qty rounded">
                                 </div>
                             </div>
-                            <div class="w-full flex items-center">
+                            <div class="w-full flex flex-col sm:flex-row sm:items-start gap-1.5 sm:gap-2">
                                 <label for=""
-                                    class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-1/5 keyword-mobile-label ">Media
+                                    class="text-sm font-medium flex items-center shrink-0 after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-full sm:w-1/5 keyword-mobile-label">Media
                                     Link</label>
-                                <div class="w-4/5 flex items-center justify-between keyword-mobile-input-wrap">
+                                <div class="w-full sm:w-4/5 keyword-mobile-input-wrap">
                                     <textarea name="" id=""
-                                        class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none media-link" rows="2"
+                                        class="bg-white !p-2.5 text-sm outline-none border border-gray-300 w-full resize-y media-link rounded min-h-[72px]" rows="2"
                                         placeholder="Enter Media Link Here"></textarea>
                                 </div>
                             </div>
                             <div class="w-full flex items-center justify-end">
                                 <button type="button"
-                                    class="!p-1 bg-red-600 rounded text-sm cursor-pointer text-white remove-keyword-box">delete</button>
+                                    class="!px-2.5 !py-1 bg-red-600 rounded text-xs sm:text-sm cursor-pointer text-white remove-keyword-box">Delete</button>
                             </div>
                         </div>
-                        <div class="w-2/5 flex flex-col gap-1 !p-4 keyword-mobile-side">
+                        <div class="w-full lg:w-2/5 flex flex-col gap-1.5 !p-3 sm:!p-4 border-t lg:border-t-0 lg:border-l border-orange-200 keyword-mobile-side">
                             <label for=""
-                                class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">Client
+                                class="text-sm font-medium flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">Client
                                 Keyword</label>
-                            <div class="w-full flex flex-wrap justify-between keywords-area-parent">
-                                <div class="w-[78%] flex flex-wrap keyword-mobile-input-main">
+                            <div class="w-full flex flex-col sm:flex-row gap-2 keywords-area-parent">
+                                <div class="w-full sm:w-[78%] keyword-mobile-input-main min-w-0">
                                     <textarea name="" id="" rows="5"
-                                        class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none keywords-area"></textarea>
+                                        class="bg-white !p-2.5 text-sm outline-none border border-gray-300 w-full resize-y keywords-area rounded min-h-[100px]"></textarea>
                                 </div>
-                                <div class="w-1/5 flex flex-wrap keyword-mobile-qty">
+                                <div class="w-full sm:w-[22%] keyword-mobile-qty min-w-0">
                                     <textarea name="" id="" rows="5"
-                                        class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none text-center keywords-quantity-area focus:border-[var(--primary-color)] "></textarea>
+                                        class="bg-white !p-2.5 text-sm outline-none border border-gray-300 w-full resize-y text-center keywords-quantity-area focus:border-[var(--primary-color)] rounded min-h-[60px] sm:min-h-[100px]" placeholder="Qty"></textarea>
                                 </div>
                             </div>
                         </div>
                         <div
-                            class="box-count flex !px-3 !py-1 text-sm font-semibold bg-[var(--primary-color)] text-white rounded absolute top-3 left-3">
+                            class="box-count flex !px-2.5 !py-0.5 text-xs sm:text-sm font-semibold bg-[var(--primary-color)] text-white rounded absolute top-2.5 left-2.5">
                             01</div>
                     </div>
                 </div>
 
-                <div class="w-full flex flex-wrap justify-end !py-2 add-more-window keyword-tab-sec ">
-                    <div class="w-full sm:w-1/2 flex flex-wrap sm:flex-nowrap gap-2 sm:gap-0 justify-between items-center text-sm keyword-progress-wrap">
-                        <p>Total <span class="total-box-count">1</span></p>
-                        <a href="javascript:void(0)" class="bg-blue-400 !p-2 text-sm rounded text-white"
-                            id="add-more-keyword-URL">+Add More Url</a>
+                <div class="w-full add-more-window keyword-tab-sec">
+                    <div class="w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-sm keyword-progress-wrap">
+                        <p class="m-0">Total <span class="total-box-count font-medium">1</span></p>
+                        <a href="javascript:void(0)" class="inline-flex items-center justify-center bg-blue-500 hover:bg-blue-600 !px-3 !py-2 text-sm rounded text-white w-full sm:w-auto text-center"
+                            id="add-more-keyword-URL">+ Add More Url</a>
                     </div>
-
                 </div>
                 {{-- bulk url div here --}}
-                <div class="w-full flex flex-wrap justify-between max-h-[320px] overflow-hidden overflow-y-auto bg-gray-100 keyword-tab-sec hidden"
+                <div class="w-full flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-between max-h-[320px] overflow-y-auto bg-gray-100 keyword-tab-sec hidden !p-2 sm:!p-0"
                     id="bulk-keyword-url-container">
-                    <div class="w-[33%] flex flex-col gap-2">
+                    <div class="w-full sm:w-[32%] flex flex-col gap-2 min-w-0">
                         <div class="flex items-center ">
                             <label for="bulk-client-urls"
                                 class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">
@@ -1442,7 +1535,7 @@
                         <textarea name="" id="bulk-client-urls"
                             class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none bulk-input" rows="12"></textarea>
                     </div>
-                    <div class="w-[33%] flex flex-col gap-2">
+                    <div class="w-full sm:w-[32%] flex flex-col gap-2 min-w-0">
                         <div class="flex items-center">
                             <label for="bulk-client-keywords"
                                 class="text-sm flex  items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">
@@ -1453,8 +1546,8 @@
                         <textarea name="" id="bulk-client-keywords"
                             class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none bulk-input" rows="12"></textarea>
                     </div>
-                    <div class="w-[33%] flex flex-col gap-2 ">
-                        <div class="flex items-center !mt-1">
+                    <div class="w-full sm:w-[32%] flex flex-col gap-2 min-w-0">
+                        <div class="flex items-center !mt-0 sm:!mt-1">
                             <label for="bulk-media-links" class="text-sm flex items-center ">
                                 Media Links
                             </label>
@@ -1633,20 +1726,76 @@
                     </div>
                 </div>
 
+                {{-- Raw HTML Anchors section --}}
+                <div class="w-full flex flex-col gap-3 max-h-[320px] overflow-hidden overflow-y-auto bg-gray-100 keyword-tab-sec hidden"
+                    id="raw-html-keyword-url-container">
+                    <div class="w-full flex flex-col gap-3 !p-4">
+                        <div class="w-full bg-blue-50 border border-blue-200 rounded !p-3">
+                            <h4 class="text-sm font-semibold text-blue-800 !mb-2">Instructions:</h4>
+                            <ul class="text-xs text-blue-700 list-disc !pl-5 space-y-1">
+                                <li>Paste anchor tags directly (e.g., <code>&lt;a href="url" rel="nofollow sponsored external"&gt;keyword&lt;/a&gt;</code>)</li>
+                                <li>One line per post, or separate multiple anchors per line with commas (max 5 per line)</li>
+                                <li>Total lines must equal Post Quantity: <strong id="raw-html-post-qty">0</strong></li>
+                                <li>System will automatically extract URLs, keywords, and all rel attributes</li>
+                                <li>Supports all current and future rel attributes (nofollow, sponsored, ugc, noopener, noreferrer, external, bookmark, author, license, etc.)</li>
+                            </ul>
+                        </div>
+
+                        <div class="w-full flex flex-col gap-2">
+                            <div class="flex items-center justify-between">
+                                <label for="raw-html-anchors"
+                                    class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">
+                                    Raw HTML Anchors
+                                </label>
+                                <span class="text-xs text-gray-600">Lines: <strong id="raw-html-line-count">0</strong></span>
+                            </div>
+                            <textarea id="raw-html-anchors"
+                                class="bg-gray-50 !p-3 text-sm outline-none border border-gray-300 w-full resize-none font-mono"
+                                rows="14"
+                                placeholder='<a href="https://example.com" rel="nofollow sponsored">keyword 1</a>
+<a href="https://example2.com" rel="ugc">keyword 2</a>, <a href="https://example3.com">keyword 3</a>
+<a href="https://example4.com" rel="noopener noreferrer">keyword 4</a>'></textarea>
+                        </div>
+
+                        <div class="w-full bg-yellow-50 border border-yellow-200 rounded !p-3">
+                            <p class="text-xs text-yellow-800">
+                                <strong>Note:</strong> Media links are not supported in Raw HTML mode. Use other tabs if you need media links.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
 
             </div>
-            <div class="w-full flex flex-col sm:flex-row gap-2 sm:gap-0 justify-between sm:items-center !bg-gray-200 !px-3 !py-2">
-                <div class="flex flex-wrap gap-1 items-center">
-                    <input type="checkbox" name="no_follow" id="no_follow" value="1">
-                    <label for="no_follow" class="text-sm">No Follow</label>
-                    <p class="text-[12px]">(Check here to get Nofollow Link)</p>
-                    <input type="checkbox" name="sponsored_link" id="sponsored_link" value="1" class="!ml-3">
-                    <label for="sponsored_link" class="text-sm">Sponsor</label>
-                    <p class="text-[12px]">(Check here to add Sponsored rel)</p>
+            <div class="keyword-modal-footer w-full flex flex-col gap-3 !bg-gray-200 !px-3 !py-3 shrink-0 border-t border-gray-300">
+                <div class="keyword-modal-rel-grid">
+                    <div class="keyword-modal-rel-item">
+                        <input type="checkbox" name="no_follow" id="no_follow" value="1">
+                        <label for="no_follow">No Follow</label>
+                    </div>
 
+                    <div class="keyword-modal-rel-item">
+                        <input type="checkbox" name="sponsored_link" id="sponsored_link" value="1">
+                        <label for="sponsored_link">Sponsored</label>
+                    </div>
+
+                    <div class="keyword-modal-rel-item">
+                        <input type="checkbox" name="ugc_link" id="ugc_link" value="1">
+                        <label for="ugc_link">UGC</label>
+                    </div>
+
+                    <div class="keyword-modal-rel-item">
+                        <input type="checkbox" name="noopener_link" id="noopener_link" value="1">
+                        <label for="noopener_link">Noopener</label>
+                    </div>
+
+                    <div class="keyword-modal-rel-item sm:col-span-1">
+                        <input type="checkbox" name="noreferrer_link" id="noreferrer_link" value="1">
+                        <label for="noreferrer_link">Noreferrer</label>
+                    </div>
                 </div>
                 <a href="#" type="button" id="add-keywords-links"
-                    class="cursor-pointer bg-green-500 text-white rounded !p-3">
+                    class="cursor-pointer bg-green-600 hover:bg-green-700 text-white rounded !py-2.5 !px-4 text-sm font-medium text-center w-full sm:w-auto sm:self-end">
                     Save change
                 </a>
             </div>
@@ -1654,7 +1803,7 @@
     </div>
 
     <div
-        class="w-screen h-screen flex justify-center items-center fixed top-0 left-0 z-1200 overflow-hidden bg-white/40 domain-loader-pop hidden opacity-0 transition-all duration-500">
+        class="w-screen h-screen flex justify-center items-center fixed top-0 left-0 z-[1200] overflow-hidden bg-white/40 domain-loader-pop hidden opacity-0 transition-all duration-500">
 
         <div class="w-16 h-16 border-4 border-[var(--primary-color)] border-t-gray-100 rounded-full animate-spin ">
         </div>

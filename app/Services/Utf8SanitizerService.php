@@ -16,10 +16,6 @@ class Utf8SanitizerService
     /**
      * Clean text to valid UTF-8, removing malformed bytes and invalid control characters
      * CRITICAL: Preserves valid UTF-8 multilingual content (Chinese, Thai, Arabic, Persian, emoji)
-     *
-     * @param string|null $text
-     * @param array $options
-     * @return string|null
      */
     public static function clean(?string $text, array $options = []): ?string
     {
@@ -43,8 +39,12 @@ class Utf8SanitizerService
             // Remove: 0x00-0x08, 0x0B-0x0C, 0x0E-0x1F, 0x7F
             $cleaned = preg_replace('/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/u', '', $text);
 
-            // Remove zero-width characters (optional, usually safe to remove)
-            $cleaned = preg_replace('/[\x{200B}-\x{200D}\x{FEFF}]/u', '', $cleaned);
+            // Remove zero-width characters (but preserve ZWNJ/ZWJ for Persian/Arabic)
+            // U+200B = Zero Width Space (removed)
+            // U+200C = Zero Width Non-Joiner (PRESERVED for Persian/Arabic)
+            // U+200D = Zero Width Joiner (PRESERVED for Persian/Arabic)
+            // U+FEFF = BOM (removed)
+            $cleaned = preg_replace('/[\x{200B}\x{FEFF}]/u', '', $cleaned);
 
             // Normalize Unicode (NFC form - canonical composition)
             if (class_exists('Normalizer') && \Normalizer::isNormalized($cleaned, \Normalizer::FORM_C) === false) {
@@ -96,7 +96,7 @@ class Utf8SanitizerService
         }
 
         // Final validation - ensure result is valid UTF-8
-        if (!mb_check_encoding($text, 'UTF-8')) {
+        if (! mb_check_encoding($text, 'UTF-8')) {
             // Last resort: try one more repair attempt
             $lastAttempt = @iconv('UTF-8', 'UTF-8//IGNORE', $text);
             if ($lastAttempt !== false && mb_check_encoding($lastAttempt, 'UTF-8')) {
@@ -108,6 +108,7 @@ class Utf8SanitizerService
                     'article_id' => $options['article_id'] ?? null,
                     'preview' => mb_substr($original, 0, 100, '8bit'),
                 ]);
+
                 return $original;
             }
         }
@@ -140,7 +141,6 @@ class Utf8SanitizerService
      * Mojibake occurs when UTF-8 text is incorrectly interpreted as ISO-8859-1/Windows-1252
      * and then converted to UTF-8 again, causing patterns like "æ", "ä¸", "ç", "å"
      *
-     * @param string $text
      * @return string|null Returns repaired text or null if not mojibake
      */
     private static function repairMojibake(string $text): ?string
@@ -161,7 +161,7 @@ class Utf8SanitizerService
             }
         }
 
-        if (!$hasMojibake) {
+        if (! $hasMojibake) {
             return null;
         }
 
@@ -183,10 +183,6 @@ class Utf8SanitizerService
 
     /**
      * Clean array of strings recursively
-     *
-     * @param array $data
-     * @param array $options
-     * @return array
      */
     public static function cleanArray(array $data, array $options = []): array
     {
@@ -204,9 +200,7 @@ class Utf8SanitizerService
     /**
      * Safe JSON encode with UTF-8 handling
      *
-     * @param mixed $data
-     * @param int $flags
-     * @param int $depth
+     * @param  mixed  $data
      * @return string|false
      */
     public static function jsonEncode($data, int $flags = 0, int $depth = 512)
@@ -230,9 +224,6 @@ class Utf8SanitizerService
 
     /**
      * Validate if text is valid UTF-8
-     *
-     * @param string|null $text
-     * @return bool
      */
     public static function isValidUtf8(?string $text): bool
     {
@@ -245,8 +236,6 @@ class Utf8SanitizerService
 
     /**
      * Check if mbstring extension is available
-     *
-     * @return bool
      */
     public static function hasMbstringSupport(): bool
     {
@@ -255,8 +244,6 @@ class Utf8SanitizerService
 
     /**
      * Check if iconv extension is available
-     *
-     * @return bool
      */
     public static function hasIconvSupport(): bool
     {
@@ -265,8 +252,6 @@ class Utf8SanitizerService
 
     /**
      * Get system UTF-8 support status
-     *
-     * @return array
      */
     public static function getSystemStatus(): array
     {

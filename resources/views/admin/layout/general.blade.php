@@ -9,8 +9,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
-    <link rel="stylesheet" href="{{ asset('build/assets/app-Bnu7dOZh.css') }}">
-    <script src="{{ asset('build/assets/app-Cwyqw0uf.js') }}" defer></script>
+    <link rel="stylesheet" href="{{ asset('css/style.css') }}">
+    @include('partials.build-assets')
     <script src="{{ asset('js/script.js') }}" defer></script>
     @stack('style')
 

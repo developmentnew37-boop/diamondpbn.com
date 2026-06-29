@@ -4,7 +4,10 @@
       "Bash(php artisan *)",
       "Bash(php -m)",
       "Bash(php -i)",
-      "Bash(git log *)"
+      "Bash(git log *)",
+      "Bash(git mv *)",
+      "Bash(git add *)",
+      "Bash(php *)"
     ]
   }
 }

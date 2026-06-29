@@ -280,11 +280,12 @@
                         </div>
 
                         <div class="w-full flex flex-wrap justify-between items-center gap-3 !mt-2 !pt-2 border-t border-gray-200">
-                            <div class="flex gap-2 items-center">
-                                <input type="checkbox" name="no_follow" id="edit-no-follow" value="1"
-                                    {{ ! empty($initialNofollow) ? 'checked' : '' }}>
-                                <label for="edit-no-follow" class="text-sm">No Follow</label>
-                                <span class="text-[12px] text-gray-500">(Check here to get Nofollow Link)</span>
+                            <div class="flex flex-wrap gap-3 items-center">
+                                <div class="flex gap-2 items-center">
+                                    <input type="checkbox" name="no_follow" id="edit-no-follow" value="1"
+                                        {{ ! empty($initialNofollow) ? 'checked' : '' }}>
+                                    <label for="edit-no-follow" class="text-sm">No Follow</label>
+                                </div>
                             </div>
                             <button type="submit" id="edit-multi-keyword-submit"
                                 class="!px-4 !py-3 rounded-lg bg-green-600 text-white hover:opacity-90 disabled:opacity-70 disabled:cursor-not-allowed">
@@ -339,11 +340,12 @@
                             </div>
                         </div>
                         <div class="w-full flex flex-wrap justify-between items-center gap-3 !mt-2 !pt-2 border-t border-gray-200">
-                            <div class="flex gap-2 items-center">
-                                <input type="checkbox" name="no_follow" id="edit-bulk-no-follow" value="1"
-                                    {{ ! empty($initialNofollow) ? 'checked' : '' }}>
-                                <label for="edit-bulk-no-follow" class="text-sm">No Follow</label>
-                                <span class="text-[12px] text-gray-500">(Check here to get Nofollow Link)</span>
+                            <div class="flex flex-wrap gap-3 items-center">
+                                <div class="flex gap-2 items-center">
+                                    <input type="checkbox" name="no_follow" id="edit-bulk-no-follow" value="1"
+                                        {{ ! empty($initialNofollow) ? 'checked' : '' }}>
+                                    <label for="edit-bulk-no-follow" class="text-sm">No Follow</label>
+                                </div>
                             </div>
                             <button type="submit" id="edit-bulk-textarea-submit"
                                 class="!px-4 !py-3 rounded-lg bg-green-600 text-white hover:opacity-90 disabled:opacity-70 disabled:cursor-not-allowed">

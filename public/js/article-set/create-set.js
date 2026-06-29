@@ -85,107 +85,106 @@ window.addEventListener('DOMContentLoaded', () => {
         let updateBtn = document.querySelector('.upd-domain-category');
         // ** Selecting Table ** //
         let Table = document.getElementById('domainCategoryTable');
-
-        console.log(updateBtn.getAttribute('data-id'));
-
-
-        // ** ends here **
-
         if (document.getElementsByClassName('upd-pop-btn')) {
             let updPopBtn = document.getElementsByClassName('upd-pop-btn');
-            console.log(updPopBtn);
-            Array.from(updPopBtn).forEach((item, index) => {
+
+            const categoryNameEl = (row) => row?.querySelector('.category-badge, .title');
+
+            Array.from(updPopBtn).forEach((item) => {
                 item.addEventListener('click', (e) => {
                     showArticleBox(updArticleBox);
-                    const id = e.currentTarget.dataset.id;  // clean & reliable
-                    let title = e.currentTarget.closest('tr').querySelector('.title').textContent.trim();
-                    titleInp.value = title;
+                    const id = e.currentTarget.dataset.id;
+                    const row = e.currentTarget.closest('tr');
+                    const nameEl = categoryNameEl(row);
+                    titleInp.value = nameEl?.textContent?.trim() ?? '';
                     updateBtn.setAttribute('data-id', id);
-                    updateBtn.setAttribute('data-name', `${title}`);
-                    updateBtn.setAttribute('data-index', `${index}`);
-
-                })
-            })
-
+                    updateBtn.setAttribute('data-name', titleInp.value);
+                });
+            });
         }
 
 
         /*domain category update code here */
 
         if (updateBtn) {
-            //api/admin/domain/category/{id}
-            updateBtn.addEventListener('click', async (e) => {
-                if (updateBtn.getAttribute('data-id') != '') {
-                    let updId = updateBtn.getAttribute('data-id');
-                    let previousVal = updateBtn.getAttribute('data-name');
-                    let idx = updateBtn.getAttribute('data-index');
-                    let loader = updateBtn.querySelector('.loader');
-                    // selecting succes and errors rows
-
-                    let successRow = document.getElementById('success-row');
-                    let errorRow = document.getElementById('error-row');
-
-                    // ** End here ** //
-                    loader.classList.remove('hidden');
-                    console.log(updId);
-                    if (titleInp.value.trim() == '') {
-                        alert("please fill the update field properly");
-                        loader.classList.add('hidden');
-                        return;
-                    }
-                    if (titleInp.value.trim() == previousVal) {
-                        loader.classList.add('hidden');
-                        return;
-                    }
-
-                    try {
-                        let url = `/api/admin/domain/category/${updId}`
-                        let response = await fetch(url, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Accept': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                name: titleInp.value.trim()
-                            })
-                        })
-                        loader.classList.add('hidden');
-                        let result = await response.json();
-                        console.log(result)
-                        if (result.status) {
-                            successRow.classList.remove('hidden');
-                            setTimeout(() => {
-                                successRow.classList.remove('opacity-0');
-                                successRow.querySelector('.message').textContent = `${result.message}`;
-                                setTimeout(() => {
-                                    successRow.classList.add('opacity-0');
-                                    successRow.classList.add('hidden');
-                                }, 5000)
-                            }, 100)
-                            Table.querySelectorAll('tbody tr')[`${idx}`].querySelector('.title').textContent = `${result.data.name}`;
-
-                        } else {
-                            errorRow.classList.remove('hidden');
-                            setTimeout(() => {
-                                errorRow.classList.remove('opacity-0');
-                                errorRow.querySelector('.message').textContent = `${result.message}`;
-                                setTimeout(() => {
-                                    errorRow.classList.add('opacity-0');
-                                    errorRow.classList.add('hidden');
-                                }, 3000)
-                            }, 100)
-                        }
-
-                    } catch (error) {
-                        throw new Error(error, "console something went wrong");
-
-                    }
-                } else {
-                    alert("something went wrong")
+            updateBtn.addEventListener('click', async () => {
+                const updId = updateBtn.getAttribute('data-id');
+                if (!updId) {
+                    alert('something went wrong');
+                    return;
                 }
 
-            })
+                const previousVal = updateBtn.getAttribute('data-name') ?? '';
+                const loader = updateBtn.querySelector('.loader');
+                const successRow = document.getElementById('success-row');
+                const errorRow = document.getElementById('error-row');
+                const newName = titleInp.value.trim();
+
+                if (newName === '') {
+                    alert('please fill the update field properly');
+                    return;
+                }
+
+                if (newName === previousVal) {
+                    return;
+                }
+
+                loader?.classList.remove('hidden');
+
+                try {
+                    const response = await fetch(`/api/admin/domain/category/${updId}`, {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                        },
+                        body: JSON.stringify({ name: newName }),
+                    });
+
+                    const result = await response.json();
+
+                    if (result.status) {
+                        successRow?.classList.remove('hidden');
+                        setTimeout(() => {
+                            successRow?.classList.remove('opacity-0');
+                            const messageEl = successRow?.querySelector('.message');
+                            if (messageEl) {
+                                messageEl.textContent = result.message ?? 'Updated';
+                            }
+                            setTimeout(() => {
+                                successRow?.classList.add('opacity-0', 'hidden');
+                            }, 5000);
+                        }, 100);
+
+                        const row = Table?.querySelector(`.upd-pop-btn[data-id="${updId}"]`)?.closest('tr');
+                        const nameEl = row?.querySelector('.category-badge, .title');
+                        if (nameEl) {
+                            nameEl.textContent = result.data?.name ?? newName;
+                            nameEl.setAttribute('title', result.data?.name ?? newName);
+                        }
+
+                        updateBtn.setAttribute('data-name', result.data?.name ?? newName);
+                    } else {
+                        errorRow?.classList.remove('hidden');
+                        setTimeout(() => {
+                            errorRow?.classList.remove('opacity-0');
+                            const messageEl = errorRow?.querySelector('.message');
+                            if (messageEl) {
+                                messageEl.textContent = result.message ?? 'Update failed';
+                            }
+                            setTimeout(() => {
+                                errorRow?.classList.add('opacity-0', 'hidden');
+                            }, 3000);
+                        }, 100);
+                    }
+                } catch (error) {
+                    console.error('Domain category update failed', error);
+                    alert('Could not update category. Please try again.');
+                } finally {
+                    loader?.classList.add('hidden');
+                }
+            });
         }
     }
 

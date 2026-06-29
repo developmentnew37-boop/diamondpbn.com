@@ -149,7 +149,6 @@
                             $tHead = [
                                 'sno',
                                 'Campaign No',
-                                'Type',
                                 'Domain Category',
                                 'Total Targets',
                                 'Completed',
@@ -211,17 +210,9 @@
                                 {{ $campaign->campaign_no }}
                             </td>
 
-                            {{-- type --}}
-                            <td class="border border-gray-200 font-sans !px-2 !py-3">
-                                {{ $campaign->is_sticky_campaign ? 'sticky Campaign' : 'Post Campaign' }}
-                            </td>
-
                             {{-- domain category --}}
                             <td class="border border-gray-200 font-sans !px-2 !py-3">
-                                {{-- {{ optional($campaign->campaignDomains->first()?->domain)->name ?? '-' }} --}}
-                                {{ $campaign->campaignDomain->name ?? '-' }}
-
-                                {{-- {{ optional($campaign->domainCategory)->name ?? '-' }} --}}
+                                {{ optional($campaign->domainCategory)->name ?? '-' }}
                             </td>
 
                             {{-- totals --}}
@@ -268,45 +259,21 @@
 
                             {{-- actions --}}
                             <td class="border border-gray-200 font-sans !px-2 !py-3">
-                                <div class="flex flex-wrap gap-2 justify-center">
-                                    {{-- {{ route('admin.campaigns.report', $campaign->id) }} --}}
-                                    <a href="{{ route('admin.campaign.show', $campaign->id) }}"
-                                        class="bg-green-500 flex items-center justify-center rounded w-7 h-7 hover:bg-green-600">
-                                        <span class="material-symbols-outlined !text-sm text-white">visibility</span>
-                                    </a>
-
-                                    <a href="javascript:void(0)"
-                                        data-report="{{ route('admin.campaign.report', [
-                                            'campaign_no' => $campaign->campaign_no,
-                                            'token' => $campaign->report_token,
-                                        ]) }}"
-                                        class="bg-yellow-500 copy-link flex items-center justify-center rounded w-7 h-7 hover:bg-yellow-600">
-                                        <span class="material-symbols-outlined !text-sm text-white">content_copy</span>
-                                    </a>
-
-                                    <a href="{{ route('admin.campaign.report', [
+                                @include('admin.campaigns.partials.campaign-list-actions', [
+                                    'viewUrl' => route('admin.campaign.show', $campaign->id),
+                                    'reportUrl' => route('admin.campaign.report', [
                                         'campaign_no' => $campaign->campaign_no,
                                         'token' => $campaign->report_token,
-                                    ]) }}"
-                                        class="bg-blue-700 flex items-center justify-center rounded w-7 h-7 hover:bg-blue-800">
-                                        <span class="material-symbols-outlined !text-sm text-white">assignment</span>
-                                    </a>
-                                    <form action="{{ route('admin.campaign.purge.local', $campaign->id) }}" method="POST"
-                                        class="inline"
-                                        onsubmit="return confirm('Remove this campaign from the dashboard only? Remote posts stay. You will not be able to edit this campaign here anymore.');">
-                                        @csrf
-                                        <button type="submit" class="bg-orange-500 flex items-center justify-center rounded w-7 h-7 hover:bg-orange-600 border-0 cursor-pointer"
-                                            title="Dashboard only — does not delete remote posts">
-                                            <span class="material-symbols-outlined !text-sm text-white">database</span>
-                                        </button>
-                                    </form>
-                                </div>
+                                    ]),
+                                    'purgeAction' => route('admin.campaign.purge.local', $campaign->id),
+                                    'purgeConfirm' => 'Remove this campaign from the dashboard only? Remote posts stay. You will not be able to edit this campaign here anymore.',
+                                ])
                             </td>
                         </tr>
 
                     @empty
                         <tr>
-                            <td colspan="14" class="text-center !py-4 text-gray-500 bg-gray-100 font-sans">
+                            <td colspan="13" class="text-center !py-4 text-gray-500 bg-gray-100 font-sans">
                                 No campaigns found...
                             </td>
                         </tr>

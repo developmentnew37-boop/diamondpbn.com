@@ -505,6 +505,10 @@ window.addEventListener("DOMContentLoaded", () => {
             postQtyshower.textContent = `(${pq})`;
             sidebarCount = pq;
             domainCategory = selectDomain.value;
+            const rawHtmlHiddenQty = document.getElementById("raw-html-hidden-qty");
+            if (rawHtmlHiddenQty) {
+                rawHtmlHiddenQty.textContent = pq;
+            }
             return { ok: true };
         }
 
@@ -939,6 +943,74 @@ window.addEventListener("DOMContentLoaded", () => {
             });
         });
 
+        function countRawHtmlAnchorStats(rawValue) {
+            const lines = (rawValue || "").split("\n").filter((line) => line.trim() !== "");
+            const anchors = [];
+
+            lines.forEach((line) => {
+                line.split(",")
+                    .map((part) => part.trim())
+                    .filter((part) => part !== "")
+                    .forEach((part) => anchors.push(part));
+            });
+
+            return { lineCount: lines.length, anchorCount: anchors.length, anchors };
+        }
+
+        function syncRawHtmlHiddenQtyDisplay() {
+            const qty = getSidebarCount();
+            const hiddenQtySpan = document.getElementById("raw-html-hidden-qty");
+
+            if (hiddenQtySpan) {
+                hiddenQtySpan.textContent = qty;
+            }
+
+            return qty;
+        }
+
+        function updateRawHtmlLineCounter() {
+            const textarea = document.getElementById("raw-html-anchors");
+            const lineCountEl = document.getElementById("raw-html-line-count");
+            const anchorCountEl = document.getElementById("raw-html-anchor-count");
+
+            if (!textarea || !lineCountEl) {
+                return;
+            }
+
+            const { lineCount, anchorCount } = countRawHtmlAnchorStats(textarea.value);
+            const required = syncRawHtmlHiddenQtyDisplay();
+
+            lineCountEl.textContent = lineCount;
+
+            if (anchorCountEl) {
+                anchorCountEl.textContent = anchorCount;
+            }
+
+            const hasContent = anchorCount > 0;
+            const matches = hasContent && anchorCount === required;
+
+            lineCountEl.classList.toggle("text-green-600", matches);
+            lineCountEl.classList.toggle("text-red-600", hasContent && !matches);
+
+            if (anchorCountEl) {
+                anchorCountEl.classList.toggle("text-green-600", matches);
+                anchorCountEl.classList.toggle("text-red-600", hasContent && !matches);
+            }
+        }
+
+        const hiddenQtyInput = document.getElementById("hidden-quantity");
+        if (hiddenQtyInput) {
+            hiddenQtyInput.addEventListener("input", updateRawHtmlLineCounter);
+        }
+
+        const rawHtmlAnchorsTextarea = document.getElementById("raw-html-anchors");
+        if (rawHtmlAnchorsTextarea) {
+            rawHtmlAnchorsTextarea.addEventListener("input", updateRawHtmlLineCounter);
+            updateRawHtmlLineCounter();
+        } else {
+            syncRawHtmlHiddenQtyDisplay();
+        }
+
         //===============================================================================================================
 
         let addKeywordBtn = document.getElementById("add-keywords-links");
@@ -956,6 +1028,15 @@ window.addEventListener("DOMContentLoaded", () => {
                 : "";
             const sponsored = document.getElementById("sponsored_link")?.checked
                 ? document.getElementById("sponsored_link").value
+                : "";
+            const ugc = document.getElementById("ugc_link")?.checked
+                ? document.getElementById("ugc_link").value
+                : "";
+            const noopener = document.getElementById("noopener_link")?.checked
+                ? document.getElementById("noopener_link").value
+                : "";
+            const noreferrer = document.getElementById("noreferrer_link")?.checked
+                ? document.getElementById("noreferrer_link").value
                 : "";
 
             let keyWordBox = document.querySelectorAll(".keyword-url-box");
@@ -1023,6 +1104,9 @@ window.addEventListener("DOMContentLoaded", () => {
                             keyword: keywords[keywordIndex],
                             nofollow: noFollow,
                             sponsored: sponsored,
+                            ugc: ugc,
+                            noopener: noopener,
+                            noreferrer: noreferrer,
                         });
 
                         repeatCount--;
@@ -1063,10 +1147,71 @@ window.addEventListener("DOMContentLoaded", () => {
                         keyword: bulkKeywordsVal[x],
                         nofollow: noFollow,
                         sponsored: sponsored,
+                        ugc: ugc,
+                        noopener: noopener,
+                        noreferrer: noreferrer,
                     });
                 }
 
                 keywords_url_data = bulkData;
+            }
+
+            // Raw HTML Anchors method
+            if (method == "rawanchor") {
+                const rawAnchorsTextarea = document.getElementById("raw-html-anchors");
+                if (!rawAnchorsTextarea) {
+                    alert("Raw anchors textarea not found");
+                    return;
+                }
+
+                const rawAnchorsValue = rawAnchorsTextarea.value.trim();
+                if (!rawAnchorsValue) {
+                    alert("Please enter at least one raw HTML anchor");
+                    return;
+                }
+
+                const { anchorCount, anchors: allAnchors } = countRawHtmlAnchorStats(rawAnchorsValue);
+
+                if (anchorCount !== currentSidebarCount) {
+                    alert(`Total anchors (${anchorCount}) must equal Hidden Link Quantity (${currentSidebarCount})`);
+                    return;
+                }
+
+                const rawAnchorData = [];
+                const parser = new DOMParser();
+
+                for (let i = 0; i < allAnchors.length; i++) {
+                    const anchorHtml = allAnchors[i].trim();
+                    const doc = parser.parseFromString(anchorHtml, "text/html");
+                    const anchor = doc.querySelector("a");
+
+                    if (!anchor) {
+                        alert(`Line ${i + 1}: Invalid anchor tag - ${anchorHtml.substring(0, 50)}...`);
+                        return;
+                    }
+
+                    const url = anchor.getAttribute("href") || "";
+                    const keyword = anchor.textContent || "";
+                    const rawRelAttr = anchor.getAttribute("rel") || "";
+
+                    if (!url || !keyword) {
+                        alert(`Line ${i + 1}: Anchor must have both href and text content`);
+                        return;
+                    }
+
+                    rawAnchorData.push({
+                        url: url,
+                        keyword: keyword,
+                        raw_rel_attr: rawRelAttr,
+                        nofollow: "",
+                        sponsored: "",
+                        ugc: "",
+                        noopener: "",
+                        noreferrer: "",
+                    });
+                }
+
+                keywords_url_data = rawAnchorData;
             }
 
             let keywordsDataTable = document.getElementById("keywords-data-table");

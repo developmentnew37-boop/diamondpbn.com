@@ -20,7 +20,7 @@
           'admin.hidden.link.campaign.show',
           'admin.sticky.campaign',
       ];
-      $domainRoutes = ['admin.set', 'admin.select.category', 'admin.domain', 'admin.redirect'];
+      $domainRoutes = ['admin.set', 'admin.select.category', 'admin.domain', 'admin.redirect', 'admin.webhook-secrets', 'admin.pending-domains', 'admin.transfer-domains', 'admin.domain.status-checker'];
       $articleAddRoutes = [
           'admin.articles.opt',
           'admin.articles.category',
@@ -29,6 +29,10 @@
       ];
       $dripfeedRoutes = ['admin.schedule.campaign', 'admin.schedule.sticky.campaign', 'admin.schedule.sidebar.campaign', 'admin.wp.schedule.campaign'];
       $userRoutes = ['admin.user'];
+
+      $pendingCounts = \App\Models\Admin\PendingDomain::cachedSidebarCounts();
+      $pendingDomainUnviewedCount = $pendingCounts['unviewed'];
+      $pendingDomainTransferCount = $pendingCounts['transfer'];
   @endphp
   <!-- Sidebar -->
   <aside class="sidebar" id="sidebar">
@@ -132,10 +136,60 @@
                   <a href="{{ route('admin.domain.create') }}"
                       class="submenu-item {{ $currentRoute === 'admin.domain.create' ? 'active' : '' }} !flex justify-between">Add
                       Domains</a>
+                  <a href="{{ route('admin.domain.status-checker') }}"
+                      class="submenu-item {{ str_starts_with($currentRoute, 'admin.domain.status-checker') ? 'active' : '' }}">Status Checker</a>
                   <a href="{{ route('admin.domain.category.index') }}"
                       class="submenu-item {{ str_starts_with($currentRoute, 'admin.domain.category') ? 'active' : '' }} !flex justify-between">Category</a>
+                  <a href="{{ route('admin.pending-domains.index') }}"
+                      class="submenu-item submenu-item-with-badge {{ str_starts_with($currentRoute, 'admin.pending-domains') ? 'active' : '' }}">
+                      <span class="submenu-item-text">Pending Domains</span>
+                      @if ($pendingDomainUnviewedCount > 0)
+                          <span class="submenu-count-badge submenu-count-badge-red">{{ $pendingDomainUnviewedCount }}</span>
+                      @endif
+                  </a>
+                  <a href="{{ route('admin.transfer-domains.step1') }}"
+                      class="submenu-item submenu-item-with-badge {{ str_starts_with($currentRoute, 'admin.transfer-domains') ? 'active' : '' }}">
+                      <span class="submenu-item-text">Transfer Domains</span>
+                      @if ($pendingDomainTransferCount > 0)
+                          <span class="submenu-count-badge submenu-count-badge-blue">{{ $pendingDomainTransferCount }}</span>
+                      @endif
+                  </a>
+                  <a href="{{ route('admin.webhook-secrets.index') }}"
+                      class="submenu-item {{ str_starts_with($currentRoute, 'admin.webhook-secrets') ? 'active' : '' }} !flex justify-between">Webhook Secrets</a>
               </div>
           </div>
+
+          {{-- Plugin Manager: Super Admin and Admin only --}}
+          @if ($sidebarAdmin->canCreateCampaigns())
+          <div class="menu-section">
+              <div class="menu-title">Plugin Manager</div>
+              <a href="{{ route('admin.plugin-manager.index') }}"
+                  class="menu-item {{ $currentRoute === 'admin.plugin-manager.index' ? 'active' : '' }}">
+                  <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+                  </svg>
+                  <span class="menu-text">Plugin Library</span>
+              </a>
+              <a href="{{ route('admin.plugin-manager.deploy.create') }}"
+                  class="menu-item {{ $currentRoute === 'admin.plugin-manager.deploy.create' ? 'active' : '' }}">
+                  <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                      <path d="M2 17l10 5 10-5"></path>
+                      <path d="M2 12l10 5 10-5"></path>
+                  </svg>
+                  <span class="menu-text">Deploy Plugin</span>
+              </a>
+              <a href="{{ route('admin.plugin-manager.deployments.index') }}"
+                  class="menu-item {{ str_starts_with($currentRoute, 'admin.plugin-manager.deployments') ? 'active' : '' }}">
+                  <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <polyline points="12 6 12 12 16 14"></polyline>
+                  </svg>
+                  <span class="menu-text">Deploy History</span>
+              </a>
+          </div>
+          @endif
 
           {{-- articles section --}}
           <div class="menu-section ">

@@ -2,13 +2,9 @@
 
 use App\Services\Utf8SanitizerService;
 
-if (!function_exists('cleanUtf8')) {
+if (! function_exists('cleanUtf8')) {
     /**
      * Clean text to valid UTF-8, removing malformed bytes
-     *
-     * @param string|null $text
-     * @param array $options
-     * @return string|null
      */
     function cleanUtf8(?string $text, array $options = []): ?string
     {
@@ -16,13 +12,11 @@ if (!function_exists('cleanUtf8')) {
     }
 }
 
-if (!function_exists('safeJsonEncode')) {
+if (! function_exists('safeJsonEncode')) {
     /**
      * Safe JSON encode with UTF-8 handling
      *
-     * @param mixed $data
-     * @param int $flags
-     * @param int $depth
+     * @param  mixed  $data
      * @return string|false
      */
     function safeJsonEncode($data, int $flags = 0, int $depth = 512)
@@ -31,12 +25,9 @@ if (!function_exists('safeJsonEncode')) {
     }
 }
 
-if (!function_exists('isValidUtf8')) {
+if (! function_exists('isValidUtf8')) {
     /**
      * Check if text is valid UTF-8
-     *
-     * @param string|null $text
-     * @return bool
      */
     function isValidUtf8(?string $text): bool
     {
@@ -44,12 +35,9 @@ if (!function_exists('isValidUtf8')) {
     }
 }
 
-if (!function_exists('isRtlText')) {
+if (! function_exists('isRtlText')) {
     /**
      * Detect if text contains primarily RTL characters (Arabic, Persian, Hebrew, Urdu)
-     *
-     * @param string|null $text
-     * @return bool
      */
     function isRtlText(?string $text): bool
     {
@@ -74,13 +62,11 @@ if (!function_exists('isRtlText')) {
     }
 }
 
-if (!function_exists('wrapRtlContent')) {
+if (! function_exists('wrapRtlContent')) {
     /**
      * Wrap HTML content with RTL direction attribute if needed
      *
-     * @param string $html
-     * @param string|null $title Optional title to check for RTL
-     * @return string
+     * @param  string|null  $title  Optional title to check for RTL
      */
     function wrapRtlContent(string $html, ?string $title = null): string
     {
@@ -89,9 +75,57 @@ if (!function_exists('wrapRtlContent')) {
 
         if (isRtlText($textToCheck)) {
             // Wrap content in RTL div
-            return '<div dir="rtl" style="text-align: right;">' . $html . '</div>';
+            return '<div dir="rtl" style="text-align: right;">'.$html.'</div>';
         }
 
         return $html;
+    }
+}
+
+if (! function_exists('normalizeDomainName')) {
+    /**
+     * Normalize a domain URL or hostname to bare domain.com format.
+     */
+    function normalizeDomainName(?string $input): string
+    {
+        if ($input === null || $input === '') {
+            return '';
+        }
+
+        $domain = strtolower(trim($input));
+        $domain = preg_replace('#^https?://#', '', $domain);
+        $domain = preg_replace('#/.*$#', '', $domain);
+        $domain = preg_replace('#:\d+$#', '', $domain);
+
+        return rtrim($domain, '/');
+    }
+}
+
+if (! function_exists('toDomainUrl')) {
+    /**
+     * Build a full https URL from a domain URL or bare hostname.
+     */
+    function toDomainUrl(?string $input): string
+    {
+        $normalized = normalizeDomainName($input);
+
+        return $normalized === '' ? '' : 'https://'.$normalized;
+    }
+}
+
+if (! function_exists('extractDomainExtension')) {
+    /**
+     * Extract TLD/extension from a domain name (e.g. example.com -> com).
+     */
+    function extractDomainExtension(?string $domainName): string
+    {
+        $normalized = normalizeDomainName($domainName);
+        if ($normalized === '') {
+            return '';
+        }
+
+        $parts = explode('.', $normalized);
+
+        return count($parts) >= 2 ? (string) end($parts) : '';
     }
 }

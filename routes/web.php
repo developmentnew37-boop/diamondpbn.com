@@ -1,21 +1,21 @@
 <?php
 
+use App\Http\Controllers\Admin\PluginPackageController;
 use Illuminate\Support\Facades\Route;
+
 require __DIR__.'/admin.php';
+
+Route::get('/plugin-deployments/download/{uuid}', [PluginPackageController::class, 'download'])
+    ->middleware('throttle:300,1')
+    ->name('plugin-deployments.download');
 
 Route::get('/', function () {
     return view('home');
 })->name('home');
 
-// Temporary route to check PHP configuration
-Route::get('/check-php-config', function () {
-    phpinfo();
-    exit;
-});
-
 // Route::get('/', function () {
 //     return view('welcome');
-// })->name('index'); 
+// })->name('index');
 
 // Route::get('/post', function () {
 //     return view('pbn-campaigns.post');
@@ -66,8 +66,7 @@ Route::get('/check-php-config', function () {
 //     return view('article.article-set.edit-articleset-articles', ['id' => $id]); // showing set articles
 // })->name('edit-articles');
 
-
-// // domains now here 
+// // domains now here
 
 // Route::get('/domain', function () {
 //     return view('domains.domains');
@@ -116,7 +115,6 @@ Route::get('/check-php-config', function () {
 // Route::get('/campaign/hidden/create', function () {
 //     return view('campaigns.pbn-hidden-links.create-hidden-links-campaign');
 // })->name('create.pbn.hidden');
-
 
 // // schedule post should show here
 

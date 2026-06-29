@@ -2,12 +2,16 @@
 
 @section('title', 'WP Scheduled Campaigns')
 
+@push('style')
+    @include('admin.campaigns.partials.campaign-list-table-styles')
+@endpush
+
 @section('main-content')
-    <div class="page-header">
-        <div class="w-full flex flex-wrap items-center">
-            <div class="w-1/2 flex flex-col gap-2 flex-wrap">
+    <div class="page-header w-full max-w-full min-w-0">
+        <div class="w-full flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div class="w-full md:flex-1 flex flex-col gap-2 min-w-0">
                 <h2 class="page-title">Dashboards</h2>
-                <div class="breadcrumb">
+                <div class="breadcrumb flex-wrap">
                     <div class="breadcrumb-item">
                         <a href="{{ route('admin.dashboard') }}" class="breadcrumb-link">Dashboard</a>
                         <span>›</span>
@@ -17,10 +21,10 @@
                     </div>
                 </div>
             </div>
-            <div class="w-1/2 flex flex-wrap justify-end items-center">
+            <div class="w-full md:w-auto flex flex-wrap justify-start md:justify-end items-center md:shrink-0">
                 @if (Auth::guard('admin')->user()->canCreateCampaigns())
                 <a href="{{ route('admin.wp.schedule.campaign.create') }}"
-                    class="flex !p-2 !py-3 text-[16px] font-normal w-fit justify-center bg-[var(--primary-color)] whitespace-nowrap text-white rounded hover:bg-[var(--primary-color)]/70 transition-all">
+                    class="flex !p-2 !py-3 text-[16px] font-normal w-full sm:w-fit justify-center bg-[var(--primary-color)] whitespace-nowrap text-white rounded hover:bg-[var(--primary-color)]/70 transition-all">
                     Create WP Scheduled Campaign
                 </a>
                 @endif
@@ -64,8 +68,8 @@
             <span class="text-sm text-gray-500">Select rows with checkboxes; remote WordPress posts are not changed.</span>
         </div>
 
-        <div class="overflow-x-auto w-full">
-            <table class="display w-full border border-gray-200 border-collapse text-sm whitespace-nowrap">
+        <div class="overflow-x-auto w-full max-w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
+            <table class="campaign-list-table display w-full min-w-[1100px] border border-gray-200 border-collapse text-sm whitespace-nowrap searchable-table">
                 <thead>
                     <tr class="bg-gray-800 text-white">
                         <th class="border border-gray-200 !px-2 !py-3 text-center w-10">
@@ -79,7 +83,7 @@
                         <th class="border border-gray-200 !px-2 !py-3 text-center">Failed</th>
                         <th class="border border-gray-200 !px-2 !py-3 text-center">Status</th>
                         <th class="border border-gray-200 !px-2 !py-3 text-left">Created</th>
-                        <th class="border border-gray-200 !px-2 !py-3 text-left">Actions</th>
+                        <th class="actions-col border border-gray-200 !px-2 !py-3 text-left min-w-[252px]">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -111,48 +115,22 @@
                                 </span>
                             </td>
                             <td class="border !px-2 !py-2">{{ $campaign->created_at?->format('d-M-Y H:i') }}</td>
-                            <td class="border !px-2 !py-2">
-                                <div class="flex gap-2 justify-center items-center">
-                                    <a href="{{ route('admin.wp.schedule.campaign.show', $campaign->id) }}"
-                                        class="bg-green-500 flex items-center justify-center rounded w-7 h-7 hover:bg-green-600"
-                                        title="View campaign">
-                                        <span class="material-symbols-outlined !text-sm text-white">visibility</span>
-                                    </a>
-                                    <a href="{{ route('admin.wp.schedule.campaign.edit', $campaign->id) }}"
-                                        class="bg-yellow-500 flex items-center justify-center rounded w-7 h-7 hover:bg-yellow-600"
-                                        title="Edit campaign (batch keyword/URL)">
-                                        <span class="material-symbols-outlined !text-sm text-white">edit</span>
-                                    </a>
-                                    @if($campaign->report_token ?? null)
-                                        <a href="javascript:void(0)"
-                                            data-report="{{ route('admin.wp.schedule.campaign.report', ['campaign_no' => $campaign->campaign_no, 'token' => $campaign->report_token]) }}"
-                                            class="copy-link bg-yellow-500 flex items-center justify-center rounded w-7 h-7 hover:bg-yellow-600"
-                                            title="Copy report link">
-                                            <span class="material-symbols-outlined !text-sm text-white">content_copy</span>
-                                        </a>
-                                        <a href="{{ route('admin.wp.schedule.campaign.report', ['campaign_no' => $campaign->campaign_no, 'token' => $campaign->report_token]) }}"
-                                            target="_blank"
-                                            class="bg-blue-700 flex items-center justify-center rounded w-7 h-7 hover:bg-blue-800"
-                                            title="View report page">
-                                            <span class="material-symbols-outlined !text-sm text-white">assignment</span>
-                                        </a>
-                                    @endif
-                                    <form action="{{ route('admin.wp.schedule.campaign.destroy', $campaign->id) }}" method="POST" class="inline"
-                                        onsubmit="return confirm('Delete this entire campaign? All posts will be removed from WordPress and the database.');">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button type="submit" class="flex items-center justify-center rounded w-7 h-7 bg-red-500 hover:bg-red-600 border-0 cursor-pointer text-white p-0" title="Delete campaign">
-                                            <span class="material-symbols-outlined !text-sm">delete</span>
-                                        </button>
-                                    </form>
-                                    <form action="{{ route('admin.wp.schedule.campaign.purge.local', $campaign->id) }}" method="POST" class="inline"
-                                        onsubmit="return confirm('Remove this campaign from the dashboard only? Remote WordPress posts stay. You will not be able to edit this campaign here anymore.');">
-                                        @csrf
-                                        <button type="submit" class="flex items-center justify-center rounded w-7 h-7 bg-orange-500 hover:bg-orange-600 border-0 cursor-pointer text-white p-0" title="Dashboard only — does not delete remote posts">
-                                            <span class="material-symbols-outlined !text-sm">database</span>
-                                        </button>
-                                    </form>
-                                </div>
+                            <td class="actions-col border !px-2 !py-2 min-w-[252px]">
+                                @include('admin.campaigns.partials.campaign-list-actions', [
+                                    'viewUrl' => route('admin.wp.schedule.campaign.show', $campaign->id),
+                                    'editUrl' => route('admin.wp.schedule.campaign.edit', $campaign->id),
+                                    'reportUrl' => ($campaign->report_token ?? null)
+                                        ? route('admin.wp.schedule.campaign.report', [
+                                            'campaign_no' => $campaign->campaign_no,
+                                            'token' => $campaign->report_token,
+                                        ])
+                                        : null,
+                                    'openReportInNewTab' => true,
+                                    'destroyAction' => route('admin.wp.schedule.campaign.destroy', $campaign->id),
+                                    'purgeAction' => route('admin.wp.schedule.campaign.purge.local', $campaign->id),
+                                    'destroyConfirm' => 'Delete this entire campaign? All posts will be removed from WordPress and the database.',
+                                    'purgeConfirm' => 'Remove this campaign from the dashboard only? Remote WordPress posts stay. You will not be able to edit this campaign here anymore.',
+                                ])
                             </td>
                         </tr>
                     @empty

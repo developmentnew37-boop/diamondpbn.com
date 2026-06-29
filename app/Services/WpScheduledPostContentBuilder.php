@@ -54,8 +54,8 @@ class WpScheduledPostContentBuilder
         }
         $keywords = $ca->keyword_type === 'json' ? json_decode($ca->keyword, true) : [$ca->keyword];
         $urls = $ca->url_type === 'json' ? json_decode($ca->url, true) : [$ca->url];
-        if (!is_array($keywords) || !is_array($urls)) {
-            throw new \Exception("Invalid keyword/url format");
+        if (! is_array($keywords) || ! is_array($urls)) {
+            throw new \Exception('Invalid keyword/url format');
         }
 
         $pairs = [];
@@ -68,13 +68,13 @@ class WpScheduledPostContentBuilder
             }
         }
         if (count($pairs) === 0) {
-            throw new \Exception("No valid keyword/url pairs");
+            throw new \Exception('No valid keyword/url pairs');
         }
 
         preg_match_all('/<p\b[^>]*>.*?<\/p>/is', $html, $matches);
         $paragraphs = $matches[0] ?? [];
         if (count($paragraphs) === 0) {
-            $paragraphs = ['<p>' . $html . '</p>'];
+            $paragraphs = ['<p>'.$html.'</p>'];
         }
 
         $anchorCount = count($pairs);
@@ -82,8 +82,40 @@ class WpScheduledPostContentBuilder
         $paraIndexes = array_keys($paragraphs);
         shuffle($paraIndexes);
         $pairIndex = 0;
-        $nofollow = (bool) ($ca->nofollow ?? false);
-        $relAttr = $nofollow ? 'nofollow noopener' : 'noopener';
+
+        // ✅ PRIORITY 1: Use raw_rel_attr if present (from Raw HTML Anchors mode - supports ANY rel values)
+        // ✅ PRIORITY 2: Build from individual boolean fields (from checkbox mode - backward compatibility)
+        $relAttr = '';
+        if (! empty($ca->raw_rel_attr)) {
+            // Raw HTML mode: Use full rel string directly (supports custom values like "external", "bookmark")
+            $relAttr = trim($ca->raw_rel_attr);
+        } else {
+            // Checkbox mode: Build from boolean fields (legacy behavior)
+            $nofollow = (bool) ($ca->nofollow ?? false);
+            $sponsored = (bool) ($ca->sponsored ?? false);
+            $ugc = (bool) ($ca->ugc ?? false);
+            $noopener = (bool) ($ca->noopener ?? false);
+            $noreferrer = (bool) ($ca->noreferrer ?? false);
+
+            $relTokens = [];
+            if ($nofollow) {
+                $relTokens[] = 'nofollow';
+            }
+            if ($sponsored) {
+                $relTokens[] = 'sponsored';
+            }
+            if ($ugc) {
+                $relTokens[] = 'ugc';
+            }
+            if ($noopener) {
+                $relTokens[] = 'noopener';
+            }
+            if ($noreferrer) {
+                $relTokens[] = 'noreferrer';
+            }
+
+            $relAttr = implode(' ', $relTokens);
+        }
 
         while ($pairIndex < $anchorCount) {
             foreach ($paraIndexes as $p) {
@@ -98,13 +130,13 @@ class WpScheduledPostContentBuilder
                     continue;
                 }
                 [$kw, $url] = $pairs[$pairIndex++];
-                $anchor = '<a href="' . e($url) . '" target="_blank" rel="' . $relAttr . '">' . e($kw) . '</a>';
+                $anchor = '<a href="'.e($url).'" target="_blank" rel="'.$relAttr.'">'.e($kw).'</a>';
                 // ✅ Use mb_strlen for character count, not byte count (critical for Chinese/Thai/Arabic)
                 $target = random_int((int) (mb_strlen($inner) * 0.1), (int) (mb_strlen($inner) * 0.3));
                 $safePos = self::findSafeHtmlInsertPos($inner, $target);
                 // ✅ Use mb_substr to avoid splitting multi-byte UTF-8 characters
-                $inner = mb_substr($inner, 0, $safePos) . ' ' . $anchor . ' ' . mb_substr($inner, $safePos);
-                $paragraphs[$p] = $openTag . $inner . '</p>';
+                $inner = mb_substr($inner, 0, $safePos).' '.$anchor.' '.mb_substr($inner, $safePos);
+                $paragraphs[$p] = $openTag.$inner.'</p>';
             }
         }
 
@@ -132,18 +164,19 @@ class WpScheduledPostContentBuilder
                 return false;
             }
             $lastGt = mb_strrpos($before, '>');
+
             return $lastGt === false || $lastLt > $lastGt;
         };
         for ($d = 0; $d < 200; $d++) {
             $right = $start + $d;
-            if ($right < $len && !$insideTagAt($right)) {
+            if ($right < $len && ! $insideTagAt($right)) {
                 $ch = mb_substr($html, $right, 1);
                 if ($ch !== '' && $isBoundary($ch)) {
                     return min($right + 1, $len);
                 }
             }
             $left = $start - $d;
-            if ($left > 0 && !$insideTagAt($left)) {
+            if ($left > 0 && ! $insideTagAt($left)) {
                 $ch = mb_substr($html, $left, 1);
                 if ($ch !== '' && $isBoundary($ch)) {
                     return min($left + 1, $len);
@@ -154,6 +187,7 @@ class WpScheduledPostContentBuilder
         while ($pos < $len && $insideTagAt($pos)) {
             $pos++;
         }
+
         return min($pos, $len);
     }
 }
