@@ -129,7 +129,7 @@ Schedule::call(function () {
 | WP Scheduled: sync status from WordPress (future → publish, missed schedule)
 |--------------------------------------------------------------------------
 */
-Schedule::command('wp-scheduled:sync-status')->hourly()->name('wp_scheduled_sync_status')->onOneServer();
+// Schedule::command('wp-scheduled:sync-status')->hourly()->name('wp_scheduled_sync_status')->onOneServer();
 
 /*
 |--------------------------------------------------------------------------

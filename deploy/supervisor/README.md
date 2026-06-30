@@ -17,7 +17,10 @@ Copy configs to Supervisor:
 ```bash
 sudo cp deploy/supervisor/laravel-worker.conf /etc/supervisor/conf.d/laravel-worker.conf
 sudo cp deploy/supervisor/laravel-webhook-worker.conf /etc/supervisor/conf.d/laravel-webhook-worker.conf
+sudo cp deploy/supervisor/laravel-scheduler.conf /etc/supervisor/conf.d/laravel-scheduler.conf
 ```
+
+**Production (diamondpbn VPS):** append the `[program:laravel-scheduler]` block from `laravel-scheduler.conf` to `/etc/supervisor/conf.d/diamondpbn.conf`, or use a separate conf file.
 
 Edit if needed:
 
@@ -45,18 +48,25 @@ sudo supervisorctl start laravel-webhook-worker:*
 
 | Item | Value |
 |------|--------|
-| Schedule | `routes/console.php` — `0 */8 * * *` (every 8 hours) |
+| Schedule check | `routes/console.php` — **hourly** (`refresh_webhook_secrets`) |
+| Rotation interval | Admin UI → Webhook Secrets → **8 hours** (or 1, 12, 24, etc.) stored in `webhook_rotation_settings` |
 | Job | `RefreshWebhookSecretsJob` |
 | Queue | `webhook-secret` |
-| Worker | `php artisan queue:work --queue=webhook-secret` |
+| Worker | `webhook-secret-worker` in Supervisor (`queue:work --queue=webhook-secret`) |
 
-**Server load:** Very low. The job only updates a few rows in `webhook_secrets` (no HTTP, no heavy CPU). It runs 3 times per day. A single Supervisor process (`numprocs=1`) is enough.
+**Server load:** Very low. The job only updates DB rows (no HTTP). One worker process is enough.
 
-**Cron still required** (dispatches the job into the queue):
+**Scheduler required** (dispatches the hourly check into the queue). Use **either**:
 
 ```bash
+# Option A — Supervisor (recommended if you already use Supervisor for queues)
+php artisan schedule:work   # see laravel-scheduler.conf
+
+# Option B — system cron every minute
 * * * * * cd /path/to/project && php artisan schedule:run >> /dev/null 2>&1
 ```
+
+Without Option A or B, `webhook-secret-worker` sits idle and secrets never auto-rotate.
 
 **What can load the server more** (not webhook): `scheduled_campaigns` dispatch every minute, large PBN publish queues, domain status checks with many parallel HTTP calls. Use separate Supervisor programs per queue group if needed.
 

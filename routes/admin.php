@@ -227,6 +227,8 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     Route::post('/webhook-secrets/{webhookSecret}/regenerate', [WebhookSecretController::class, 'regenerate'])->name('webhook-secrets.regenerate');
 
     /** Pending Domains Routes Start Here **/
+    Route::post('/pending-domains/sync-existing', [PendingDomainController::class, 'syncExistingInventory'])->name('pending-domains.sync-existing');
+    Route::post('/pending-domains/{pendingDomain}/sync-inventory', [PendingDomainController::class, 'syncSingleInventory'])->name('pending-domains.sync-inventory');
     Route::post('/pending-domains/bulk-reject', [PendingDomainController::class, 'bulkReject'])->name('pending-domains.bulk.reject');
     Route::post('/pending-domains/{pendingDomain}/reject', [PendingDomainController::class, 'reject'])->name('pending-domains.reject');
     Route::resource('/pending-domains', PendingDomainController::class)

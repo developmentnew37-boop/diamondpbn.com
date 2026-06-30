@@ -6,10 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\Admin\Domain;
 use App\Models\Admin\DomainCategory;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Auth;
-use Spatie\SimpleExcel\SimpleExcelWriter;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Spatie\SimpleExcel\SimpleExcelWriter;
 
 class DomainController extends Controller
 {
@@ -20,7 +20,7 @@ class DomainController extends Controller
     {
         $request->validate([
             'category_id' => 'nullable|integer|exists:domain_categories,id',
-            'search' => 'nullable|string|max:150'
+            'search' => 'nullable|string|max:150',
         ]);
 
         $limit = 100;
@@ -43,21 +43,19 @@ class DomainController extends Controller
         return view('admin.domains.domains', compact('domains', 'domainCategories', 'offset'));
     }
 
-
     /**
      * Redirect function
      * */
     public function redirect__func(Request $request)
     {
         $validate = $request->validate([
-            'category' => 'required|integer|exists:domain_categories,id'
+            'category' => 'required|integer|exists:domain_categories,id',
         ]);
 
         return redirect()->route('admin.domain.index', [
-            'category_id' => $validate['category']
+            'category_id' => $validate['category'],
         ]);
     }
-
 
     /**
      * Show the form for creating a new resource.
@@ -66,19 +64,19 @@ class DomainController extends Controller
     {
         //
         $domainCategories = DomainCategory::all();
+
         return view('admin.domains.add-domains', compact('domainCategories'));
     }
 
-    /** 
+    /**
      * making redirect based on domain category
      * **/
-
     public function selectDomainCategory(Request $request)
     {
         $domainCategories = DomainCategory::all();
+
         return view('admin.domains.select-category', compact('domainCategories'));
     }
-
 
     /**
      * Store a newly created resource in storage.
@@ -90,7 +88,7 @@ class DomainController extends Controller
             'name' => [
                 'required',
                 'unique:domains,name',
-                'regex:/^(?!https?:\/\/)([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$/'
+                'regex:/^(?!https?:\/\/)([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$/',
             ], // only domain.com format
             'domain_category_id' => 'required|exists:domain_categories,id', // fixed space issue
             'da' => 'nullable|numeric|min:0|max:100',
@@ -98,28 +96,28 @@ class DomainController extends Controller
             'tf' => 'nullable|numeric|min:0|max:100',
             'ss' => 'nullable|numeric|min:0|max:100',
             'ip' => 'nullable|string',
-            'api_key' => 'nullable|unique:domains'
+            'api_key' => 'nullable|unique:domains',
         ]);
 
-        // Trim + lowercase domain
-        $domain = strtolower(trim($validate['name']));
+        // Normalize hostname (lowercase, strip scheme/path) for consistent storage
+        $domain = normalizeDomainName($validate['name']);
 
         $url = "https://{$domain}/wp-json/external/v1/status";
 
         $status = 0;  // Default: Not connected
-        $message = "Plugin Missing / API Route Not Found";
+        $message = 'Plugin Missing / API Route Not Found';
 
         try {
             $response = Http::withoutVerifying()->timeout(40)->get($url);
 
             if ($response->successful() && $response->json('status') == true) {
                 $status = 1;
-                $message = "Plugin Connected";
+                $message = 'Plugin Connected';
             } else {
                 $status = 0;
             }
         } catch (\Exception $e) {
-            return back()->with('cus__error', "Domain Added but API unreachable: " . $e->getMessage());
+            return back()->with('cus__error', 'Domain Added but API unreachable: '.$e->getMessage());
         }
 
         Domain::create([
@@ -156,8 +154,8 @@ class DomainController extends Controller
         $domain = Domain::find($id);
         $domainCategories = DomainCategory::all();
 
-        if (!$domain) {
-            return back()->with('cus__error', 'the product with (' . $id . ') that you are trying to edit is not found in database');
+        if (! $domain) {
+            return back()->with('cus__error', 'the product with ('.$id.') that you are trying to edit is not found in database');
         }
 
         return view('admin.domains.edit-domains', compact('domain', 'domainCategories'));
@@ -175,7 +173,7 @@ class DomainController extends Controller
             'name' => [
                 'required',
                 'regex:/^(?!https?:\/\/)([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$/',
-                'unique:domains,name,' . $id   // ← important for update
+                'unique:domains,name,'.$id,   // ← important for update
             ],
             'domain_category_id' => 'required|exists:domain_categories,id',
             'da' => 'nullable|numeric|min:1|max:100',
@@ -183,26 +181,26 @@ class DomainController extends Controller
             'tf' => 'nullable|numeric|min:1|max:100',
             'ss' => 'nullable|numeric|min:1|max:100',
             'ip' => 'nullable|string',
-            'api_key' => 'nullable|unique:domains,api_key,' . $id // API key also unique but ignore current row
+            'api_key' => 'nullable|unique:domains,api_key,'.$id, // API key also unique but ignore current row
         ]);
 
         // domain.com format
-        $domainName = strtolower(trim($validate['name']));
+        $domainName = normalizeDomainName($validate['name']);
         $url = "https://{$domainName}/wp-json/external/v1/status";
 
         $status = 0;
-        $message = "Plugin Missing / API Route Not Found";
+        $message = 'Plugin Missing / API Route Not Found';
 
         try {
             $response = Http::withoutVerifying()->timeout(40)->get($url);
 
             if ($response->successful() && $response->json('status') == true) {
                 $status = 1;
-                $message = "Plugin Connected";
+                $message = 'Plugin Connected';
             }
         } catch (\Exception $e) {
             // does not block update — just notify
-            return back()->with('cus__error', "Domain Updated but API unreachable: " . $e->getMessage());
+            return back()->with('cus__error', 'Domain Updated but API unreachable: '.$e->getMessage());
         }
 
         // Update DB
@@ -222,21 +220,20 @@ class DomainController extends Controller
         return back()->with('cus__success', 'Domain updated successfully');
     }
 
-
     /**
      * Remove the specified resource from storage.
      */
     public function destroy(string $id)
     {
         // Validate route ID (ensure number)
-        if (!ctype_digit($id)) {
+        if (! ctype_digit($id)) {
             return back()->with('cus__error', 'Invalid domain ID.');
         }
 
         // Check category existence
         $domain = Domain::find($id);
 
-        if (!$domain) {
+        if (! $domain) {
             return back()->with('cus__error', 'domain not found.');
         }
 
@@ -257,8 +254,8 @@ class DomainController extends Controller
     public function delete(Request $request)
     {
         $validated = $request->validate([
-            'actions'  => 'required|integer|in:1',   // must be 1
-            'bulk_ids' => 'required|string'          // "1,3,4"
+            'actions' => 'required|integer|in:1',   // must be 1
+            'bulk_ids' => 'required|string',          // "1,3,4"
         ]);
 
         // Convert string to array
@@ -270,12 +267,12 @@ class DomainController extends Controller
         // Detect missing IDs
         $missingIds = array_diff($ids, $validIds);
 
-        if (!empty($missingIds)) {
+        if (! empty($missingIds)) {
             $message = count($missingIds) > 1
                 ? ' ids are not found in database'
                 : ' id is not found in database';
 
-            return back()->with('cus__error', implode(',', $missingIds) . $message);
+            return back()->with('cus__error', implode(',', $missingIds).$message);
         }
 
         // BEGIN removing logic
@@ -307,7 +304,7 @@ class DomainController extends Controller
             ->select(['id', 'name'])
             ->findOrFail($categoryId);
 
-        $fileName = 'domains-' . Str::slug((string) $category->name) . '-' . now()->format('Ymd_His') . '.xlsx';
+        $fileName = 'domains-'.Str::slug((string) $category->name).'-'.now()->format('Ymd_His').'.xlsx';
 
         $writer = SimpleExcelWriter::streamDownload($fileName)->addHeader([
             'Domain',

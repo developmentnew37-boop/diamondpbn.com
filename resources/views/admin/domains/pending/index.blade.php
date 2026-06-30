@@ -1,242 +1,183 @@
 @extends('admin.layout.layout')
 
 @push('style')
-    <style>
-        .domain-url {
-            word-break: break-all;
-            max-width: 300px;
-        }
-
-        @media (min-width: 768px) {
-            .domain-url {
-                max-width: 280px;
-            }
-        }
-
-        .pending-domain-card {
-            border: 1px solid #e5e7eb;
-            border-radius: 0.5rem;
-            background: #fff;
-        }
-
-        .pending-domain-card.is-unviewed {
-            background: #fff7ed;
-            border-color: #fed7aa;
-        }
-
-        .page-header-btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-            min-height: 42px;
-            padding: 0.625rem 1rem;
-            font-size: 0.875rem;
-            font-weight: 500;
-            line-height: 1.25;
-            border-radius: 0.375rem;
-            white-space: nowrap;
-            transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
-        }
-
-        .page-header-btn-primary {
-            background-color: var(--primary-color);
-            color: #fff;
-        }
-
-        .page-header-btn-primary:hover {
-            background-color: #e0410f;
-        }
-
-        .page-header-btn-secondary {
-            background-color: #fff;
-            color: var(--primary-color);
-            border: 1px solid var(--primary-color);
-        }
-
-        .page-header-btn-secondary:hover {
-            background-color: var(--primary-color);
-            color: #fff;
-        }
-
-        .pending-toolbar-btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-            min-height: 40px;
-            padding: 0.5rem 0.875rem;
-            font-size: 0.875rem;
-            font-weight: 500;
-            border-radius: 0.375rem;
-            transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
-        }
-
-        .pending-toolbar-btn-primary {
-            background-color: var(--primary-color);
-            color: #fff;
-        }
-
-        .pending-toolbar-btn-primary:hover {
-            background-color: #e0410f;
-        }
-
-        .pending-toolbar-btn-muted {
-            background-color: #fff;
-            color: var(--primary-color);
-            border: 1px solid var(--primary-color);
-        }
-
-        .pending-toolbar-btn-muted:hover {
-            background-color: var(--primary-color);
-            color: #fff;
-        }
-
-        .theme-badge {
-            background-color: var(--primary-color);
-            color: #fff;
-        }
-
-        .theme-badge-soft {
-            background-color: rgba(255, 74, 23, 0.12);
-            color: #c2410c;
-        }
-
-        .campaign-list-table tbody tr.bg-orange-50 td.actions-col {
-            background: #fff7ed;
-        }
-
-        .campaign-list-table tbody tr.bg-orange-50:hover td.actions-col {
-            background: #ffedd5;
-        }
-    </style>
-    @include('admin.campaigns.partials.campaign-list-table-styles')
+    @include('admin.domains.pending.partials.styles')
 @endpush
 
 @section('title', 'Pending Domains')
 
 @section('main-content')
-    {{-- Breadcrumbs --}}
+    {{-- Page header --}}
     <div class="page-header w-full max-w-full min-w-0">
-        <div class="w-full flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div class="w-full md:flex-1 flex flex-col gap-2 min-w-0">
-                <h2 class="page-title">
+        <div class="w-full flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div class="min-w-0 flex-1">
+                <h2 class="page-title flex flex-wrap items-center gap-2">
                     Pending Domains
                     @if ($unviewedCount > 0)
-                        <span class="!ml-2 !px-2 !py-1 text-xs font-semibold theme-badge rounded-full">{{ $unviewedCount }} new</span>
+                        <span class="pd-badge pd-badge-new">{{ $unviewedCount }} unread</span>
                     @endif
                 </h2>
-                <div class="breadcrumb flex-wrap">
+                <div class="breadcrumb flex-wrap !mt-1">
                     <div class="breadcrumb-item">
                         <a href="{{ route('admin.dashboard') }}" class="breadcrumb-link">Dashboard</a>
                         <span>›</span>
                     </div>
                     <div class="breadcrumb-item">
-                        <a href="#" class="breadcrumb-link">Domains</a>
+                        <span class="breadcrumb-link">Domains</span>
                         <span>›</span>
                     </div>
                     <div class="breadcrumb-item">
-                        <a href="#" class="breadcrumb-link">Pending Domains</a>
+                        <span class="breadcrumb-link">Pending Domains</span>
                     </div>
                 </div>
+                <p class="text-sm text-gray-500 !mt-2 max-w-2xl">
+                    Review webhook submissions from remote WordPress sites. Sync API keys for domains already in inventory, or transfer new sites into a category.
+                </p>
             </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full md:w-auto md:shrink-0">
+            <div class="pd-header-actions w-full lg:w-auto shrink-0">
                 @if ($pendingCount > 0)
-                    <a href="{{ route('admin.transfer-domains.step1') }}"
-                        class="page-header-btn page-header-btn-primary w-full">
+                    <button type="button"
+                        class="pd-btn pd-btn-outline is-brand {{ $existingInventoryCount === 0 ? 'is-disabled' : '' }}"
+                        @if ($existingInventoryCount > 0)
+                            onclick="openSyncExistingModal()"
+                        @else
+                            onclick="openSyncUnavailableModal()"
+                        @endif>
+                        <span class="material-symbols-outlined !text-base">sync</span>
+                        Sync Existing
+                        @if ($existingInventoryCount > 0)
+                            <span class="!px-1.5 !py-0.5 text-xs rounded-full bg-orange-100 text-orange-800">{{ $existingInventoryCount }}</span>
+                        @endif
+                    </button>
+                    <a href="{{ route('admin.transfer-domains.step1') }}" class="pd-btn pd-btn-primary">
                         <span class="material-symbols-outlined !text-base">swap_horiz</span>
-                        <span>Transfer Domains ({{ $pendingCount }})</span>
+                        Transfer
+                        <span class="!px-1.5 !py-0.5 text-xs rounded-full bg-white/20">{{ $pendingCount }}</span>
                     </a>
                 @endif
-                <a href="{{ route('admin.webhook-secrets.index') }}"
-                    class="page-header-btn page-header-btn-secondary w-full {{ $pendingCount > 0 ? '' : 'sm:col-span-2' }}">
+                <a href="{{ route('admin.webhook-secrets.index') }}" class="pd-btn pd-btn-outline">
                     <span class="material-symbols-outlined !text-base">key</span>
-                    <span>Manage Webhook Secrets</span>
+                    Webhook Secrets
                 </a>
             </div>
         </div>
     </div>
 
-    {{-- Success/Error Messages --}}
-    <div class="w-full flex flex-col gap-2">
-        @if (session('success'))
-            <div class="!p-4 text-sm rounded bg-green-100 text-green-700 w-full" role="alert">
-                <span class="font-medium">{{ session('success') }}</span>
-            </div>
-        @endif
+    {{-- Alerts --}}
+    @if (session('success') || session('error') || session('transfer_errors'))
+        <div class="w-full flex flex-col gap-2 !mt-4">
+            @if (session('success'))
+                <div class="!p-4 text-sm rounded-lg bg-green-50 border border-green-200 text-green-800" role="alert">
+                    {{ session('success') }}
+                </div>
+            @endif
+            @if (session('error'))
+                <div class="!p-4 text-sm rounded-lg bg-red-50 border border-red-200 text-red-800" role="alert">
+                    {{ session('error') }}
+                </div>
+            @endif
+            @if (session('transfer_errors'))
+                <div class="!p-4 text-sm rounded-lg bg-amber-50 border border-amber-200 text-amber-900" role="alert">
+                    <p class="font-semibold !mb-2">Some domains could not be processed</p>
+                    <ul class="list-disc !pl-5 space-y-1">
+                        @foreach (session('transfer_errors') as $transferError)
+                            <li>{{ $transferError }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+        </div>
+    @endif
 
-        @if (session('error'))
-            <div class="!p-4 text-sm rounded bg-red-100 text-red-700 w-full" role="alert">
-                <span class="font-medium">{{ session('error') }}</span>
-            </div>
-        @endif
+    {{-- Stats --}}
+    <div class="pd-stat-grid w-full !mt-4">
+        <div class="pd-stat-card is-accent">
+            <span class="pd-stat-label">Pending</span>
+            <span class="pd-stat-value">{{ number_format($pendingCount) }}</span>
+            <span class="pd-stat-hint">Awaiting review</span>
+        </div>
+        <div class="pd-stat-card">
+            <span class="pd-stat-label">Unread</span>
+            <span class="pd-stat-value">{{ number_format($unviewedCount) }}</span>
+            <span class="pd-stat-hint">Not opened yet</span>
+        </div>
+        <div class="pd-stat-card">
+            <span class="pd-stat-label">In inventory</span>
+            <span class="pd-stat-value">{{ number_format($existingInventoryCount) }}</span>
+            <span class="pd-stat-hint">Ready to sync API key</span>
+        </div>
+        <div class="pd-stat-card">
+            <span class="pd-stat-label">New sites</span>
+            <span class="pd-stat-value">{{ number_format($newSitesCount) }}</span>
+            <span class="pd-stat-hint">Need transfer + category</span>
+        </div>
     </div>
+
+    @if ($pendingCount > 0 && $existingInventoryCount === 0)
+        <div class="pd-callout !mt-4">
+            <strong>Sync Existing</strong> is unavailable because none of these hostnames exist in
+            <em>Domains List</em> yet. Use <strong>Transfer</strong> to add new sites, or add the domain manually first — then webhook resubmissions can be synced.
+        </div>
+    @endif
 
     {{-- Filters --}}
     <div class="w-full content-card !mt-4">
-        <form method="GET" action="{{ route('admin.pending-domains.index') }}"
-            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-3 lg:gap-4 items-end">
-            <div class="w-full flex flex-col gap-1.5">
-                <label for="status" class="text-sm font-medium text-gray-700">Status</label>
-                <select class="bg-gray-50 border border-gray-200 !px-3 !py-2.5 text-sm w-full rounded-md outline-none focus:border-[var(--primary-color)]"
-                    id="status" name="status" onchange="this.form.submit()">
-                    <option value="">Pending Only (Default)</option>
+        <form method="GET" action="{{ route('admin.pending-domains.index') }}" class="pd-filter-grid">
+            <div>
+                <label for="status" class="pd-field-label">Status</label>
+                <select class="pd-select" id="status" name="status" onchange="this.form.submit()">
+                    <option value="">Pending only (default)</option>
                     <option value="pending" {{ request('status') == 'pending' ? 'selected' : '' }}>Pending</option>
                     <option value="approved" {{ request('status') == 'approved' ? 'selected' : '' }}>Approved</option>
                     <option value="rejected" {{ request('status') == 'rejected' ? 'selected' : '' }}>Rejected</option>
                 </select>
             </div>
-            <div class="w-full flex flex-col gap-1.5">
-                <label for="viewed" class="text-sm font-medium text-gray-700">Viewed Status</label>
-                <select class="bg-gray-50 border border-gray-200 !px-3 !py-2.5 text-sm w-full rounded-md outline-none focus:border-[var(--primary-color)]"
-                    id="viewed" name="viewed" onchange="this.form.submit()">
+            <div>
+                <label for="viewed" class="pd-field-label">Viewed</label>
+                <select class="pd-select" id="viewed" name="viewed" onchange="this.form.submit()">
                     <option value="">All</option>
-                    <option value="0" {{ request('viewed') === '0' ? 'selected' : '' }}>Unviewed Only</option>
-                    <option value="1" {{ request('viewed') === '1' ? 'selected' : '' }}>Viewed Only</option>
+                    <option value="0" {{ request('viewed') === '0' ? 'selected' : '' }}>Unread only</option>
+                    <option value="1" {{ request('viewed') === '1' ? 'selected' : '' }}>Viewed only</option>
                 </select>
             </div>
-            <div class="w-full sm:col-span-2 lg:col-span-1">
-                <a href="{{ route('admin.pending-domains.index') }}"
-                    class="flex !px-3 !py-2.5 text-sm font-medium justify-center transition-colors bg-white hover:bg-gray-50 text-gray-700 rounded-md cursor-pointer w-full border border-gray-200">
-                    Reset Filters
+            <div class="flex items-end">
+                <a href="{{ route('admin.pending-domains.index') }}" class="pd-btn pd-btn-outline w-full">
+                    Reset filters
                 </a>
             </div>
         </form>
     </div>
 
-    {{-- Pending Domains List --}}
+    {{-- Table --}}
     <div class="w-full content-card min-w-0 !mt-4">
         @if ($pendingDomains->count() > 0)
-            <div class="flex flex-col gap-4 !mb-4">
-                <form id="bulkActionForm" method="POST" class="w-full">
-                    @csrf
-                    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full sm:w-auto sm:min-w-[22rem]">
-                            <button type="button" class="pending-toolbar-btn pending-toolbar-btn-primary w-full" onclick="bulkTransfer()">
-                                <span class="material-symbols-outlined !text-base">swap_horiz</span>
-                                <span>Transfer Selected</span>
-                            </button>
-                            <button type="button" class="pending-toolbar-btn pending-toolbar-btn-muted w-full" onclick="bulkReject()">
-                                <span class="material-symbols-outlined !text-base">block</span>
-                                <span>Reject Selected</span>
-                            </button>
-                        </div>
-                        <span class="text-sm text-gray-500 sm:text-right" id="selectedCount">0 selected</span>
+            <form id="bulkActionForm" method="POST">
+                @csrf
+                <div class="pd-toolbar">
+                    <div class="pd-toolbar-actions">
+                        <button type="button" class="pd-btn pd-btn-primary pd-btn-sm" onclick="bulkTransfer()">
+                            <span class="material-symbols-outlined !text-base">swap_horiz</span>
+                            Transfer selected
+                        </button>
+                        <button type="button" class="pd-btn pd-btn-outline pd-btn-sm" onclick="bulkReject()">
+                            <span class="material-symbols-outlined !text-base">block</span>
+                            Reject selected
+                        </button>
+                        <span class="pd-selected-count" id="selectedCount">0 selected</span>
                     </div>
-                </form>
-
-                <div class="w-full">
-                    <label for="pendingDomainSearch" class="sr-only">Search domains</label>
-                    <input type="search" id="pendingDomainSearch" placeholder="Search domain, ID, or webhook secret..."
-                        class="bg-gray-50 border border-gray-200 !px-3 !py-2.5 text-sm w-full rounded-md outline-none focus:border-[var(--primary-color)]">
+                    <div class="pd-search-wrap">
+                        <span class="material-symbols-outlined">search</span>
+                        <label for="pendingDomainSearch" class="sr-only">Search domains</label>
+                        <input type="search" id="pendingDomainSearch" class="pd-search-input"
+                            placeholder="Search domain, ID, webhook…">
+                    </div>
                 </div>
-            </div>
+            </form>
 
-            {{-- Mobile card list --}}
+            {{-- Mobile --}}
             <div class="md:hidden flex flex-col gap-3" id="pendingDomainsMobileList">
                 @foreach ($pendingDomains as $domain)
-                    <article
-                        class="pending-domain-card pending-domain-item {{ !$domain->viewed ? 'is-unviewed' : '' }} !p-4"
+                    <article class="pd-mobile-card pending-domain-item {{ !$domain->viewed ? 'is-unviewed' : '' }}"
                         data-search="{{ strtolower($domain->id.' '.$domain->domain_name.' '.($domain->webhookSecret?->name ?? '').' '.$domain->status) }}">
                         <div class="flex items-start gap-3 !mb-3">
                             @if ($domain->status === 'pending')
@@ -246,36 +187,19 @@
                                 <span class="w-4 shrink-0"></span>
                             @endif
                             <div class="min-w-0 flex-1">
-                                <div class="flex flex-wrap items-center gap-2 !mb-1">
-                                    <span class="text-xs text-gray-500">#{{ $domain->id }}</span>
-                                    @if ($domain->status === 'pending')
-                                        <span class="!px-2 !py-0.5 text-xs font-semibold rounded-full theme-badge-soft">Pending</span>
-                                    @elseif($domain->status === 'approved')
-                                        <span class="!px-2 !py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-800">Approved</span>
-                                    @else
-                                        <span class="!px-2 !py-0.5 text-xs font-semibold rounded-full bg-red-100 text-red-800">Rejected</span>
-                                    @endif
-                                    @if ($domain->viewed)
-                                        <span class="!px-2 !py-0.5 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">Viewed</span>
-                                    @else
-                                        <span class="!px-2 !py-0.5 text-xs font-semibold rounded-full theme-badge-soft">New</span>
-                                    @endif
+                                <div class="flex flex-wrap items-center gap-2 !mb-2">
+                                    <span class="pd-id">#{{ $domain->id }}</span>
+                                    @include('admin.domains.pending.partials.badges', ['domain' => $domain])
                                 </div>
-                                <a href="{{ $domain->domain_url }}" target="_blank" rel="noopener"
-                                    class="text-base font-semibold text-blue-600 hover:text-blue-800 break-all">
+                                <a href="{{ $domain->domain_url }}" target="_blank" rel="noopener" class="pd-domain-link">
                                     {{ $domain->domain_name }}
+                                    <span class="material-symbols-outlined">open_in_new</span>
                                 </a>
                             </div>
                         </div>
-                        <dl class="grid grid-cols-1 gap-2 text-sm text-gray-600 !mb-3 !pl-7">
-                            <div class="flex flex-wrap gap-x-2">
-                                <dt class="font-medium text-gray-700 shrink-0">Webhook:</dt>
-                                <dd class="break-all">{{ $domain->webhookSecret?->name ?? '—' }}</dd>
-                            </div>
-                            <div class="flex flex-wrap gap-x-2">
-                                <dt class="font-medium text-gray-700 shrink-0">Submitted:</dt>
-                                <dd>{{ $domain->created_at->diffForHumans() }}</dd>
-                            </div>
+                        <dl class="grid grid-cols-1 gap-1.5 text-sm !mb-3 !pl-7 pd-meta">
+                            <div><span class="font-medium text-gray-700">Webhook:</span> {{ $domain->webhookSecret?->name ?? '—' }}</div>
+                            <div><span class="font-medium text-gray-700">Submitted:</span> {{ $domain->created_at->diffForHumans() }}</div>
                         </dl>
                         <div class="!pl-7">
                             @include('admin.domains.pending.partials.domain-row-actions', ['domain' => $domain])
@@ -284,160 +208,179 @@
                 @endforeach
             </div>
 
-            {{-- Desktop table --}}
-            <div class="hidden md:block overflow-x-auto w-full max-w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
-                <table id="pendingDomainsTable" class="campaign-list-table w-full min-w-[900px] text-sm text-left">
-                    <thead class="text-xs uppercase bg-gray-800 text-white">
+            {{-- Desktop --}}
+            <div class="hidden md:block pd-table-wrap">
+                <table id="pendingDomainsTable" class="pd-table">
+                    <thead>
                         <tr>
-                            <th class="!px-3 sm:!px-6 !py-3">
-                                <input type="checkbox" id="selectAll" class="rounded" form="bulkActionForm">
+                            <th class="w-10">
+                                <input type="checkbox" id="selectAll" class="rounded" form="bulkActionForm" aria-label="Select all">
                             </th>
-                                <th class="!px-3 sm:!px-6 !py-3">ID</th>
-                                <th class="!px-3 sm:!px-6 !py-3">Domain Name</th>
-                                <th class="!px-3 sm:!px-6 !py-3">Status</th>
-                                <th class="!px-3 sm:!px-6 !py-3">Viewed</th>
-                                <th class="!px-3 sm:!px-6 !py-3">Webhook Secret</th>
-                                <th class="!px-3 sm:!px-6 !py-3">Submitted</th>
-                                <th class="actions-col min-w-[200px] !px-3 sm:!px-6 !py-3">Actions</th>
+                            <th>ID</th>
+                            <th>Domain</th>
+                            <th>Inventory</th>
+                            <th>Status</th>
+                            <th>Viewed</th>
+                            <th>Webhook</th>
+                            <th>Submitted</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($pendingDomains as $domain)
+                            <tr class="pending-domain-item {{ !$domain->viewed ? 'is-unviewed' : '' }}"
+                                data-search="{{ strtolower($domain->id.' '.$domain->domain_name.' '.($domain->webhookSecret?->name ?? '').' '.$domain->status) }}">
+                                <td>
+                                    @if ($domain->status === 'pending')
+                                        <input type="checkbox" class="domain-checkbox rounded" form="bulkActionForm"
+                                            name="domain_ids[]" value="{{ $domain->id }}">
+                                    @endif
+                                </td>
+                                <td><span class="pd-id">{{ $domain->id }}</span></td>
+                                <td>
+                                    <a href="{{ $domain->domain_url }}" target="_blank" rel="noopener" class="pd-domain-link">
+                                        {{ $domain->domain_name }}
+                                        <span class="material-symbols-outlined">open_in_new</span>
+                                    </a>
+                                </td>
+                                <td>
+                                    @if (isset($existingInventoryNames[$domain->normalized_name]))
+                                        <span class="pd-badge pd-badge-inventory">In inventory</span>
+                                    @else
+                                        <span class="pd-badge pd-badge-new-site">New site</span>
+                                    @endif
+                                </td>
+                                <td>@include('admin.domains.pending.partials.badges', ['domain' => $domain, 'statusOnly' => true])</td>
+                                <td>
+                                    @if ($domain->viewed)
+                                        <span class="pd-badge pd-badge-viewed">Viewed</span>
+                                    @else
+                                        <span class="pd-badge pd-badge-new">Unread</span>
+                                    @endif
+                                </td>
+                                <td class="pd-meta">{{ $domain->webhookSecret?->name ?? '—' }}</td>
+                                <td class="pd-meta">{{ $domain->created_at->diffForHumans() }}</td>
+                                <td>
+                                    @include('admin.domains.pending.partials.domain-row-actions', ['domain' => $domain])
+                                </td>
                             </tr>
-                        </thead>
-                        <tbody>
-                            @foreach ($pendingDomains as $domain)
-                                <tr class="pending-domain-item {{ !$domain->viewed ? 'bg-orange-50' : 'bg-white' }} border-b hover:bg-gray-50"
-                                    data-search="{{ strtolower($domain->id.' '.$domain->domain_name.' '.($domain->webhookSecret?->name ?? '').' '.$domain->status) }}">
-                                    <td class="!px-3 sm:!px-6 !py-4">
-                                        @if ($domain->status === 'pending')
-                                            <input type="checkbox" class="domain-checkbox rounded" form="bulkActionForm" name="domain_ids[]" value="{{ $domain->id }}">
-                                        @endif
-                                    </td>
-                                    <td class="!px-3 sm:!px-6 !py-4">{{ $domain->id }}</td>
-                                    <td class="!px-3 sm:!px-6 !py-4 domain-url">{{ $domain->domain_name }}</td>
-                                    <td class="!px-3 sm:!px-6 !py-4">
-                                        @if ($domain->status === 'pending')
-                                            <span class="!px-2 !py-1 text-xs font-semibold rounded-full theme-badge-soft">Pending</span>
-                                        @elseif($domain->status === 'approved')
-                                            <span class="!px-2 !py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">Approved</span>
-                                        @else
-                                            <span class="!px-2 !py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">Rejected</span>
-                                        @endif
-                                    </td>
-                                    <td class="!px-3 sm:!px-6 !py-4">
-                                        @if ($domain->viewed)
-                                            <span class="!px-2 !py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">Viewed</span>
-                                        @else
-                                            <span class="!px-2 !py-1 text-xs font-semibold rounded-full theme-badge-soft">New</span>
-                                        @endif
-                                    </td>
-                                    <td class="!px-3 sm:!px-6 !py-4">{{ $domain->webhookSecret?->name ?? '—' }}</td>
-                                    <td class="!px-3 sm:!px-6 !py-4">{{ $domain->created_at->diffForHumans() }}</td>
-                                    <td class="actions-col !px-3 sm:!px-6 !py-4">
-                                        @include('admin.domains.pending.partials.domain-row-actions', ['domain' => $domain])
-                                    </td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
 
             <div class="!mt-4">
                 {{ $pendingDomains->links() }}
             </div>
         @else
-            <div class="!p-4 bg-blue-50 border border-blue-200 rounded text-blue-700">
-                <div class="flex items-start gap-3">
-                    <svg class="w-5 h-5 text-blue-600 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
-                    </svg>
-                    <span>No pending domains found. Domains submitted via webhook will appear here.</span>
+            <div class="pd-empty">
+                <div class="pd-empty-icon">
+                    <span class="material-symbols-outlined !text-2xl">inbox</span>
                 </div>
+                <p class="font-medium text-gray-700 !mb-1">No pending domains</p>
+                <p class="text-sm">Domains submitted via webhook will appear here for review.</p>
             </div>
         @endif
     </div>
 @endsection
 
 @section('popup')
-    {{-- Reject Modal --}}
+    @if ($existingInventoryCount > 0)
+        <div id="syncExistingModal"
+            class="fixed inset-0 z-[1100] hidden items-center justify-center p-4 bg-black/50"
+            role="dialog" aria-modal="true">
+            <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-auto overflow-hidden">
+                <form method="POST" action="{{ route('admin.pending-domains.sync-existing') }}">
+                    @csrf
+                    <div class="!p-6">
+                        <div class="flex items-start gap-3 !mb-4">
+                            <div class="w-11 h-11 bg-orange-100 rounded-full flex items-center justify-center shrink-0">
+                                <span class="material-symbols-outlined text-[var(--primary-color)]">sync</span>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900">Sync existing domains</h3>
+                                <p class="text-sm text-gray-600 !mt-1">
+                                    Update API keys for <strong>{{ $existingInventoryCount }}</strong> domain(s) already in inventory.
+                                </p>
+                            </div>
+                        </div>
+                        <ul class="text-sm text-gray-600 space-y-2 !pl-4 list-disc">
+                            <li>Matches by hostname — category and metrics stay unchanged</li>
+                            <li>API key updated from webhook submission</li>
+                            <li>Synced rows removed from pending list</li>
+                        </ul>
+                    </div>
+                    <div class="flex flex-col-reverse sm:flex-row gap-3 justify-end !px-6 !py-4 border-t border-gray-100 bg-gray-50">
+                        <button type="button" class="pd-btn pd-btn-outline" onclick="closeSyncExistingModal()">Cancel</button>
+                        <button type="submit" class="pd-btn pd-btn-primary">Sync {{ $existingInventoryCount }} domain(s)</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    @endif
+
+    <div id="syncUnavailableModal"
+        class="fixed inset-0 z-[1100] hidden items-center justify-center p-4 bg-black/50"
+        role="dialog" aria-modal="true">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-auto overflow-hidden">
+            <div class="!p-6">
+                <div class="flex items-start gap-3">
+                    <div class="w-11 h-11 bg-slate-100 rounded-full flex items-center justify-center shrink-0">
+                        <span class="material-symbols-outlined text-slate-600">info</span>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-900">Nothing to sync</h3>
+                        <p class="text-sm text-gray-600 !mt-2 leading-relaxed">
+                            Sync only works when the hostname already exists under <strong>Domains List</strong>.
+                            These submissions are new — use <strong>Transfer</strong> to add them to inventory.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="flex justify-end !px-6 !py-4 border-t border-gray-100 bg-gray-50">
+                <button type="button" class="pd-btn pd-btn-primary" onclick="closeSyncUnavailableModal()">Got it</button>
+            </div>
+        </div>
+    </div>
+
     <div id="rejectModal"
         class="fixed inset-0 z-[1100] hidden items-center justify-center p-4 bg-black/50"
         role="dialog" aria-modal="true">
-        <div class="bg-white rounded-lg shadow-2xl w-full max-w-lg mx-auto overflow-hidden">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-auto overflow-hidden">
             <form id="rejectForm" method="POST">
                 @csrf
                 <div class="!p-6">
-                    <div class="flex items-start gap-3 !mb-4">
-                        <div class="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center shrink-0">
-                            <span class="material-symbols-outlined text-red-600">block</span>
-                        </div>
-                        <div class="min-w-0">
-                            <h3 class="text-lg font-semibold text-gray-900">Reject Domain</h3>
-                            <p class="text-sm text-gray-500">Reject domain: <strong id="rejectDomainName" class="break-all"></strong></p>
-                        </div>
-                    </div>
-                    <div>
-                        <label for="rejectNotes"
-                            class="text-sm flex items-center !mb-2 after:content-['*'] after:mt-1 after:ml-1 after:text-red-500">
-                            Reason for Rejection
-                        </label>
-                        <textarea
-                            class="bg-gray-50 border border-gray-200 !p-3 text-sm w-full rounded outline-none focus:border-[var(--primary-color)] resize-y min-h-[96px]"
-                            id="rejectNotes" name="notes" rows="4" required
-                            placeholder="e.g., Invalid API key, domain not accessible, duplicate submission..."></textarea>
-                    </div>
+                    <h3 class="text-lg font-semibold text-gray-900 !mb-1">Reject domain</h3>
+                    <p class="text-sm text-gray-500 !mb-4 break-all"><span id="rejectDomainName"></span></p>
+                    <label for="rejectNotes" class="pd-field-label">Reason <span class="text-red-500">*</span></label>
+                    <textarea class="pd-select !min-h-[96px] resize-y" id="rejectNotes" name="notes" rows="4" required
+                        placeholder="Invalid API key, duplicate, site unreachable…"></textarea>
                 </div>
                 <div class="flex flex-col-reverse sm:flex-row gap-3 justify-end !px-6 !py-4 border-t border-gray-100 bg-gray-50">
-                    <button type="button"
-                        class="!px-4 !py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded transition-all text-sm font-medium"
-                        onclick="closeRejectModal()">
-                        Cancel
-                    </button>
-                    <button type="submit"
-                        class="!px-4 !py-2.5 bg-red-600 hover:bg-red-700 text-white rounded transition-all text-sm font-medium">
-                        Reject Domain
-                    </button>
+                    <button type="button" class="pd-btn pd-btn-outline" onclick="closeRejectModal()">Cancel</button>
+                    <button type="submit" class="pd-btn pd-btn-primary !bg-red-600 hover:!bg-red-700">Reject</button>
                 </div>
             </form>
         </div>
     </div>
 
-    {{-- Bulk Reject Modal --}}
     <div id="bulkRejectModal"
         class="fixed inset-0 z-[1100] hidden items-center justify-center p-4 bg-black/50"
         role="dialog" aria-modal="true">
-        <div class="bg-white rounded-lg shadow-2xl w-full max-w-lg mx-auto overflow-hidden">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-auto overflow-hidden">
             <form id="bulkRejectForm" method="POST" action="{{ route('admin.pending-domains.bulk.reject') }}">
                 @csrf
                 <div class="!p-6">
-                    <div class="flex items-start gap-3 !mb-4">
-                        <div class="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center shrink-0">
-                            <span class="material-symbols-outlined text-red-600">block</span>
-                        </div>
-                        <div>
-                            <h3 class="text-lg font-semibold text-gray-900">Bulk Reject Domains</h3>
-                            <p class="text-sm text-gray-500">Reject <strong id="bulkRejectCount"></strong> selected domain(s)</p>
-                        </div>
-                    </div>
-                    <div>
-                        <label for="bulkRejectNotes"
-                            class="text-sm flex items-center !mb-2 after:content-['*'] after:mt-1 after:ml-1 after:text-red-500">
-                            Reason for Rejection
-                        </label>
-                        <textarea
-                            class="bg-gray-50 border border-gray-200 !p-3 text-sm w-full rounded outline-none focus:border-[var(--primary-color)] resize-y min-h-[96px]"
-                            id="bulkRejectNotes" name="notes" rows="4" required
-                            placeholder="e.g., Invalid API key, domain not accessible, duplicate submission..."></textarea>
-                    </div>
+                    <h3 class="text-lg font-semibold text-gray-900 !mb-1">Reject selected</h3>
+                    <p class="text-sm text-gray-500 !mb-4"><strong id="bulkRejectCount"></strong> domain(s)</p>
+                    <label for="bulkRejectNotes" class="pd-field-label">Reason <span class="text-red-500">*</span></label>
+                    <textarea class="pd-select !min-h-[96px] resize-y" id="bulkRejectNotes" name="notes" rows="4" required
+                        placeholder="Reason for bulk rejection…"></textarea>
                     <div id="bulkRejectDomainIds"></div>
                 </div>
                 <div class="flex flex-col-reverse sm:flex-row gap-3 justify-end !px-6 !py-4 border-t border-gray-100 bg-gray-50">
-                    <button type="button"
-                        class="!px-4 !py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded transition-all text-sm font-medium"
-                        onclick="closeBulkRejectModal()">
-                        Cancel
-                    </button>
-                    <button type="submit"
-                        class="!px-4 !py-2.5 bg-red-600 hover:bg-red-700 text-white rounded transition-all text-sm font-medium">
-                        Reject Selected
-                    </button>
+                    <button type="button" class="pd-btn pd-btn-outline" onclick="closeBulkRejectModal()">Cancel</button>
+                    <button type="submit" class="pd-btn pd-btn-primary !bg-red-600 hover:!bg-red-700">Reject selected</button>
                 </div>
             </form>
         </div>
@@ -499,6 +442,11 @@
             document.body.classList.remove('overflow-hidden');
         }
 
+        function openSyncExistingModal() { openModal('syncExistingModal'); }
+        function closeSyncExistingModal() { closeModal('syncExistingModal'); }
+        function openSyncUnavailableModal() { openModal('syncUnavailableModal'); }
+        function closeSyncUnavailableModal() { closeModal('syncUnavailableModal'); }
+
         function showRejectModal(id, domainName) {
             document.getElementById('rejectDomainName').textContent = domainName;
             document.getElementById('rejectForm').setAttribute('action', '/admin/pending-domains/' + id + '/reject');
@@ -508,47 +456,41 @@
         function closeRejectModal() {
             closeModal('rejectModal');
             const notes = document.getElementById('rejectNotes');
-            if (notes) {
-                notes.value = '';
-            }
+            if (notes) notes.value = '';
         }
 
         function closeBulkRejectModal() {
             closeModal('bulkRejectModal');
             const notes = document.getElementById('bulkRejectNotes');
-            if (notes) {
-                notes.value = '';
-            }
+            if (notes) notes.value = '';
         }
 
-        ['rejectModal', 'bulkRejectModal'].forEach(function (modalId) {
+        ['rejectModal', 'bulkRejectModal', 'syncExistingModal', 'syncUnavailableModal'].forEach(function (modalId) {
             const modal = document.getElementById(modalId);
             if (!modal) return;
             modal.addEventListener('click', function (e) {
-                if (e.target === modal) {
-                    if (modalId === 'rejectModal') {
-                        closeRejectModal();
-                    } else {
-                        closeBulkRejectModal();
-                    }
-                }
+                if (e.target !== modal) return;
+                if (modalId === 'rejectModal') closeRejectModal();
+                else if (modalId === 'bulkRejectModal') closeBulkRejectModal();
+                else if (modalId === 'syncExistingModal') closeSyncExistingModal();
+                else closeSyncUnavailableModal();
             });
         });
 
         document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape') {
-                closeRejectModal();
-                closeBulkRejectModal();
-            }
+            if (e.key !== 'Escape') return;
+            closeRejectModal();
+            closeBulkRejectModal();
+            closeSyncExistingModal();
+            closeSyncUnavailableModal();
         });
 
         function bulkTransfer() {
-            const checkedBoxes = document.querySelectorAll('.domain-checkbox:checked');
-            if (checkedBoxes.length === 0) {
-                alert('Please select at least one domain');
+            const checked = document.querySelectorAll('.domain-checkbox:checked');
+            if (checked.length === 0) {
+                alert('Select at least one domain.');
                 return;
             }
-
             const form = document.getElementById('bulkActionForm');
             form.setAttribute('action', '{{ route('admin.transfer-domains.step2') }}');
             form.setAttribute('method', 'POST');
@@ -556,24 +498,21 @@
         }
 
         function bulkReject() {
-            const checkedBoxes = document.querySelectorAll('.domain-checkbox:checked');
-            if (checkedBoxes.length === 0) {
-                alert('Please select at least one domain');
+            const checked = document.querySelectorAll('.domain-checkbox:checked');
+            if (checked.length === 0) {
+                alert('Select at least one domain.');
                 return;
             }
-
-            document.getElementById('bulkRejectCount').textContent = checkedBoxes.length;
+            document.getElementById('bulkRejectCount').textContent = checked.length;
             const container = document.getElementById('bulkRejectDomainIds');
             container.innerHTML = '';
-
-            checkedBoxes.forEach(function (cb) {
+            checked.forEach(function (cb) {
                 const input = document.createElement('input');
                 input.type = 'hidden';
                 input.name = 'domain_ids[]';
                 input.value = cb.value;
                 container.appendChild(input);
             });
-
             openModal('bulkRejectModal');
         }
     </script>

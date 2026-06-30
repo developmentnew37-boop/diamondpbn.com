@@ -101,7 +101,7 @@ class PendingDomainTransferService
                 ]);
 
             $transferredDomainIds = Domain::query()
-                ->whereIn('name', array_keys($domainRows))
+                ->whereNormalizedNameIn(array_keys($domainRows))
                 ->pluck('id')
                 ->all();
         });
@@ -127,6 +127,164 @@ class PendingDomainTransferService
     }
 
     /**
+     * Sync all pending domains that already exist in the domains inventory.
+     * Updates API key from webhook submission; preserves category, metrics, and status.
+     * Marks matching pending rows as approved (removed from pending list).
+     *
+     * @return array{synced: int, skipped_new: int, failed: int, errors: array<int, string>, domain_ids: array<int>}
+     */
+    public function syncExistingPendingDomains(
+        int $adminId,
+        ?string $notes = null,
+        bool $queueStatusCheck = true,
+        ?array $onlyPendingIds = null
+    ): array {
+        $query = PendingDomain::query()
+            ->where('status', 'pending')
+            ->orderBy('id');
+
+        if ($onlyPendingIds !== null && $onlyPendingIds !== []) {
+            $query->whereIn('id', $onlyPendingIds);
+        }
+
+        $pendingDomains = $query->get();
+
+        if ($pendingDomains->isEmpty()) {
+            return [
+                'synced' => 0,
+                'skipped_new' => 0,
+                'failed' => 0,
+                'errors' => [],
+                'domain_ids' => [],
+            ];
+        }
+
+        $normalizedNames = [];
+        foreach ($pendingDomains as $pendingDomain) {
+            $name = normalizeDomainName($pendingDomain->domain_name);
+            if ($name !== '') {
+                $normalizedNames[$pendingDomain->id] = $name;
+            }
+        }
+
+        $existingByName = Domain::collectionByNormalizedName(array_values($normalizedNames));
+
+        $notesText = $notes ?? 'Synced API key with existing domain in inventory';
+        $now = now();
+        $errors = [];
+        $approvedPendingIds = [];
+        $updatedDomainIds = [];
+        $skippedNew = 0;
+
+        DB::transaction(function () use (
+            $pendingDomains,
+            $normalizedNames,
+            $existingByName,
+            $notesText,
+            $now,
+            &$errors,
+            &$approvedPendingIds,
+            &$updatedDomainIds,
+            &$skippedNew
+        ) {
+            foreach ($pendingDomains as $pendingDomain) {
+                $name = $normalizedNames[$pendingDomain->id] ?? '';
+
+                if ($name === '') {
+                    $errors[$pendingDomain->id] = "Invalid domain name: {$pendingDomain->domain_name}";
+
+                    continue;
+                }
+
+                $existing = $existingByName->get($name);
+
+                if ($existing === null) {
+                    $skippedNew++;
+
+                    continue;
+                }
+
+                $existing->update([
+                    'name' => $name,
+                    'api_key' => $pendingDomain->api_key,
+                    'updated_at' => $now,
+                ]);
+
+                $approvedPendingIds[] = $pendingDomain->id;
+                $updatedDomainIds[] = $existing->id;
+            }
+
+            if ($approvedPendingIds !== []) {
+                PendingDomain::query()
+                    ->whereIn('id', $approvedPendingIds)
+                    ->update([
+                        'status' => 'approved',
+                        'approved_at' => $now,
+                        'notes' => $notesText,
+                    ]);
+            }
+        });
+
+        $updatedDomainIds = array_values(array_unique($updatedDomainIds));
+
+        if ($queueStatusCheck && $updatedDomainIds !== []) {
+            RefreshTransferredDomainsStatusJob::dispatch($updatedDomainIds)
+                ->onQueue('domainCheck');
+        }
+
+        Log::info('Pending domain inventory sync completed', [
+            'synced' => count($approvedPendingIds),
+            'skipped_new' => $skippedNew,
+            'failed' => count($errors),
+            'status_check_queued' => $queueStatusCheck,
+            'admin_id' => $adminId,
+        ]);
+
+        return [
+            'synced' => count($approvedPendingIds),
+            'skipped_new' => $skippedNew,
+            'failed' => count($errors),
+            'errors' => array_values($errors),
+            'domain_ids' => $updatedDomainIds,
+        ];
+    }
+
+    /**
+     * Count pending domains whose hostname already exists in the domains inventory.
+     */
+    public function countPendingExistingInInventory(): int
+    {
+        return count($this->pendingNamesExistingInInventory());
+    }
+
+    /**
+     * Normalized hostnames from pending list that already exist in domains inventory.
+     *
+     * @return array<string, true>
+     */
+    public function pendingNamesExistingInInventory(): array
+    {
+        $pendingNames = PendingDomain::query()
+            ->where('status', 'pending')
+            ->pluck('domain_name')
+            ->map(fn ($name) => normalizeDomainName($name))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($pendingNames === []) {
+            return [];
+        }
+
+        return Domain::query()
+            ->whereNormalizedNameIn($pendingNames)
+            ->get()
+            ->mapWithKeys(fn (Domain $domain) => [normalizeDomainName($domain->name) => true])
+            ->all();
+    }
+
+    /**
      * Transfer a single pending domain (delegates to bulk transfer).
      */
     public function transfer(PendingDomain $pendingDomain, int $categoryId, int $adminId, ?string $notes = null): Domain
@@ -137,9 +295,8 @@ class PendingDomainTransferService
             throw new \RuntimeException($result['errors'][0] ?? 'Transfer failed');
         }
 
-        $name = normalizeDomainName($pendingDomain->domain_name);
-
-        return Domain::query()->where('name', $name)->firstOrFail();
+        return Domain::findByNormalizedName($pendingDomain->domain_name)
+            ?? throw new \RuntimeException('Domain not found after transfer');
     }
 
     /**
