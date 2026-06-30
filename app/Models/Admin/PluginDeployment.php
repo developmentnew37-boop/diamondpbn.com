@@ -85,4 +85,45 @@ class PluginDeployment extends Model
     {
         return $this->status === 'cancelled';
     }
+
+    public function isActive(): bool
+    {
+        return in_array($this->status, ['queued', 'running'], true);
+    }
+
+    public function progressPercent(): int
+    {
+        $total = max(1, (int) $this->total_count);
+
+        if ($this->isFinished()) {
+            return 100;
+        }
+
+        return (int) min(100, round(((int) $this->processed_count / $total) * 100));
+    }
+
+    public function operationLabel(): string
+    {
+        return ucwords(str_replace('_', ' ', $this->operation));
+    }
+
+    public function statusBadgeClass(): string
+    {
+        if ($this->status === 'completed' && $this->failed_count > 0) {
+            return 'pm-deploy-status-completed-warn';
+        }
+
+        return match ($this->status) {
+            'completed' => 'pm-deploy-status-completed',
+            'running' => 'pm-deploy-status-running',
+            'queued' => 'pm-deploy-status-queued',
+            'cancelled' => 'pm-deploy-status-cancelled',
+            default => 'pm-deploy-status-queued',
+        };
+    }
+
+    public function hasFailures(): bool
+    {
+        return $this->failed_count > 0 && $this->status === 'completed';
+    }
 }

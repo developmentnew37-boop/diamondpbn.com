@@ -21,15 +21,26 @@ class PluginDeploymentController extends Controller
 
     public function index(): View
     {
-        $deployments = PluginDeployment::query()
-            ->with(['pluginPackage:id,name,slug,version', 'domainCategory:id,name'])
-            ->where('admin_id', Auth::guard('admin')->id())
+        $adminId = (int) Auth::guard('admin')->id();
+
+        $baseQuery = PluginDeployment::query()->where('admin_id', $adminId);
+
+        $stats = [
+            'total' => (clone $baseQuery)->count(),
+            'active' => (clone $baseQuery)->whereIn('status', ['queued', 'running'])->count(),
+            'completed' => (clone $baseQuery)->where('status', 'completed')->count(),
+            'domains_processed' => (int) (clone $baseQuery)->sum('processed_count'),
+        ];
+
+        $deployments = $baseQuery
+            ->with(['pluginPackage:id,name,slug,expected_slug,version', 'domainCategory:id,name'])
             ->orderByDesc('created_at')
-            ->limit(50)
-            ->get();
+            ->paginate(20)
+            ->withQueryString();
 
         return view('admin.domains.plugin-manager.deployments-index', [
             'deployments' => $deployments,
+            'stats' => $stats,
         ]);
     }
 
@@ -181,6 +192,7 @@ class PluginDeploymentController extends Controller
                 'operation_result' => $item->operation_result,
                 'version_before' => $item->version_before,
                 'version_after' => $item->version_after,
+                'plugin_file' => $item->plugin_file,
                 'error_code' => $item->error_code,
                 'message' => $item->message,
                 'category' => $item->category,
@@ -221,6 +233,31 @@ class PluginDeploymentController extends Controller
         $this->deploymentService->cancelDeployment($deployment);
 
         return response()->json(['success' => true, 'message' => 'Deployment cancelled.']);
+    }
+
+    public function destroy(string $uuid): JsonResponse
+    {
+        $deployment = PluginDeployment::query()
+            ->where('uuid', $uuid)
+            ->where('admin_id', Auth::guard('admin')->id())
+            ->firstOrFail();
+
+        $wasActive = $deployment->isActive();
+
+        try {
+            $this->deploymentService->deleteDeployment($deployment);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json(['success' => false, 'message' => 'Could not delete deployment.'], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $wasActive
+                ? 'Active deployment cancelled and removed from history.'
+                : 'Deployment removed from history.',
+        ]);
     }
 
     public function exportFailures(string $uuid): StreamedResponse

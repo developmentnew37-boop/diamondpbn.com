@@ -93,6 +93,21 @@
         });
     });
 
+    // --- Package metadata (deploy page) ---
+    const packageSelect = document.getElementById('plugin_package_uuid');
+    const packageMetaPanel = document.getElementById('packageMetaPanel');
+    function refreshPackageMeta() {
+        if (!packageSelect || !packageMetaPanel) return;
+        const option = packageSelect.selectedOptions[0];
+        if (!option) return;
+        document.getElementById('metaExpectedSlug').textContent = option.dataset.expectedSlug || '—';
+        document.getElementById('metaLibrarySlug').textContent = option.dataset.librarySlug || '—';
+        document.getElementById('metaVersion').textContent = option.dataset.version || '—';
+        packageMetaPanel.classList.remove('hidden');
+    }
+    packageSelect?.addEventListener('change', refreshPackageMeta);
+    refreshPackageMeta();
+
     // --- Deploy form ---
     const deployForm = document.getElementById('pluginDeployForm');
     if (deployForm) {
@@ -171,7 +186,10 @@
 
             const sorted = Array.from(resultsMap.values()).sort((a, b) => a.index - b.index);
 
-            els.body.innerHTML = sorted.map((r) => `
+            els.body.innerHTML = sorted.map((r) => {
+                const detail = r.plugin_file || r.operation_result || '';
+                const message = r.message || r.error_code || '';
+                return `
                 <tr class="border-b border-gray-100">
                     <td class="!px-4 !py-2">${r.index}</td>
                     <td class="!px-4 !py-2 font-mono text-xs">${escapeHtml(r.domain)}</td>
@@ -179,9 +197,11 @@
                     <td class="!px-4 !py-2">${escapeHtml(r.version_before || '—')}</td>
                     <td class="!px-4 !py-2">${escapeHtml(r.version_after || '—')}</td>
                     <td class="!px-4 !py-2">${statusBadge(r.item_status)}</td>
-                    <td class="!px-4 !py-2 text-xs text-gray-600">${escapeHtml(r.message || r.error_code || '')}</td>
+                    <td class="!px-4 !py-2 font-mono text-xs text-gray-600">${escapeHtml(detail || '—')}</td>
+                    <td class="!px-4 !py-2 text-xs text-gray-600">${escapeHtml(message)}</td>
                 </tr>
-            `).join('');
+            `;
+            }).join('');
         }
 
         function escapeHtml(str) {
@@ -271,4 +291,40 @@
 
         startPolling();
     }
+
+    // --- Deployment history delete ---
+    document.querySelectorAll('.deployment-delete-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            const isActive = btn.dataset.active === '1';
+            const message = isActive
+                ? 'This deployment is still running. It will be cancelled and removed from history. Continue?'
+                : 'Remove this deployment from history? Domain results will be deleted.';
+            if (!confirm(message)) return;
+
+            clearAlert();
+            btn.disabled = true;
+
+            try {
+                const res = await fetch(btn.dataset.deleteUrl, {
+                    method: 'DELETE',
+                    headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                const data = await parseJsonResponse(res);
+                if (!res.ok || !data.success) throw new Error(data.message || 'Delete failed');
+
+                const row = btn.closest('.pm-history-row');
+                row?.remove();
+
+                const tbody = document.querySelector('.pm-history-table tbody');
+                if (tbody && tbody.querySelectorAll('.pm-history-row').length === 0) {
+                    window.location.reload();
+                }
+
+                showAlert(data.message, 'success');
+            } catch (err) {
+                showAlert(err.message || 'Delete failed.', 'error');
+                btn.disabled = false;
+            }
+        });
+    });
 })();

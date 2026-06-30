@@ -32,4 +32,6 @@ return [
 
     'require_connected_domain' => (bool) env('PLUGIN_MANAGER_REQUIRE_CONNECTED', true),
 
+    'min_agent_version' => env('PLUGIN_MANAGER_MIN_AGENT_VERSION', '8.1.4'),
+
 ];

@@ -15,6 +15,7 @@ class PluginDeploymentService
         private readonly DomainStatusCheckerService $domainStatusChecker,
         private readonly RemotePluginManagerService $remotePluginManager,
         private readonly PluginPackageService $pluginPackageService,
+        private readonly PluginDeployPreflightService $preflight,
     ) {}
 
     /**
@@ -233,83 +234,160 @@ class PluginDeploymentService
             return;
         }
 
-        $slug = $package->slug;
-        $pluginInfo = $this->remotePluginManager->fetchPluginInfo($domain, $slug);
-        $versionBefore = $pluginInfo['found'] ? $pluginInfo['version'] : null;
+        $inventoryResult = $this->remotePluginManager->fetchPluginsInventory($domain);
+        $inventory = $inventoryResult['ok'] ? $inventoryResult['plugins'] : [];
 
-        $operation = $deployment->operation;
+        if (! $inventoryResult['ok']) {
+            $pluginInfo = $this->remotePluginManager->fetchPluginInfo($domain, $package);
+            if ($pluginInfo['found']) {
+                $inventory = [[
+                    'slug' => $package->expectedSlug(),
+                    'version' => $pluginInfo['version'],
+                    'plugin_file' => $pluginInfo['plugin_file'],
+                    'active' => $pluginInfo['active'],
+                ]];
+            }
+        }
 
-        if (in_array($operation, ['update', 'update_if_older'], true)) {
-            if (! $pluginInfo['found']) {
+        $folderMatch = $this->preflight->findFolderMatch($inventory, $package);
+        $exactMatch = $this->preflight->findExactVersionMatch($inventory, $package);
+        $versionBefore = $exactMatch['version'] ?? $folderMatch['version'] ?? null;
+        $pluginFileHint = $exactMatch['plugin_file'] ?? $folderMatch['plugin_file'] ?? null;
+
+        $intent = $deployment->operation;
+        $operation = $this->preflight->resolveOperation($intent, $inventory, $package);
+
+        if ($operation === 'skip') {
+            $message = match ($intent) {
+                'delete' => 'Plugin not on site — already removed',
+                'activate', 'deactivate' => 'Plugin not installed on site',
+                default => $exactMatch !== null
+                    ? 'Already at target version '.$package->version
+                    : 'Nothing to do for this package on site',
+            };
+
+            $this->markSkipped(
+                $item,
+                $exactMatch !== null ? 'already_current' : 'plugin_not_found',
+                $message,
+                $versionBefore,
+                $exactMatch !== null ? $versionBefore : null
+            );
+
+            return;
+        }
+
+        if (in_array($operation, ['install', 'update'], true)) {
+            if ($deployment->skip_if_same_version && $exactMatch !== null) {
+                $this->markSkipped(
+                    $item,
+                    'already_current',
+                    'Already on version '.$package->version,
+                    $versionBefore,
+                    $versionBefore
+                );
+
+                return;
+            }
+
+            if ($operation === 'update' && $versionBefore !== null
+                && $deployment->skip_if_same_version
+                && version_compare($versionBefore, $package->version, '>=')) {
+                $this->markSkipped(
+                    $item,
+                    'already_current',
+                    'Already on version '.$versionBefore,
+                    $versionBefore,
+                    $versionBefore
+                );
+
+                return;
+            }
+
+            if ($intent === 'update_if_older' && $versionBefore !== null
+                && version_compare($versionBefore, $package->version, '>')) {
+                $this->markSkipped(
+                    $item,
+                    'already_newer',
+                    'Remote version '.$versionBefore.' is newer than package',
+                    $versionBefore,
+                    $versionBefore
+                );
+
+                return;
+            }
+
+            if (in_array($intent, ['update', 'update_if_older'], true) && $folderMatch === null && $exactMatch === null) {
                 $this->markSkipped($item, 'plugin_not_found', 'Plugin not installed — use Install operation', $versionBefore);
 
                 return;
             }
-
-            if ($deployment->skip_if_same_version && $versionBefore !== null
-                && version_compare($versionBefore, $package->version, '>=')) {
-                $this->markSkipped($item, 'already_current', 'Already on version '.$versionBefore, $versionBefore, $versionBefore);
-
-                return;
-            }
-
-            if ($operation === 'update_if_older' && $versionBefore !== null
-                && version_compare($versionBefore, $package->version, '>')) {
-                $this->markSkipped($item, 'already_newer', 'Remote version '.$versionBefore.' is newer than package', $versionBefore, $versionBefore);
-
-                return;
-            }
         }
 
-        if ($operation === 'install') {
-            if ($pluginInfo['found']) {
-                if ($deployment->skip_if_same_version && $versionBefore !== null
-                    && version_compare($versionBefore, $package->version, '>=')) {
-                    $this->markSkipped($item, 'already_current', 'Already installed at '.$versionBefore, $versionBefore, $versionBefore);
+        $result = $this->executeRemoteOperation(
+            $domain,
+            $package,
+            $operation,
+            $downloadUrl,
+            $deployment->activate_after,
+            $pluginFileHint
+        );
 
-                    return;
-                }
-                // Plugin exists — use update endpoint instead of install
-                $operation = 'update';
-            }
-        }
-
-        $endpoint = match ($operation) {
-            'install' => 'install',
-            'update', 'update_if_older' => 'update',
-            default => null,
-        };
-
-        if ($endpoint !== null) {
-            $result = $this->remotePluginManager->installOrUpdate(
+        if (! $result['success'] && $operation === 'install' && $result['error_code'] === 'plugin_already_installed') {
+            $result = $this->executeRemoteOperation(
                 $domain,
-                $endpoint,
-                $slug,
+                $package,
+                'update',
                 $downloadUrl,
-                $package->checksum_sha256,
-                $deployment->activate_after
+                $deployment->activate_after,
+                $pluginFileHint
             );
-        } else {
-            $result = match ($operation) {
-                'activate' => $this->remotePluginManager->activate($domain, $slug),
-                'deactivate' => $this->remotePluginManager->deactivate($domain, $slug),
-                'delete' => $this->remotePluginManager->deletePlugin($domain, $slug),
-                default => ['success' => false, 'message' => 'Unknown operation', 'error_code' => 'invalid_operation', 'data' => [], 'response_time_ms' => 0],
-            };
+            $operation = 'update';
+        }
+
+        if (! $result['success'] && $operation === 'delete' && $result['error_code'] === 'ambiguous_plugin') {
+            $candidates = is_array($result['data']['candidates'] ?? null) ? $result['data']['candidates'] : [];
+            $candidate = $this->preflight->pickCandidateForVersion($candidates, $package->version);
+            if ($candidate !== null && ! empty($candidate['plugin_file'])) {
+                $result = $this->executeRemoteOperation(
+                    $domain,
+                    $package,
+                    'delete',
+                    $downloadUrl,
+                    false,
+                    (string) $candidate['plugin_file']
+                );
+            }
         }
 
         $responseMs = $result['response_time_ms'] ?? null;
 
         if ($result['success']) {
             $data = $result['data'];
-            $versionAfter = isset($data['new_version']) ? (string) $data['new_version'] : $package->version;
+            $versionAfter = isset($data['new_version']) ? (string) $data['new_version'] : ($operation === 'delete' ? null : $package->version);
             $action = (string) ($data['action'] ?? $operation);
+            $pluginFile = isset($data['plugin_file']) ? (string) $data['plugin_file'] : $pluginFileHint;
+            $resolvedVia = isset($data['resolved_via']) ? (string) $data['resolved_via'] : null;
+
+            if ($action === 'skipped') {
+                $this->markSkipped(
+                    $item,
+                    'already_current',
+                    $result['message'] ?: 'Already at target version',
+                    $data['previous_version'] ?? $versionBefore,
+                    $data['new_version'] ?? $versionBefore
+                );
+
+                return;
+            }
 
             $item->update([
                 'item_status' => 'success',
                 'operation_result' => $action,
                 'version_before' => $data['previous_version'] ?? $versionBefore,
                 'version_after' => $versionAfter,
+                'plugin_file' => $pluginFile,
+                'resolved_via' => $resolvedVia,
                 'message' => $result['message'],
                 'attempts' => $item->attempts + 1,
                 'response_time_ms' => $responseMs,
@@ -323,12 +401,40 @@ class PluginDeploymentService
             'item_status' => 'failed',
             'operation_result' => 'failed',
             'version_before' => $versionBefore,
+            'plugin_file' => $pluginFileHint,
             'error_code' => $result['error_code'] ?? 'install_failed',
             'message' => $result['message'],
             'attempts' => $item->attempts + 1,
             'response_time_ms' => $responseMs,
             'processed_at' => now(),
         ]);
+    }
+
+    /**
+     * @return array{success: bool, message: string, error_code: ?string, data: array<string, mixed>, response_time_ms?: int}
+     */
+    private function executeRemoteOperation(
+        Domain $domain,
+        PluginPackage $package,
+        string $operation,
+        string $downloadUrl,
+        bool $activateAfter,
+        ?string $pluginFileHint
+    ): array {
+        return match ($operation) {
+            'install' => $this->remotePluginManager->installOrUpdate($domain, 'install', $package, $downloadUrl, $activateAfter),
+            'update' => $this->remotePluginManager->installOrUpdate($domain, 'update', $package, $downloadUrl, $activateAfter),
+            'activate' => $this->remotePluginManager->activate($domain, $package),
+            'deactivate' => $this->remotePluginManager->deactivate($domain, $package),
+            'delete' => $this->remotePluginManager->deletePlugin($domain, $package, $pluginFileHint),
+            default => [
+                'success' => false,
+                'message' => 'Unknown operation',
+                'error_code' => 'invalid_operation',
+                'data' => [],
+                'response_time_ms' => 0,
+            ],
+        };
     }
 
     private function markSkipped(
@@ -410,6 +516,16 @@ class PluginDeploymentService
             'status_message' => 'Cancelled by admin',
             'completed_at' => now(),
         ]);
+    }
+
+    public function deleteDeployment(PluginDeployment $deployment): void
+    {
+        if ($deployment->isActive()) {
+            $this->cancelDeployment($deployment);
+            $deployment->refresh();
+        }
+
+        $deployment->delete();
     }
 
     /**
@@ -511,7 +627,8 @@ class PluginDeploymentService
             ->orderBy('sort_order')
             ->select([
                 'id', 'domain', 'sort_order', 'item_status', 'operation_result',
-                'version_before', 'version_after', 'error_code', 'message',
+                'version_before', 'version_after', 'plugin_file', 'resolved_via',
+                'error_code', 'message',
                 'category', 'response_time_ms', 'processed_at', 'updated_at',
             ]);
 

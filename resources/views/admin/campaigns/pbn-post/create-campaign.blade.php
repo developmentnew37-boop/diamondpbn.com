@@ -145,10 +145,50 @@
             max-width: 100%;
         }
 
-        /* URL Keywords modal — mobile layout */
+        /* URL Keywords modal — scroll list (same pattern as schedule campaign) */
         .dy-key-pop-box {
             display: flex;
             flex-direction: column;
+            max-height: 100dvh;
+        }
+
+        @media (min-width: 640px) {
+            .dy-key-pop-box {
+                max-height: calc(100dvh - 80px);
+            }
+        }
+
+        .dy-key-pop-body {
+            flex: 0 1 auto;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        #keyword-url-container {
+            max-height: min(52vh, 360px);
+            overflow-x: hidden;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 74, 23, 0.5) #f3f4f6;
+        }
+
+        #keyword-url-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #keyword-url-container::-webkit-scrollbar-track {
+            background: #f3f4f6;
+        }
+
+        #keyword-url-container::-webkit-scrollbar-thumb {
+            background: rgba(255, 74, 23, 0.45);
+            border-radius: 4px;
+        }
+
+        #keyword-url-container .keyword-url-box {
+            flex-shrink: 0;
+            width: 100%;
         }
 
         .keyword-method-tabs {
@@ -176,36 +216,120 @@
             line-height: 1.25;
         }
 
-        .keyword-modal-rel-grid {
+        .keyword-modal-footer {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem 1rem;
+        }
+
+        .keyword-modal-rel-row {
             display: flex;
             flex-wrap: wrap;
-            gap: 0.75rem 1rem;
             align-items: center;
+            gap: 0.75rem 1.25rem;
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+
+        .keyword-modal-rel-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            white-space: nowrap;
+        }
+
+        .keyword-modal-rel-item input[type="checkbox"] {
+            width: 1rem;
+            height: 1rem;
+            flex-shrink: 0;
+            margin: 0;
+        }
+
+        .keyword-modal-rel-item label {
+            font-size: 0.8125rem;
+            line-height: 1.2;
+            margin: 0;
+            cursor: pointer;
+        }
+
+        .keyword-modal-save-btn {
+            flex-shrink: 0;
+            white-space: nowrap;
+        }
+
+        .keyword-progress-wrap {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 0.75rem 1rem;
+            width: 100%;
+        }
+
+        .keyword-progress-actions {
+            display: inline-flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.75rem 1rem;
+            flex-shrink: 0;
+        }
+
+        .keyword-progress-actions .total-label {
+            margin: 0;
+            white-space: nowrap;
+        }
+
+        .keyword-progress-wrap #overall-keyword-progress,
+        .keyword-progress-count {
+            margin: 0 0 0 auto;
+            flex: 0 0 auto;
+            width: auto;
+            max-width: 100%;
+            white-space: nowrap;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            line-height: 1.25;
+            padding: 0.375rem 0.625rem;
+            border-radius: 0.375rem;
+            border: 1px solid #93c5fd;
+            background: #eff6ff;
+            color: #1d4ed8;
         }
 
         @media (max-width: 639px) {
-            .keyword-modal-rel-grid {
+            .keyword-modal-footer {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .keyword-modal-save-btn {
+                width: 100%;
+                text-align: center;
+            }
+
+            .keyword-modal-rel-row {
                 display: grid;
                 grid-template-columns: repeat(2, minmax(0, 1fr));
                 gap: 0.5rem 0.75rem;
             }
 
-            .keyword-modal-rel-item {
-                display: flex;
-                align-items: center;
-                gap: 0.375rem;
-                min-height: 2rem;
+            .keyword-progress-wrap {
+                flex-direction: column;
+                align-items: stretch;
             }
 
-            .keyword-modal-rel-item input[type="checkbox"] {
-                width: 1rem;
-                height: 1rem;
-                flex-shrink: 0;
+            .keyword-progress-actions {
+                width: 100%;
+                justify-content: space-between;
             }
 
-            .keyword-modal-rel-item label {
-                font-size: 0.8125rem;
-                line-height: 1.2;
+            .keyword-progress-wrap #overall-keyword-progress {
+                margin-left: 0;
+                width: 100%;
+                text-align: center;
             }
         }
     </style>
@@ -1406,7 +1530,7 @@
         <div
             class="dy-key-set-overlay w-screen h-screen bg-black opacity-0 absolute top-0 left-0 duration-300 transition-all">
         </div>
-        <div class="dy-key-pop-box w-full sm:w-[90%] max-w-[min(100vw,1280px)] h-[100dvh] sm:h-auto max-h-[100dvh] sm:max-h-none flex flex-col !shadow-2xl bg-gray-50 border-0 sm:border border-gray-300 z-2 rounded-none sm:rounded !mt-0 sm:!mt-[70px] opacity-0 -translate-y-[20%] linear duration-600 transition-all min-w-0"
+        <div class="dy-key-pop-box w-full sm:w-[90%] max-w-[min(100vw,1280px)] h-auto max-h-[100dvh] sm:max-h-[calc(100dvh-80px)] flex flex-col !shadow-2xl bg-gray-50 border-0 sm:border border-gray-300 z-2 rounded-none sm:rounded !mt-0 sm:!mt-[70px] opacity-0 -translate-y-[20%] linear duration-600 transition-all min-w-0"
             id="dy-key-article-box">
             {{-- pop top bar --}}
             <div class="w-full flex items-center justify-between gap-3 !bg-gray-200 !px-3 !py-2.5 shrink-0 border-b border-gray-300">
@@ -1418,9 +1542,9 @@
                     <span class="material-symbols-outlined !text-xl">close</span>
                 </button>
             </div>
-            <div class="dy-key-pop-body w-full flex flex-col gap-3 !p-3 flex-1 min-h-0 overflow-y-auto">
+            <div class="dy-key-pop-body w-full flex flex-col gap-2 !p-3 overflow-hidden shrink-0">
 
-                <div class="keyword-method-tabs w-full border-b border-[var(--primary-color)] overflow-x-auto pb-0">
+                <div class="keyword-method-tabs w-full border-b border-[var(--primary-color)] overflow-x-auto pb-0 shrink-0">
                     <div class="keyword-method-tabs-inner">
                     <label
                         class="keyword-tab-btn !px-2.5 !py-2 sm:!p-3 bg-[var(--primary-color)] border border-[var(--primary-color)] duration-300 transition-all text-white border-b-0 text-xs sm:text-sm text-center cursor-pointer"
@@ -1462,63 +1586,65 @@
                     </label>
                     </div>
                 </div>
-                <div class="w-full flex flex-col keyword-tab-sec min-h-0"
+                <div class="w-full flex flex-col keyword-tab-sec"
                     id="keyword-url-container">
-                    {{-- keyword url box here --}}
-                    <div class="flex w-full flex-col lg:flex-row bg-orange-100 keyword-url-box static-box relative keyword-mobile-stack rounded border border-orange-200">
-                        <div class="w-full lg:w-3/5 flex flex-col gap-3 !p-3 sm:!p-4 !pt-10 keyword-mobile-main">
-                            <div class="w-full flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2">
+                    {{-- keyword url box here — same layout as schedule campaign --}}
+                    <div class="flex w-full bg-orange-100 keyword-url-box static-box relative keyword-mobile-stack">
+                        <div class="w-3/5 flex flex-col gap-2 !p-4 !pt-[45px] keyword-mobile-main">
+                            <div class="w-full flex items-center">
                                 <label for=""
-                                    class="text-sm font-medium flex items-center shrink-0 after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-full sm:w-1/5 keyword-mobile-label">Client
+                                    class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-1/5 keyword-mobile-label">Client
                                     Url</label>
-                                <div class="w-full sm:w-4/5 flex flex-col sm:flex-row gap-2 sm:items-center keyword-mobile-input-wrap">
+                                <div class="w-4/5 flex items-center justify-between keyword-mobile-input-wrap">
                                     <input type="text" placeholder="Enter Url"
-                                        class="bg-white !p-2.5 text-sm outline-none border border-gray-300 w-full sm:w-[78%] client-url keyword-mobile-input-main rounded">
+                                        class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-[78%] client-url keyword-mobile-input-main">
                                     <input type="text" value="0"
-                                        class="bg-white !p-2.5 text-sm outline-none text-center border border-gray-300 w-full sm:w-1/5 client-url-quantity num-inp keyword-mobile-qty rounded">
+                                        class="bg-gray-50 !p-2 text-sm outline-none text-center border border-gray-300 w-1/5 client-url-quantity num-inp keyword-mobile-qty">
                                 </div>
                             </div>
-                            <div class="w-full flex flex-col sm:flex-row sm:items-start gap-1.5 sm:gap-2">
+                            <div class="w-full flex items-center">
                                 <label for=""
-                                    class="text-sm font-medium flex items-center shrink-0 after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-full sm:w-1/5 keyword-mobile-label">Media
+                                    class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-1/5 keyword-mobile-label">Media
                                     Link</label>
-                                <div class="w-full sm:w-4/5 keyword-mobile-input-wrap">
+                                <div class="w-4/5 flex items-center justify-between keyword-mobile-input-wrap">
                                     <textarea name="" id=""
-                                        class="bg-white !p-2.5 text-sm outline-none border border-gray-300 w-full resize-y media-link rounded min-h-[72px]" rows="2"
+                                        class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none media-link" rows="2"
                                         placeholder="Enter Media Link Here"></textarea>
                                 </div>
                             </div>
                             <div class="w-full flex items-center justify-end">
                                 <button type="button"
-                                    class="!px-2.5 !py-1 bg-red-600 rounded text-xs sm:text-sm cursor-pointer text-white remove-keyword-box">Delete</button>
+                                    class="!p-1 bg-red-600 rounded text-sm cursor-pointer text-white remove-keyword-box">delete</button>
                             </div>
                         </div>
-                        <div class="w-full lg:w-2/5 flex flex-col gap-1.5 !p-3 sm:!p-4 border-t lg:border-t-0 lg:border-l border-orange-200 keyword-mobile-side">
+                        <div class="w-2/5 flex flex-col gap-1 !p-4 keyword-mobile-side">
                             <label for=""
-                                class="text-sm font-medium flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">Client
+                                class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">Client
                                 Keyword</label>
-                            <div class="w-full flex flex-col sm:flex-row gap-2 keywords-area-parent">
-                                <div class="w-full sm:w-[78%] keyword-mobile-input-main min-w-0">
+                            <div class="w-full flex flex-wrap justify-between keywords-area-parent">
+                                <div class="w-[78%] flex flex-wrap keyword-mobile-input-main">
                                     <textarea name="" id="" rows="5"
-                                        class="bg-white !p-2.5 text-sm outline-none border border-gray-300 w-full resize-y keywords-area rounded min-h-[100px]"></textarea>
+                                        class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none keywords-area"></textarea>
                                 </div>
-                                <div class="w-full sm:w-[22%] keyword-mobile-qty min-w-0">
+                                <div class="w-1/5 flex flex-wrap keyword-mobile-qty">
                                     <textarea name="" id="" rows="5"
-                                        class="bg-white !p-2.5 text-sm outline-none border border-gray-300 w-full resize-y text-center keywords-quantity-area focus:border-[var(--primary-color)] rounded min-h-[60px] sm:min-h-[100px]" placeholder="Qty"></textarea>
+                                        class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none text-center keywords-quantity-area focus:border-[var(--primary-color)]"></textarea>
                                 </div>
                             </div>
                         </div>
                         <div
-                            class="box-count flex !px-2.5 !py-0.5 text-xs sm:text-sm font-semibold bg-[var(--primary-color)] text-white rounded absolute top-2.5 left-2.5">
+                            class="box-count flex !px-3 !py-1 text-sm font-semibold bg-[var(--primary-color)] text-white rounded absolute top-3 left-3">
                             01</div>
                     </div>
                 </div>
 
-                <div class="w-full add-more-window keyword-tab-sec">
-                    <div class="w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-sm keyword-progress-wrap">
-                        <p class="m-0">Total <span class="total-box-count font-medium">1</span></p>
-                        <a href="javascript:void(0)" class="inline-flex items-center justify-center bg-blue-500 hover:bg-blue-600 !px-3 !py-2 text-sm rounded text-white w-full sm:w-auto text-center"
-                            id="add-more-keyword-URL">+ Add More Url</a>
+                <div class="w-full add-more-window keyword-tab-sec shrink-0 !py-2 border-t border-gray-200">
+                    <div class="text-sm keyword-progress-wrap">
+                        <div class="keyword-progress-actions">
+                            <p class="total-label">Total <span class="total-box-count font-medium">1</span></p>
+                            <a href="javascript:void(0)" class="inline-flex items-center justify-center bg-blue-500 hover:bg-blue-600 !px-3 !py-1.5 text-sm rounded text-white shrink-0"
+                                id="add-more-keyword-URL">+ Add More Url</a>
+                        </div>
                     </div>
                 </div>
                 {{-- bulk url div here --}}
@@ -1767,35 +1893,31 @@
 
 
             </div>
-            <div class="keyword-modal-footer w-full flex flex-col gap-3 !bg-gray-200 !px-3 !py-3 shrink-0 border-t border-gray-300">
-                <div class="keyword-modal-rel-grid">
+            <div class="keyword-modal-footer w-full !bg-gray-200 !px-3 !py-2.5 shrink-0 border-t border-gray-300">
+                <div class="keyword-modal-rel-row">
                     <div class="keyword-modal-rel-item">
                         <input type="checkbox" name="no_follow" id="no_follow" value="1">
                         <label for="no_follow">No Follow</label>
                     </div>
-
                     <div class="keyword-modal-rel-item">
                         <input type="checkbox" name="sponsored_link" id="sponsored_link" value="1">
                         <label for="sponsored_link">Sponsored</label>
                     </div>
-
                     <div class="keyword-modal-rel-item">
                         <input type="checkbox" name="ugc_link" id="ugc_link" value="1">
                         <label for="ugc_link">UGC</label>
                     </div>
-
                     <div class="keyword-modal-rel-item">
                         <input type="checkbox" name="noopener_link" id="noopener_link" value="1">
                         <label for="noopener_link">Noopener</label>
                     </div>
-
-                    <div class="keyword-modal-rel-item sm:col-span-1">
+                    <div class="keyword-modal-rel-item">
                         <input type="checkbox" name="noreferrer_link" id="noreferrer_link" value="1">
                         <label for="noreferrer_link">Noreferrer</label>
                     </div>
                 </div>
                 <a href="#" type="button" id="add-keywords-links"
-                    class="cursor-pointer bg-green-600 hover:bg-green-700 text-white rounded !py-2.5 !px-4 text-sm font-medium text-center w-full sm:w-auto sm:self-end">
+                    class="keyword-modal-save-btn cursor-pointer bg-green-600 hover:bg-green-700 text-white rounded !py-2 !px-4 text-sm font-medium">
                     Save change
                 </a>
             </div>

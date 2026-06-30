@@ -214,6 +214,8 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
                 ->name('deployments.retry-failed');
             Route::post('/deployments/{uuid}/cancel', [PluginDeploymentController::class, 'cancel'])
                 ->name('deployments.cancel');
+            Route::delete('/deployments/{uuid}', [PluginDeploymentController::class, 'destroy'])
+                ->name('deployments.destroy');
             Route::get('/deployments/{uuid}/export-failures', [PluginDeploymentController::class, 'exportFailures'])
                 ->name('deployments.export-failures');
         });

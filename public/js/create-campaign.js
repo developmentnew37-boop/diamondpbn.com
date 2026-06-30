@@ -2220,7 +2220,7 @@ window.addEventListener("DOMContentLoaded", () => {
             if (node) return node;
             node = document.createElement("p");
             node.id = "overall-keyword-progress";
-            node.className = "!px-3 !py-2 rounded border-2 border-blue-300 bg-blue-50 text-blue-800 font-semibold text-sm shadow-sm";
+            node.className = "keyword-progress-count";
             host.appendChild(node);
             return node;
         }
@@ -2397,38 +2397,38 @@ window.addEventListener("DOMContentLoaded", () => {
 
             let div = document.createElement("div");
             div.className =
-                "flex w-full flex-col lg:flex-row bg-orange-100 keyword-url-box relative keyword-mobile-stack rounded border border-orange-200";
+                "flex w-full bg-orange-100 keyword-url-box relative keyword-mobile-stack";
             div.innerHTML = `
-        <div class="w-full lg:w-3/5 flex flex-col gap-3 !p-3 sm:!p-4 !pt-10 keyword-mobile-main">
-            <div class="w-full flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2">
-                <label class="text-sm font-medium flex items-center shrink-0 after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-full sm:w-1/5 keyword-mobile-label">Client Url</label>
-                <div class="w-full sm:w-4/5 flex flex-col sm:flex-row gap-2 sm:items-center keyword-mobile-input-wrap">
-                    <input type="text" placeholder="Enter Url" class="bg-white !p-2.5 text-sm outline-none border border-gray-300 w-full sm:w-[78%] client-url keyword-mobile-input-main rounded">
-                    <input type="text" value="0" class="bg-white !p-2.5 text-sm outline-none text-center border border-gray-300 w-full sm:w-1/5 client-url-quantity num-inp keyword-mobile-qty rounded">
+        <div class="w-3/5 flex flex-col gap-2 !p-4 !pt-[45px] keyword-mobile-main">
+            <div class="w-full flex items-center">
+                <label class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-1/5 keyword-mobile-label">Client Url</label>
+                <div class="w-4/5 flex items-center justify-between keyword-mobile-input-wrap">
+                    <input type="text" placeholder="Enter Url" class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-[78%] client-url keyword-mobile-input-main">
+                    <input type="text" value="0" class="bg-gray-50 !p-2 text-sm outline-none text-center border border-gray-300 w-1/5 client-url-quantity num-inp keyword-mobile-qty">
                 </div>
             </div>
-            <div class="w-full flex flex-col sm:flex-row sm:items-start gap-1.5 sm:gap-2">
-                <label class="text-sm font-medium flex items-center shrink-0 after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-full sm:w-1/5 keyword-mobile-label">Media Link</label>
-                <div class="w-full sm:w-4/5 keyword-mobile-input-wrap">
-                    <textarea class="bg-white !p-2.5 text-sm outline-none border border-gray-300 w-full resize-y media-link rounded min-h-[72px]" rows="2" placeholder="Enter Media Link Here"></textarea>
+            <div class="w-full flex items-center">
+                <label class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)] w-1/5 keyword-mobile-label">Media Link</label>
+                <div class="w-4/5 flex items-center justify-between keyword-mobile-input-wrap">
+                    <textarea class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none media-link" rows="2" placeholder="Enter Media Link Here"></textarea>
                 </div>
             </div>
             <div class="w-full flex items-center justify-end">
-                <button type="button" class="!px-2.5 !py-1 bg-red-600 rounded text-xs sm:text-sm cursor-pointer text-white remove-keyword-box">Delete</button>
+                <button type="button" class="!p-1 bg-red-600 rounded text-sm cursor-pointer text-white remove-keyword-box">delete</button>
             </div>
         </div>
-        <div class="w-full lg:w-2/5 flex flex-col gap-1.5 !p-3 sm:!p-4 border-t lg:border-t-0 lg:border-l border-orange-200 keyword-mobile-side">
-            <label class="text-sm font-medium flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">Client Keyword</label>
-            <div class="w-full flex flex-col sm:flex-row gap-2 keywords-area-parent">
-                <div class="w-full sm:w-[78%] keyword-mobile-input-main min-w-0">
-                    <textarea rows="5" class="bg-white !p-2.5 text-sm outline-none border border-gray-300 w-full resize-y keywords-area rounded min-h-[100px]"></textarea>
+        <div class="w-2/5 flex flex-col gap-1 !p-4 keyword-mobile-side">
+            <label class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">Client Keyword</label>
+            <div class="w-full flex flex-wrap justify-between keywords-area-parent">
+                <div class="w-[78%] flex flex-wrap keyword-mobile-input-main">
+                    <textarea rows="5" class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none keywords-area"></textarea>
                 </div>
-                <div class="w-full sm:w-[22%] keyword-mobile-qty min-w-0">
-                    <textarea rows="5" class="bg-white !p-2.5 text-sm outline-none border border-gray-300 w-full resize-y text-center keywords-quantity-area rounded min-h-[60px] sm:min-h-[100px]" placeholder="Qty"></textarea>
+                <div class="w-1/5 flex flex-wrap keyword-mobile-qty">
+                    <textarea rows="5" class="bg-gray-50 !p-2 text-sm outline-none border border-gray-300 w-full resize-none text-center keywords-quantity-area"></textarea>
                 </div>
             </div>
         </div>
-        <div class="box-count flex !px-2.5 !py-0.5 text-xs sm:text-sm font-semibold bg-[var(--primary-color)] text-white rounded absolute top-2.5 left-2.5">01</div>
+        <div class="box-count flex !px-3 !py-1 text-sm font-semibold bg-[var(--primary-color)] text-white rounded absolute top-3 left-3">01</div>
     `;
 
             //checking box not exceed the postcount

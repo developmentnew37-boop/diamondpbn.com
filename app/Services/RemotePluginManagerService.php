@@ -3,17 +3,22 @@
 namespace App\Services;
 
 use App\Models\Admin\Domain;
+use App\Models\Admin\PluginPackage;
 use Illuminate\Support\Facades\Http;
 
 class RemotePluginManagerService
 {
+    public function __construct(
+        private readonly PluginDeployPayloadBuilder $payloadBuilder
+    ) {}
+
     public function baseUrl(string $domain): string
     {
         return BlogrollApiService::baseUrl($domain);
     }
 
     /**
-     * @return array{ok: bool, plugin_manager_supported: bool, plugin_version: ?string, message: string}
+     * @return array{ok: bool, plugin_manager_supported: bool, plugin_version: ?string, message: string, response_time_ms?: int}
      */
     public function fetchAgentStatus(Domain $domain): array
     {
@@ -73,11 +78,11 @@ class RemotePluginManagerService
     }
 
     /**
-     * @return array{found: bool, version: ?string, active: ?bool, message: string}
+     * @return array{ok: bool, plugins: array<int, array<string, mixed>>, message: string}
      */
-    public function fetchPluginInfo(Domain $domain, string $slug): array
+    public function fetchPluginsInventory(Domain $domain): array
     {
-        $url = $this->baseUrl($domain->name).'/wp-json/external/v1/plugins/'.$slug
+        $url = $this->baseUrl($domain->name).'/wp-json/external/v1/plugins'
             .'?api_key='.urlencode((string) $domain->api_key);
 
         try {
@@ -87,12 +92,77 @@ class RemotePluginManagerService
                 ->acceptJson()
                 ->get($url);
 
+            if (! $response->successful()) {
+                return [
+                    'ok' => false,
+                    'plugins' => [],
+                    'message' => 'HTTP '.$response->status(),
+                ];
+            }
+
+            $body = $response->json();
+            $plugins = $body['data'] ?? $body['plugins'] ?? [];
+
+            if (! is_array($plugins)) {
+                return [
+                    'ok' => false,
+                    'plugins' => [],
+                    'message' => 'Invalid plugins inventory response',
+                ];
+            }
+
+            /** @var array<int, array<string, mixed>> $normalized */
+            $normalized = array_values(array_filter($plugins, 'is_array'));
+
+            return [
+                'ok' => true,
+                'plugins' => $normalized,
+                'message' => (string) ($body['message'] ?? 'OK'),
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'ok' => false,
+                'plugins' => [],
+                'message' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * @return array{found: bool, version: ?string, active: ?bool, plugin_file: ?string, message: string}
+     */
+    public function fetchPluginInfo(Domain $domain, PluginPackage $package): array
+    {
+        $expectedSlug = $package->expectedSlug();
+        $url = $this->baseUrl($domain->name).'/wp-json/external/v1/plugins/'.$expectedSlug
+            .'?api_key='.urlencode((string) $domain->api_key)
+            .'&target_version='.urlencode($package->version);
+
+        try {
+            $response = Http::withoutVerifying()
+                ->timeout($this->requestTimeout())
+                ->connectTimeout($this->connectTimeout())
+                ->acceptJson()
+                ->get($url);
+
             if ($response->status() === 404) {
-                return ['found' => false, 'version' => null, 'active' => null, 'message' => 'Plugin not installed'];
+                return [
+                    'found' => false,
+                    'version' => null,
+                    'active' => null,
+                    'plugin_file' => null,
+                    'message' => 'Plugin not installed',
+                ];
             }
 
             if (! $response->successful()) {
-                return ['found' => false, 'version' => null, 'active' => null, 'message' => 'HTTP '.$response->status()];
+                return [
+                    'found' => false,
+                    'version' => null,
+                    'active' => null,
+                    'plugin_file' => null,
+                    'message' => 'HTTP '.$response->status(),
+                ];
             }
 
             $body = $response->json();
@@ -102,69 +172,69 @@ class RemotePluginManagerService
                 'found' => true,
                 'version' => isset($data['version']) ? (string) $data['version'] : null,
                 'active' => isset($data['active']) ? (bool) $data['active'] : null,
+                'plugin_file' => isset($data['plugin_file']) ? (string) $data['plugin_file'] : null,
                 'message' => (string) ($body['message'] ?? 'OK'),
             ];
         } catch (\Throwable $e) {
-            return ['found' => false, 'version' => null, 'active' => null, 'message' => $e->getMessage()];
+            return [
+                'found' => false,
+                'version' => null,
+                'active' => null,
+                'plugin_file' => null,
+                'message' => $e->getMessage(),
+            ];
         }
     }
 
     /**
-     * @return array{success: bool, message: string, error_code: ?string, data: array<string, mixed>}
+     * @return array{success: bool, message: string, error_code: ?string, data: array<string, mixed>, response_time_ms: int, http_status: int}
      */
     public function installOrUpdate(
         Domain $domain,
         string $endpoint,
-        string $slug,
+        PluginPackage $package,
         string $downloadUrl,
-        string $checksum,
         bool $activate
     ): array {
         $url = $this->baseUrl($domain->name).'/wp-json/external/v1/plugins/'.$endpoint;
+        $payload = $this->payloadBuilder->installOrUpdate($package, $downloadUrl, $activate);
 
-        return $this->postPluginAction($domain, $url, [
-            'delivery' => 'url',
-            'download_url' => $downloadUrl,
-            'expected_slug' => $slug,
-            'slug' => $slug,
-            'expected_checksum_sha256' => $checksum,
-            'activate' => $activate,
-        ]);
+        return $this->postPluginAction($domain, $url, $payload);
     }
 
     /**
-     * @return array{success: bool, message: string, error_code: ?string, data: array<string, mixed>}
+     * @return array{success: bool, message: string, error_code: ?string, data: array<string, mixed>, response_time_ms: int, http_status: int}
      */
-    public function activate(Domain $domain, string $slug): array
+    public function activate(Domain $domain, PluginPackage $package): array
     {
         $url = $this->baseUrl($domain->name).'/wp-json/external/v1/plugins/activate';
 
-        return $this->postPluginAction($domain, $url, ['slug' => $slug]);
+        return $this->postPluginAction($domain, $url, $this->payloadBuilder->activateOrDeactivate($package));
     }
 
     /**
-     * @return array{success: bool, message: string, error_code: ?string, data: array<string, mixed>}
+     * @return array{success: bool, message: string, error_code: ?string, data: array<string, mixed>, response_time_ms: int, http_status: int}
      */
-    public function deactivate(Domain $domain, string $slug): array
+    public function deactivate(Domain $domain, PluginPackage $package): array
     {
         $url = $this->baseUrl($domain->name).'/wp-json/external/v1/plugins/deactivate';
 
-        return $this->postPluginAction($domain, $url, ['slug' => $slug]);
+        return $this->postPluginAction($domain, $url, $this->payloadBuilder->activateOrDeactivate($package));
     }
 
     /**
-     * @return array{success: bool, message: string, error_code: ?string, data: array<string, mixed>}
+     * @return array{success: bool, message: string, error_code: ?string, data: array<string, mixed>, response_time_ms: int, http_status: int}
      */
-    public function deletePlugin(Domain $domain, string $slug): array
+    public function deletePlugin(Domain $domain, PluginPackage $package, ?string $pluginFile = null): array
     {
         $url = $this->baseUrl($domain->name).'/wp-json/external/v1/plugins/delete';
 
-        return $this->postPluginAction($domain, $url, ['slug' => $slug]);
+        return $this->postPluginAction($domain, $url, $this->payloadBuilder->delete($package, $pluginFile));
     }
 
     /**
      * @param  array<string, mixed>  $payload
-     * @return array{success: bool, message: string, error_code: ?string, data: array<string, mixed>, response_time_ms: int}
+     * @return array{success: bool, message: string, error_code: ?string, data: array<string, mixed>, response_time_ms: int, http_status: int}
      */
     private function postPluginAction(Domain $domain, string $url, array $payload): array
     {
@@ -188,6 +258,7 @@ class RemotePluginManagerService
                     'error_code' => 'invalid_response',
                     'data' => [],
                     'response_time_ms' => $ms,
+                    'http_status' => $response->status(),
                 ];
             }
 
@@ -195,12 +266,18 @@ class RemotePluginManagerService
             $errorCode = $body['code'] ?? null;
             $data = is_array($body['data'] ?? null) ? $body['data'] : [];
 
+            $action = $data['action'] ?? null;
+            if ($action === 'skipped') {
+                $success = true;
+            }
+
             return [
                 'success' => $success && $response->successful(),
                 'message' => (string) ($body['message'] ?? ($success ? 'OK' : 'Request failed')),
                 'error_code' => is_string($errorCode) ? $errorCode : null,
                 'data' => $data,
                 'response_time_ms' => $ms,
+                'http_status' => $response->status(),
             ];
         } catch (\Throwable $e) {
             return [
@@ -209,6 +286,7 @@ class RemotePluginManagerService
                 'error_code' => 'request_failed',
                 'data' => [],
                 'response_time_ms' => (int) round((microtime(true) - $started) * 1000),
+                'http_status' => 0,
             ];
         }
     }

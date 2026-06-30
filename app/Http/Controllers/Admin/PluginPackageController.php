@@ -58,8 +58,10 @@ class PluginPackageController extends Controller
             'package' => [
                 'uuid' => $package->uuid,
                 'name' => $package->name,
-                'slug' => $package->slug,
+                'slug' => $package->librarySlug(),
+                'expected_slug' => $package->expectedSlug(),
                 'version' => $package->version,
+                'checksum_sha256' => $package->checksum_sha256,
             ],
         ]);
     }
@@ -118,7 +120,7 @@ class PluginPackageController extends Controller
 
         return Storage::disk($disk)->download(
             $package->storage_path,
-            $package->slug.'-'.$package->version.'.zip'
+            $package->expectedSlug().'-'.$package->version.'.zip'
         );
     }
 }

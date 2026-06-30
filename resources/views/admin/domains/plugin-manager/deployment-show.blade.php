@@ -29,6 +29,9 @@
         <div class="flex flex-col gap-2 !mb-4">
             <p class="text-sm text-gray-600">
                 <strong>{{ $deployment->pluginPackage?->displayLabel() }}</strong>
+                @if ($deployment->pluginPackage)
+                    · WP folder: <code class="text-xs bg-gray-100 !px-1 rounded">{{ $deployment->pluginPackage->expectedSlug() }}</code>
+                @endif
                 · Operation: <strong>{{ str_replace('_', ' ', $deployment->operation) }}</strong>
                 @if ($deployment->domainCategory)
                     · Category: <strong>{{ $deployment->domainCategory->name }}</strong>
@@ -80,6 +83,7 @@
                         <th class="!px-4 !py-3">Before</th>
                         <th class="!px-4 !py-3">After</th>
                         <th class="!px-4 !py-3">Status</th>
+                        <th class="!px-4 !py-3">Detail</th>
                         <th class="!px-4 !py-3">Message</th>
                     </tr>
                 </thead>

@@ -15,6 +15,8 @@ class PluginDeploymentItem extends Model
         'operation_result',
         'version_before',
         'version_after',
+        'plugin_file',
+        'resolved_via',
         'error_code',
         'message',
         'attempts',

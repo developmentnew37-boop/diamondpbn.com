@@ -11,7 +11,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
     <link rel="stylesheet" href="{{ asset('css/style.css') }}">
     @include('partials.build-assets')
-     <!-- @vite(['resources/css/app.css', 'resources/js/app.js']) -->
+    {{-- @vite(['resources/css/app.css', 'resources/js/app.js'])  --}}
     <script src="{{ asset('js/script.js') }}" defer></script>
     @stack('style')
 

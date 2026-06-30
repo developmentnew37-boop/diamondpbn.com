@@ -47,21 +47,22 @@ class PluginPackageService
         }
 
         $header = $this->parsePluginZip($file);
-        $slug = $header['slug'];
+        $expectedSlug = $header['slug'];
         $version = $header['version'];
+        $librarySlug = $this->generateLibrarySlug($expectedSlug, $version);
 
-        if (PluginPackage::query()->where('slug', $slug)->where('version', $version)->exists()) {
-            throw new \InvalidArgumentException("Plugin {$slug} version {$version} is already in the library.");
+        if (PluginPackage::query()->where('slug', $librarySlug)->where('version', $version)->exists()) {
+            throw new \InvalidArgumentException("Plugin {$librarySlug} version {$version} is already in the library.");
         }
 
         $uuid = (string) Str::uuid();
         $disk = config('plugin_manager.storage_disk', 'local');
-        $storagePath = 'plugin-packages/'.$uuid.'/'.$slug.'-'.$version.'.zip';
+        $storagePath = 'plugin-packages/'.$uuid.'/'.$expectedSlug.'-'.$version.'.zip';
 
         Storage::disk($disk)->putFileAs(
             'plugin-packages/'.$uuid,
             $file,
-            $slug.'-'.$version.'.zip'
+            $expectedSlug.'-'.$version.'.zip'
         );
 
         $absolutePath = Storage::disk($disk)->path($storagePath);
@@ -70,14 +71,15 @@ class PluginPackageService
         return PluginPackage::create([
             'uuid' => $uuid,
             'admin_id' => $adminId,
-            'slug' => $slug,
+            'slug' => $librarySlug,
+            'expected_slug' => $expectedSlug,
             'name' => $header['name'],
             'version' => $version,
             'original_filename' => $file->getClientOriginalName(),
             'storage_path' => $storagePath,
             'file_size_bytes' => (int) $file->getSize(),
             'checksum_sha256' => $checksum,
-            'is_diamond_pbn_agent' => $slug === config('plugin_manager.diamond_pbn_slug'),
+            'is_diamond_pbn_agent' => $expectedSlug === config('plugin_manager.diamond_pbn_slug'),
             'notes' => $notes,
         ]);
     }
@@ -136,6 +138,15 @@ class PluginPackageService
     public function signingKey(): string
     {
         return (string) (config('plugin_manager.signing_key') ?: config('app.key'));
+    }
+
+    public function generateLibrarySlug(string $expectedSlug, string $version): string
+    {
+        if ($expectedSlug === config('plugin_manager.diamond_pbn_slug')) {
+            return $expectedSlug;
+        }
+
+        return "{$expectedSlug}-version-{$version}";
     }
 
     /**

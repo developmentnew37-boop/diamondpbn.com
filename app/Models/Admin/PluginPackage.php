@@ -14,6 +14,7 @@ class PluginPackage extends Model
         'uuid',
         'admin_id',
         'slug',
+        'expected_slug',
         'name',
         'version',
         'original_filename',
@@ -48,8 +49,22 @@ class PluginPackage extends Model
         return $this->hasMany(PluginDeployment::class);
     }
 
+    public function librarySlug(): string
+    {
+        return (string) $this->slug;
+    }
+
+    public function expectedSlug(): string
+    {
+        return (string) ($this->expected_slug ?: $this->slug);
+    }
+
     public function displayLabel(): string
     {
-        return $this->name.' v'.$this->version.' ('.$this->slug.')';
+        if ($this->librarySlug() === $this->expectedSlug()) {
+            return $this->name.' v'.$this->version.' ('.$this->expectedSlug().')';
+        }
+
+        return $this->name.' v'.$this->version.' ('.$this->librarySlug().')';
     }
 }

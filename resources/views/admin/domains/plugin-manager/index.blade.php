@@ -71,8 +71,10 @@
                     <thead class="text-xs uppercase bg-gray-800 text-white">
                         <tr>
                             <th class="!px-4 !py-3">Plugin</th>
-                            <th class="!px-4 !py-3">Slug</th>
+                            <th class="!px-4 !py-3">Library Slug</th>
+                            <th class="!px-4 !py-3">WP Folder</th>
                             <th class="!px-4 !py-3">Version</th>
+                            <th class="!px-4 !py-3">Checksum</th>
                             <th class="!px-4 !py-3">Size</th>
                             <th class="!px-4 !py-3">Uploaded</th>
                             <th class="!px-4 !py-3">Actions</th>
@@ -87,8 +89,12 @@
                                         <span class="text-xs text-orange-600">(Agent)</span>
                                     @endif
                                 </td>
-                                <td class="!px-4 !py-3 font-mono text-xs">{{ $package->slug }}</td>
+                                <td class="!px-4 !py-3 font-mono text-xs">{{ $package->librarySlug() }}</td>
+                                <td class="!px-4 !py-3 font-mono text-xs">{{ $package->expectedSlug() }}</td>
                                 <td class="!px-4 !py-3">{{ $package->version }}</td>
+                                <td class="!px-4 !py-3 font-mono text-xs" title="{{ $package->checksum_sha256 }}">
+                                    {{ substr($package->checksum_sha256, 0, 12) }}…
+                                </td>
                                 <td class="!px-4 !py-3">{{ number_format($package->file_size_bytes / 1024, 1) }} KB</td>
                                 <td class="!px-4 !py-3">{{ $package->created_at->format('M j, Y H:i') }}</td>
                                 <td class="!px-4 !py-3">

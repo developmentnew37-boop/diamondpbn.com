@@ -34,4 +34,275 @@
     .summary-card .value { font-size: 1.5rem; font-weight: 700; }
     .btn-spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.35); border-top-color: #fff; border-radius: 50%; animation: pm-spin 0.8s linear infinite; }
     @keyframes pm-spin { to { transform: rotate(360deg); } }
+
+    /* Deployment history */
+    .pm-stat-card {
+        display: flex; align-items: center; gap: 0.875rem;
+        padding: 1rem 1.125rem; background: #fff; border: 1px solid #e5e7eb;
+        border-radius: 0.5rem; box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .pm-stat-card-blue { border-color: #bfdbfe; background: linear-gradient(135deg, #fff 0%, #eff6ff 100%); }
+    .pm-stat-card-green { border-color: #bbf7d0; background: linear-gradient(135deg, #fff 0%, #f0fdf4 100%); }
+    .pm-stat-card-orange { border-color: #fed7aa; background: linear-gradient(135deg, #fff 0%, #fff7ed 100%); }
+    .pm-stat-icon { font-size: 1.75rem; color: var(--primary-color); opacity: 0.85; }
+    .pm-stat-label { font-size: 0.75rem; color: #6b7280; margin: 0; }
+    .pm-stat-value { font-size: 1.375rem; font-weight: 700; color: #111827; line-height: 1.2; margin: 0; }
+
+    .pm-history-card { padding: 1.25rem 1.5rem; }
+
+    .pm-history-table-wrap {
+        overflow-x: auto;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+    }
+
+    .pm-history-table {
+        width: 100%;
+        table-layout: fixed;
+        border-collapse: collapse;
+        font-size: 0.8125rem;
+    }
+
+    .pm-col-started { width: 9%; }
+    .pm-col-package { width: 24%; }
+    .pm-col-operation { width: 9%; }
+    .pm-col-scope { width: 11%; }
+    .pm-col-progress { width: 12%; }
+    .pm-col-results { width: 11%; }
+    .pm-col-status { width: 12%; }
+    .pm-col-actions { width: 12%; }
+
+    .pm-history-table thead tr { background: #1f2937; color: #fff; }
+    .pm-history-table thead th {
+        padding: 0.75rem 0.875rem;
+        font-size: 0.6875rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        text-align: left;
+        white-space: nowrap;
+    }
+    .pm-history-table thead th.pm-th-actions { text-align: right; }
+
+    .pm-history-table tbody td {
+        padding: 0;
+        vertical-align: middle;
+        border-bottom: 1px solid #f3f4f6;
+        background: #fff;
+    }
+
+    .pm-history-row:hover td { background: #fafafa; }
+    .pm-history-row:last-child td { border-bottom: none; }
+
+    .pm-cell {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 0.2rem;
+        min-height: 4.25rem;
+        padding: 0.75rem 0.875rem;
+    }
+
+    .pm-cell-center {
+        align-items: flex-start;
+    }
+
+    .pm-cell-date { gap: 0.125rem; }
+
+    .pm-cell-primary {
+        font-weight: 600;
+        color: #111827;
+        line-height: 1.35;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .pm-cell-secondary {
+        font-size: 0.75rem;
+        color: #6b7280;
+        line-height: 1.3;
+        white-space: nowrap;
+    }
+
+    .pm-cell-muted {
+        font-size: 0.8125rem;
+        color: #9ca3af;
+    }
+
+    .pm-package-name {
+        font-weight: 600;
+        color: #111827;
+        line-height: 1.35;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .pm-package-meta {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        min-width: 0;
+        font-size: 0.75rem;
+        color: #6b7280;
+        line-height: 1.3;
+    }
+
+    .pm-version-tag {
+        flex-shrink: 0;
+        font-weight: 600;
+        color: #374151;
+    }
+
+    .pm-meta-dot { flex-shrink: 0; color: #d1d5db; }
+
+    .pm-folder-tag {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+    }
+
+    .pm-scope-name { max-width: 100%; display: block; }
+
+    .pm-progress-cell { gap: 0.375rem; min-width: 0; }
+
+    .pm-progress-meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #374151;
+        line-height: 1;
+    }
+
+    .pm-progress-bar { height: 6px; margin: 0; }
+
+    .pm-results-cell {
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.375rem;
+        min-height: 4.25rem;
+    }
+
+    .pm-status-cell { gap: 0.35rem; align-items: flex-start; }
+
+    .pm-deploy-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.3rem 0.625rem;
+        font-size: 0.6875rem;
+        font-weight: 700;
+        border-radius: 9999px;
+        text-transform: capitalize;
+        white-space: nowrap;
+        line-height: 1.2;
+    }
+
+    .pm-status-icon { font-size: 0.875rem !important; line-height: 1; }
+
+    .pm-deploy-status-completed { background: #dcfce7; color: #166534; }
+    .pm-deploy-status-completed-warn { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+    .pm-deploy-status-running { background: #dbeafe; color: #1d4ed8; }
+    .pm-deploy-status-queued { background: #f3f4f6; color: #4b5563; }
+    .pm-deploy-status-cancelled { background: #fef3c7; color: #b45309; }
+
+    .pm-status-note {
+        font-size: 0.6875rem;
+        font-weight: 600;
+        line-height: 1.2;
+        padding-left: 0.125rem;
+    }
+
+    .pm-status-note-active { color: #2563eb; }
+    .pm-status-note-error { color: #dc2626; }
+
+    .pm-op-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.35rem 0.625rem;
+        font-size: 0.6875rem;
+        font-weight: 700;
+        border-radius: 0.375rem;
+        white-space: nowrap;
+        line-height: 1.2;
+    }
+
+    .pm-op-install { background: #ecfdf5; color: #047857; }
+    .pm-op-update, .pm-op-update_if_older { background: #eff6ff; color: #1d4ed8; }
+    .pm-op-delete { background: #fef2f2; color: #b91c1c; }
+    .pm-op-activate { background: #f0fdf4; color: #15803d; }
+    .pm-op-deactivate { background: #fff7ed; color: #c2410c; }
+
+    .pm-result-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.2rem 0.5rem;
+        font-size: 0.6875rem;
+        font-weight: 700;
+        border-radius: 9999px;
+        white-space: nowrap;
+        line-height: 1.2;
+    }
+
+    .pm-result-success { background: #dcfce7; color: #166534; }
+    .pm-result-failed { background: #fee2e2; color: #991b1b; }
+    .pm-result-skipped { background: #fef3c7; color: #b45309; }
+
+    .pm-actions-cell {
+        flex-direction: row;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.5rem;
+        min-height: 4.25rem;
+        padding-right: 1rem;
+    }
+
+    .pm-icon-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2.25rem;
+        height: 2.25rem;
+        padding: 0;
+        border-radius: 0.5rem;
+        border: 1px solid #e5e7eb;
+        background: #fff;
+        color: #6b7280;
+        cursor: pointer;
+        text-decoration: none;
+        transition: all 0.15s ease;
+        flex-shrink: 0;
+    }
+
+    .pm-icon-btn .material-symbols-outlined { font-size: 1.125rem !important; line-height: 1; }
+
+    .pm-icon-btn-view:hover {
+        border-color: var(--primary-color);
+        background: rgba(255, 74, 23, 0.06);
+        color: var(--primary-color);
+    }
+
+    .pm-icon-btn-delete:hover {
+        border-color: #fca5a5;
+        background: #fef2f2;
+        color: #dc2626;
+    }
+
+    .pm-empty-state {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        text-align: center; padding: 3rem 1.5rem;
+    }
+    .pm-empty-icon { font-size: 3rem; color: #d1d5db; margin-bottom: 0.75rem; }
+
+    @media (max-width: 1280px) {
+        .pm-history-table { min-width: 980px; }
+    }
 </style>
