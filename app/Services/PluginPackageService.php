@@ -28,6 +28,7 @@ class PluginPackageService
 
         try {
             $header = $this->extractPluginHeaderFromZip($zip);
+            $this->assertSingleRootFolder($zip);
         } finally {
             $zip->close();
         }
@@ -41,9 +42,12 @@ class PluginPackageService
 
     public function storeUploadedPackage(UploadedFile $file, int $adminId, ?string $notes = null): PluginPackage
     {
-        $maxBytes = max(1, (int) config('plugin_manager.max_zip_mb', 5)) * 1024 * 1024;
-        if ($file->getSize() > $maxBytes) {
-            throw new \InvalidArgumentException('ZIP exceeds maximum size of '.config('plugin_manager.max_zip_mb').' MB.');
+        $limits = pluginManagerUploadLimits();
+        if ($file->getSize() > $limits['effective_bytes']) {
+            throw new \InvalidArgumentException(sprintf(
+                'ZIP exceeds maximum size of %s MB.',
+                $limits['effective_mb']
+            ));
         }
 
         $header = $this->parsePluginZip($file);
@@ -215,5 +219,35 @@ class PluginPackageService
         }
 
         return $result;
+    }
+
+    private function assertSingleRootFolder(ZipArchive $zip): void
+    {
+        $rootFolders = [];
+
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $stat = $zip->statIndex($i);
+            if (! is_array($stat)) {
+                continue;
+            }
+
+            $name = (string) $stat['name'];
+            if ($name === '' || str_starts_with($name, '__MACOSX/') || str_starts_with($name, '.')) {
+                continue;
+            }
+
+            $parts = explode('/', rtrim($name, '/'));
+            if ($parts[0] !== '') {
+                $rootFolders[$parts[0]] = true;
+            }
+        }
+
+        if (count($rootFolders) === 0) {
+            throw new \InvalidArgumentException('ZIP must contain a single plugin folder at the root.');
+        }
+
+        if (count($rootFolders) > 1) {
+            throw new \InvalidArgumentException('ZIP must contain only one root plugin folder.');
+        }
     }
 }

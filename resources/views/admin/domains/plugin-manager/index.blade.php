@@ -32,24 +32,38 @@
 
     <div id="pluginManagerAlert" class="w-full hidden !mt-2" role="alert"></div>
 
+    @if (! $uploadLimits['server_ready'])
+        <div class="w-full content-card !mt-4 !p-4 bg-red-50 border border-red-200 text-red-800 text-sm" role="alert">
+            <strong>Upload limit misconfigured on this server.</strong>
+            App allows {{ $uploadLimits['max_zip_mb'] }} MB ZIPs, but PHP allows
+            upload {{ $uploadLimits['php_upload_mb'] }} MB / post {{ $uploadLimits['php_post_mb'] }} MB.
+            On the VPS, set <code class="bg-white !px-1 rounded">client_max_body_size {{ $uploadLimits['max_zip_mb'] + 2 }}M;</code> in nginx
+            and <code class="bg-white !px-1 rounded">upload_max_filesize</code> / <code class="bg-white !px-1 rounded">post_max_size</code>
+            in PHP, then reload nginx and PHP-FPM. See <code class="bg-white !px-1 rounded">deploy/nginx/upload-limits.conf</code>.
+        </div>
+    @endif
+
     <div class="w-full content-card !mt-4">
         <div class="!p-4 theme-info-box !mb-4">
             <div class="flex items-start gap-3">
                 <span class="material-symbols-outlined text-[var(--primary-color)] !text-xl">info</span>
                 <div class="text-sm text-gray-700">
                     <strong>Upload once</strong> per plugin version, then <strong>deploy many times</strong> by category or manual list.
-                    Remote sites download from this dashboard via signed URL.
+                    Each package stores a <strong>library slug</strong> (catalog) and <strong>WP folder</strong> (<code>expected_slug</code> from the ZIP).
+                    Remote sites need Diamond PBN agent <strong>≥ {{ config('plugin_manager.min_agent_version') }}</strong>.
                     Queue: <code class="bg-white !px-1 rounded text-xs">php artisan queue:work --queue=plugin_deployments</code>
                 </div>
             </div>
         </div>
 
         <form id="pluginUploadForm" class="flex flex-col gap-4 !mb-6 !pb-6 border-b border-gray-200"
-            data-upload-url="{{ route('admin.plugin-manager.packages.store') }}">
+            data-upload-url="{{ route('admin.plugin-manager.packages.store') }}"
+            data-max-bytes="{{ $uploadLimits['effective_bytes'] }}"
+            data-max-mb="{{ $uploadLimits['effective_mb'] }}">
             @csrf
             <h3 class="text-base font-semibold text-gray-800">Upload New Package</h3>
             <div class="flex flex-col gap-2 max-w-xl">
-                <label for="plugin_zip" class="text-sm font-medium text-gray-700">Plugin ZIP (max {{ config('plugin_manager.max_zip_mb') }} MB)</label>
+                <label for="plugin_zip" class="text-sm font-medium text-gray-700">Plugin ZIP (max {{ $uploadLimits['effective_mb'] }} MB{{ $uploadLimits['effective_mb'] < $uploadLimits['max_zip_mb'] ? ' — server limit' : '' }})</label>
                 <input type="file" name="plugin_zip" id="plugin_zip" accept=".zip,application/zip" required
                     class="bg-gray-100 border border-gray-200 !p-2 text-sm w-full rounded">
                 <input type="text" name="notes" placeholder="Optional notes" maxlength="1000"

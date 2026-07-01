@@ -31,5 +31,21 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        $exceptions->renderable(function (\Illuminate\Http\Exceptions\PostTooLargeException $e, $request) {
+            if (! $request->expectsJson()) {
+                return null;
+            }
+
+            $limits = pluginManagerUploadLimits();
+
+            return response()->json([
+                'success' => false,
+                'message' => sprintf(
+                    'Upload rejected: request body exceeds server limit. Set nginx client_max_body_size and PHP upload_max_filesize/post_max_size to at least %s MB (current PHP limits: upload %s MB, post %s MB).',
+                    $limits['max_zip_mb'],
+                    $limits['php_upload_mb'],
+                    $limits['php_post_mb']
+                ),
+            ], 413);
+        });
     })->create();

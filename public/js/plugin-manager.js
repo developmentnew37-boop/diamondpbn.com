@@ -24,10 +24,22 @@
 
     async function parseJsonResponse(response) {
         const text = await response.text();
+        if (response.status === 413) {
+            let message = 'Upload rejected (413): server body size limit is too small. On nginx set client_max_body_size to at least 12M and reload nginx + PHP-FPM.';
+            if (text && text.trim().startsWith('{')) {
+                try {
+                    const payload = JSON.parse(text);
+                    if (payload.message) message = payload.message;
+                } catch {
+                    /* keep default */
+                }
+            }
+            throw new Error(message);
+        }
         try {
             return JSON.parse(text);
         } catch {
-            throw new Error(text.slice(0, 200) || `Server error (${response.status})`);
+            throw new Error(text.slice(0, 300) || `Server error (${response.status})`);
         }
     }
 
@@ -43,6 +55,15 @@
             spinner?.classList.remove('hidden');
 
             try {
+                const maxBytes = parseInt(uploadForm.dataset.maxBytes, 10) || 0;
+                const fileInput = uploadForm.querySelector('#plugin_zip');
+                const file = fileInput?.files?.[0];
+                if (file && maxBytes > 0 && file.size > maxBytes) {
+                    const fileMb = (file.size / 1024 / 1024).toFixed(2);
+                    const limitMb = uploadForm.dataset.maxMb || (maxBytes / 1024 / 1024).toFixed(2);
+                    throw new Error(`File is ${fileMb} MB but the server allows ${limitMb} MB. Increase nginx/PHP upload limits on the VPS.`);
+                }
+
                 const res = await fetch(uploadForm.dataset.uploadUrl, {
                     method: 'POST',
                     headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
@@ -187,7 +208,6 @@
             const sorted = Array.from(resultsMap.values()).sort((a, b) => a.index - b.index);
 
             els.body.innerHTML = sorted.map((r) => {
-                const detail = r.plugin_file || r.operation_result || '';
                 const message = r.message || r.error_code || '';
                 return `
                 <tr class="border-b border-gray-100">
@@ -196,8 +216,10 @@
                     <td class="!px-4 !py-2">${escapeHtml(r.category || '—')}</td>
                     <td class="!px-4 !py-2">${escapeHtml(r.version_before || '—')}</td>
                     <td class="!px-4 !py-2">${escapeHtml(r.version_after || '—')}</td>
+                    <td class="!px-4 !py-2 text-xs">${escapeHtml(r.operation_result || '—')}</td>
                     <td class="!px-4 !py-2">${statusBadge(r.item_status)}</td>
-                    <td class="!px-4 !py-2 font-mono text-xs text-gray-600">${escapeHtml(detail || '—')}</td>
+                    <td class="!px-4 !py-2 font-mono text-xs text-gray-600">${escapeHtml(r.plugin_file || '—')}</td>
+                    <td class="!px-4 !py-2 text-xs text-gray-600">${escapeHtml(r.resolved_via || '—')}</td>
                     <td class="!px-4 !py-2 text-xs text-gray-600">${escapeHtml(message)}</td>
                 </tr>
             `;

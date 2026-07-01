@@ -63,10 +63,11 @@
                 </div>
 
                 <div id="packageMetaPanel" class="theme-info-box !p-4 text-sm text-gray-700 hidden">
-                    <p><strong>WordPress folder:</strong> <code id="metaExpectedSlug" class="bg-white !px-1 rounded text-xs"></code></p>
-                    <p class="!mt-1"><strong>Library slug:</strong> <code id="metaLibrarySlug" class="bg-white !px-1 rounded text-xs"></code></p>
+                    <p><strong>Library slug:</strong> <code id="metaLibrarySlug" class="bg-white !px-1 rounded text-xs"></code></p>
+                    <p class="!mt-1"><strong>WP folder (<code>expected_slug</code>):</strong> <code id="metaExpectedSlug" class="bg-white !px-1 rounded text-xs"></code></p>
                     <p class="!mt-1"><strong>Version:</strong> <span id="metaVersion"></span></p>
-                    <p class="!mt-1 text-xs text-gray-500">Install / update / delete use the WordPress folder + version on each remote site.</p>
+                    <p class="!mt-1"><strong>Per-domain operation:</strong> auto (Install / Update / Delete based on remote inventory)</p>
+                    <p class="!mt-1 text-xs text-gray-500">Deploy sends <code>expected_slug</code> + <code>target_version</code> to WordPress — never the library slug alone.</p>
                 </div>
 
                 <input type="hidden" name="source" id="sourceInput" value="inventory">

@@ -82,8 +82,10 @@
                         <th class="!px-4 !py-3">Category</th>
                         <th class="!px-4 !py-3">Before</th>
                         <th class="!px-4 !py-3">After</th>
+                        <th class="!px-4 !py-3">Operation</th>
                         <th class="!px-4 !py-3">Status</th>
-                        <th class="!px-4 !py-3">Detail</th>
+                        <th class="!px-4 !py-3">Plugin file</th>
+                        <th class="!px-4 !py-3">Resolved via</th>
                         <th class="!px-4 !py-3">Message</th>
                     </tr>
                 </thead>

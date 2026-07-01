@@ -193,6 +193,7 @@ class PluginDeploymentController extends Controller
                 'version_before' => $item->version_before,
                 'version_after' => $item->version_after,
                 'plugin_file' => $item->plugin_file,
+                'resolved_via' => $item->resolved_via,
                 'error_code' => $item->error_code,
                 'message' => $item->message,
                 'category' => $item->category,

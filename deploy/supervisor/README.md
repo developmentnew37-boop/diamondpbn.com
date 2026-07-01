@@ -70,6 +70,14 @@ Without Option A or B, `webhook-secret-worker` sits idle and secrets never auto-
 
 **What can load the server more** (not webhook): `scheduled_campaigns` dispatch every minute, large PBN publish queues, domain status checks with many parallel HTTP calls. Use separate Supervisor programs per queue group if needed.
 
+## Plugin ZIP uploads (413 Request Entity Too Large)
+
+If plugin upload fails with **413**, nginx’s default **1 MB** body limit is blocking the ZIP before Laravel runs.
+
+1. Copy or include `deploy/nginx/upload-limits.conf` in your site’s nginx `server { }` block (`client_max_body_size 12M;`).
+2. Ensure PHP allows uploads: `upload_max_filesize = 12M`, `post_max_size = 14M` (project ships `public/.user.ini` for PHP-FPM).
+3. Reload: `sudo nginx -t && sudo systemctl reload nginx && sudo systemctl reload php8.2-fpm` (adjust PHP version).
+
 ## 5. Useful commands
 
 ```bash

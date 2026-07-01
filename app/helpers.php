@@ -129,3 +129,60 @@ if (! function_exists('extractDomainExtension')) {
         return count($parts) >= 2 ? (string) end($parts) : '';
     }
 }
+
+if (! function_exists('parseIniSizeBytes')) {
+    /**
+     * Parse PHP ini size values (e.g. 8M, 512K) into bytes.
+     */
+    function parseIniSizeBytes(string|false|null $value): int
+    {
+        if ($value === false || $value === null || $value === '') {
+            return PHP_INT_MAX;
+        }
+
+        $value = trim(strtolower((string) $value));
+        $unit = substr($value, -1);
+        $number = (float) $value;
+
+        return (int) match ($unit) {
+            'g' => $number * 1024 * 1024 * 1024,
+            'm' => $number * 1024 * 1024,
+            'k' => $number * 1024,
+            default => $number,
+        };
+    }
+}
+
+if (! function_exists('pluginManagerUploadLimits')) {
+    /**
+     * Effective plugin ZIP upload limit (app config vs PHP ini).
+     *
+     * @return array{
+     *     max_zip_mb: int,
+     *     php_upload_mb: float,
+     *     php_post_mb: float,
+     *     effective_bytes: int,
+     *     effective_mb: float,
+     *     validation_kb: int,
+     *     server_ready: bool
+     * }
+     */
+    function pluginManagerUploadLimits(): array
+    {
+        $maxZipMb = max(1, (int) config('plugin_manager.max_zip_mb', 10));
+        $configBytes = $maxZipMb * 1024 * 1024;
+        $uploadBytes = parseIniSizeBytes(ini_get('upload_max_filesize'));
+        $postBytes = parseIniSizeBytes(ini_get('post_max_size'));
+        $effectiveBytes = (int) min($configBytes, $uploadBytes, $postBytes);
+
+        return [
+            'max_zip_mb' => $maxZipMb,
+            'php_upload_mb' => round($uploadBytes / 1024 / 1024, 2),
+            'php_post_mb' => round($postBytes / 1024 / 1024, 2),
+            'effective_bytes' => $effectiveBytes,
+            'effective_mb' => round($effectiveBytes / 1024 / 1024, 2),
+            'validation_kb' => max(1, (int) floor($effectiveBytes / 1024)),
+            'server_ready' => $effectiveBytes >= $configBytes,
+        ];
+    }
+}

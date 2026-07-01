@@ -225,10 +225,13 @@ class PluginDeploymentService
         $agentStatus = $this->remotePluginManager->fetchAgentStatus($domain);
 
         if (! $agentStatus['plugin_manager_supported']) {
+            $minVersion = (string) config('plugin_manager.min_agent_version', '8.1.5');
+            $remoteVersion = $agentStatus['plugin_version'] ?? 'unknown';
+
             $this->markSkipped(
                 $item,
                 'agent_outdated',
-                'Remote agent does not support plugin manager API (upgrade Diamond PBN plugin manually first)'
+                "Remote agent outdated ({$remoteVersion}); requires Diamond PBN ≥ {$minVersion} with plugin manager API"
             );
 
             return;
@@ -346,18 +349,27 @@ class PluginDeploymentService
         }
 
         if (! $result['success'] && $operation === 'delete' && $result['error_code'] === 'ambiguous_plugin') {
-            $candidates = is_array($result['data']['candidates'] ?? null) ? $result['data']['candidates'] : [];
-            $candidate = $this->preflight->pickCandidateForVersion($candidates, $package->version);
-            if ($candidate !== null && ! empty($candidate['plugin_file'])) {
-                $result = $this->executeRemoteOperation(
-                    $domain,
-                    $package,
-                    'delete',
-                    $downloadUrl,
-                    false,
-                    (string) $candidate['plugin_file']
-                );
-            }
+            $result = $this->retryAmbiguousOperation(
+                $domain,
+                $package,
+                'delete',
+                $downloadUrl,
+                false,
+                $result,
+                $pluginFileHint
+            );
+        }
+
+        if (! $result['success'] && in_array($operation, ['activate', 'deactivate'], true) && $result['error_code'] === 'ambiguous_plugin') {
+            $result = $this->retryAmbiguousOperation(
+                $domain,
+                $package,
+                $operation,
+                $downloadUrl,
+                false,
+                $result,
+                $pluginFileHint
+            );
         }
 
         $responseMs = $result['response_time_ms'] ?? null;
@@ -403,11 +415,57 @@ class PluginDeploymentService
             'version_before' => $versionBefore,
             'plugin_file' => $pluginFileHint,
             'error_code' => $result['error_code'] ?? 'install_failed',
-            'message' => $result['message'],
+            'message' => $this->humanizeDeployError($result['error_code'] ?? null, $result['message'], $package),
             'attempts' => $item->attempts + 1,
             'response_time_ms' => $responseMs,
             'processed_at' => now(),
         ]);
+    }
+
+    /**
+     * @param  array{success: bool, message: string, error_code: ?string, data: array<string, mixed>, response_time_ms?: int}  $result
+     * @return array{success: bool, message: string, error_code: ?string, data: array<string, mixed>, response_time_ms?: int}
+     */
+    private function retryAmbiguousOperation(
+        Domain $domain,
+        PluginPackage $package,
+        string $operation,
+        string $downloadUrl,
+        bool $activateAfter,
+        array $result,
+        ?string $pluginFileHint
+    ): array {
+        $candidates = is_array($result['data']['candidates'] ?? null) ? $result['data']['candidates'] : [];
+        $candidate = $this->preflight->pickCandidateForVersion($candidates, $package->version);
+        $pluginFile = $candidate['plugin_file'] ?? $pluginFileHint;
+
+        if ($candidate !== null && ! empty($pluginFile)) {
+            return $this->executeRemoteOperation(
+                $domain,
+                $package,
+                $operation,
+                $downloadUrl,
+                $activateAfter,
+                (string) $pluginFile
+            );
+        }
+
+        return $result;
+    }
+
+    private function humanizeDeployError(?string $errorCode, string $message, PluginPackage $package): string
+    {
+        return match ($errorCode) {
+            'slug_mismatch' => 'ZIP folder mismatch: expected WordPress folder "'
+                .$package->expectedSlug().'" but remote rejected the slug. Re-upload the package or fix expected_slug.',
+            'checksum_mismatch' => 'Downloaded ZIP checksum did not match. Re-upload the package to the library.',
+            'invalid_download_host' => 'Signed download URL domain is not allowlisted on the WordPress site.',
+            'protected_plugin' => 'Cannot delete or deactivate the protected Diamond PBN agent plugin.',
+            'filesystem_not_writable' => 'Remote filesystem is not writable. Check hosting permissions.',
+            'agent_outdated' => 'Remote Diamond PBN agent is too old for plugin manager deploys.',
+            'ambiguous_plugin' => 'Multiple plugin versions match on the remote site. '.$message,
+            default => $message !== '' ? $message : 'Deploy operation failed.',
+        };
     }
 
     /**

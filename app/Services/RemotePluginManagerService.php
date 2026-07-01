@@ -59,10 +59,14 @@ class RemotePluginManagerService
             $supported = $body['plugin_manager_supported'] ?? ($body['data']['plugin_manager_supported'] ?? false);
             $version = $body['plugin_version'] ?? ($body['data']['plugin_version'] ?? null);
 
+            $pluginVersion = is_string($version) ? $version : null;
+            $pluginManagerSupported = filter_var($supported, FILTER_VALIDATE_BOOLEAN)
+                && $this->meetsMinAgentVersion($pluginVersion);
+
             return [
                 'ok' => true,
-                'plugin_manager_supported' => filter_var($supported, FILTER_VALIDATE_BOOLEAN),
-                'plugin_version' => is_string($version) ? $version : null,
+                'plugin_manager_supported' => $pluginManagerSupported,
+                'plugin_version' => $pluginVersion,
                 'message' => (string) ($body['message'] ?? 'Connected'),
                 'response_time_ms' => $ms,
             ];
@@ -246,6 +250,9 @@ class RemotePluginManagerService
                 ->timeout($this->requestTimeout())
                 ->connectTimeout($this->connectTimeout())
                 ->acceptJson()
+                ->withHeaders([
+                    'X-External-API-Key' => (string) $domain->api_key,
+                ])
                 ->post($url, $payload);
 
             $ms = (int) round((microtime(true) - $started) * 1000);
@@ -299,5 +306,16 @@ class RemotePluginManagerService
     public function connectTimeout(): int
     {
         return max(5, (int) config('plugin_manager.connect_timeout', 20));
+    }
+
+    public function meetsMinAgentVersion(?string $pluginVersion): bool
+    {
+        if ($pluginVersion === null || $pluginVersion === '') {
+            return false;
+        }
+
+        $minimum = (string) config('plugin_manager.min_agent_version', '8.1.5');
+
+        return version_compare($pluginVersion, $minimum, '>=');
     }
 }
