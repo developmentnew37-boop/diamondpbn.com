@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
 use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
+use App\Http\Controllers\Admin\Concerns\ProvidesLocalClientsForForms;
 use App\Http\Controllers\Admin\Concerns\ValidatesBulkCampaignIds;
 use App\Http\Controllers\Controller;
 use App\Jobs\BulkRetrySidebarCampaignTasksJob;
@@ -18,18 +19,25 @@ use App\Models\Admin\SidebarCampaignDomain;
 use App\Models\Admin\SidebarCampaignLink;
 use App\Models\Admin\SidebarCampaignTask;
 use App\Services\BlogrollApiService;
+use App\Services\LiveTaskDomainReplacement\LiveTaskBulkDomainReplacementService;
+use App\Services\LiveTaskDomainReplacement\LiveTaskReplacementProfile;
+use App\Services\LocalClientBillingService;
 use App\Services\PurgeLocalCampaignDataService;
+use App\Support\CampaignTaskStatusFilter;
 use App\Support\ReportDisplay;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Spatie\SimpleExcel\SimpleExcelWriter;
 
 class SidebarCampaignController extends Controller
 {
     use AppliesSuperAdminCampaignOwnerFilter;
     use AuthorizesAdminCampaign;
+    use ProvidesLocalClientsForForms;
     use ValidatesBulkCampaignIds;
 
     public function __construct()
@@ -104,9 +112,18 @@ class SidebarCampaignController extends Controller
         // ✅ Offset for serial numbers
         $offset = ($campaigns->currentPage() - 1) * $limit;
 
+        $replaceableCampaignIds = [];
+        if ($admin->canCreateCampaigns()) {
+            $replaceableCampaignIds = app(LiveTaskBulkDomainReplacementService::class)
+                ->replaceableCampaignIds(
+                    LiveTaskReplacementProfile::sidebar(),
+                    $campaigns->pluck('id')->all(),
+                );
+        }
+
         return view(
             'admin.campaigns.pbn-sidebar.sidebar-campaign',
-            array_merge(compact('campaigns', 'offset', 'domainCategories'), $ownerData)
+            array_merge(compact('campaigns', 'offset', 'domainCategories', 'replaceableCampaignIds'), $ownerData)
         );
     }
 
@@ -187,7 +204,8 @@ class SidebarCampaignController extends Controller
 
         $sites = Domain::all();
 
-        return view('admin.campaigns.pbn-sidebar.create-sidebar-campaign', compact('campaignId', 'domainCategory', 'domainSets', 'sites'));
+        return view('admin.campaigns.pbn-sidebar.create-sidebar-campaign', compact('campaignId', 'domainCategory', 'domainSets', 'sites'))
+            ->with('localClients', $this->activeLocalClientsForForms());
     }
 
     // ** //
@@ -227,6 +245,8 @@ class SidebarCampaignController extends Controller
             'keywordsDataHolder' => 'required|string',
             'sel_domains' => 'required|integer|in:0,1,2',
             'campaigns_domains' => 'required|string',
+            'local_client_id' => 'nullable|integer|exists:local_clients,id',
+            'billing_currency' => ['nullable', 'string', Rule::in(\App\Support\CurrencyFormatter::supportedCodes())],
         ]);
 
         $sidebarCount = (int) $request->sidebar_quantity;
@@ -286,181 +306,192 @@ class SidebarCampaignController extends Controller
 
         $campaignNo = $this->generateUniqueCampaignNo($request->campaign_no);
 
-        $campaign = DB::transaction(function () use (
-            $request,
-            $campaignNo,
-            $sidebarCount,
-            $links,
-            $domainIds,
-            $domain__methods
-        ) {
+        try {
+            $campaign = DB::transaction(function () use (
+                $request,
+                $campaignNo,
+                $sidebarCount,
+                $links,
+                $domainIds,
+                $domain__methods
+            ) {
 
-            $now = now();
+                $now = now();
 
-            // 1) master
-            $campaign = SidebarCampaign::create([
-                'campaign_no' => $campaignNo,
-                'domain_category_id' => $request->domain_category_id ?: null,
-                'admin_id' => auth('admin')->id(),
+                // 1) master
+                $campaign = SidebarCampaign::create([
+                    'campaign_no' => $campaignNo,
+                    'domain_category_id' => $request->domain_category_id ?: null,
+                    'admin_id' => auth('admin')->id(),
 
-                'sidebar_count' => $sidebarCount,
-                'domain_method' => $domain__methods[(int) $request->sel_domains],
-                'status' => 'queued',
-
-                'total_targets' => $sidebarCount,
-                'completed_targets' => 0,
-                'failed_targets' => 0,
-            ]);
-
-            // ==========================================================
-            // 2) BULK INSERT LINKS (chunk)
-            // ==========================================================
-            $linkRows = [];
-            $method = (string) ($request->keywordmethod ?? 'normal'); // normal | bulk | rawanchor
-
-            // ✅ DEBUG: Log what we're receiving
-            \Log::info('Sidebar Campaign Debug:', [
-                'method' => $method,
-                'keywordmethod_from_request' => $request->keywordmethod,
-                'first_link_sample' => $links[0] ?? null,
-            ]);
-
-            // Only Raw Anchor uses JSON arrays for sidebar campaigns
-            $isMultiple = ($method === 'rawanchor');
-
-            foreach ($links as $idx => $row) {
-                $kwVal = $row['keyword'] ?? null; // string OR array
-                $urlVal = $row['url'] ?? null;     // string OR array
-
-                // ✅ Determine types based on method
-                $kwType = $isMultiple ? 'json' : 'single';
-                $urlType = $isMultiple ? 'json' : 'single';
-
-                // ✅ Normalize storage based on method
-                if ($isMultiple) {
-                    // Store arrays as JSON. If single string comes, wrap into array.
-                    $kwArr = is_array($kwVal) ? $kwVal : (is_null($kwVal) ? [] : [$kwVal]);
-                    $urlArr = is_array($urlVal) ? $urlVal : (is_null($urlVal) ? [] : [$urlVal]);
-
-                    $linkRows[] = [
-                        'sidebar_campaign_id' => $campaign->id,
-                        'sort_order' => $idx + 1,
-                        'target_url' => json_encode($urlArr),
-                        'anchor_keyword' => json_encode($kwArr),
-                        'target_url_type' => $urlType,
-                        'anchor_keyword_type' => $kwType,
-                        'nofollow' => ! empty($row['nofollow']),
-                        'sponsored' => ! empty($row['sponsored']),
-                        'ugc' => ! empty($row['ugc']),
-                        'noopener' => ! empty($row['noopener']),
-                        'noreferrer' => ! empty($row['noreferrer']),
-                        'raw_rel_attr' => trim((string) ($row['raw_rel_attr'] ?? '')),
-                        'created_at' => $now,
-                        'updated_at' => $now,
-                    ];
-                } else {
-                    // Single string storage
-                    $linkRows[] = [
-                        'sidebar_campaign_id' => $campaign->id,
-                        'sort_order' => $idx + 1,
-                        'target_url' => trim((string) $urlVal),
-                        'anchor_keyword' => trim((string) $kwVal),
-                        'target_url_type' => $urlType,
-                        'anchor_keyword_type' => $kwType,
-                        'nofollow' => ! empty($row['nofollow']),
-                        'sponsored' => ! empty($row['sponsored']),
-                        'ugc' => ! empty($row['ugc']),
-                        'noopener' => ! empty($row['noopener']),
-                        'noreferrer' => ! empty($row['noreferrer']),
-                        'raw_rel_attr' => trim((string) ($row['raw_rel_attr'] ?? '')),
-                        'created_at' => $now,
-                        'updated_at' => $now,
-                    ];
-                }
-            }
-
-            foreach (array_chunk($linkRows, 200) as $chunk) {
-                SidebarCampaignLink::insert($chunk);
-            }
-
-            // Fetch inserted link IDs in correct pairing order (sort_order = 1..N)
-            $linkIds = SidebarCampaignLink::where('sidebar_campaign_id', $campaign->id)
-                ->orderBy('sort_order', 'asc')
-                ->pluck('id')
-                ->all();
-
-            // ==========================================================
-            // 3) BULK INSERT DOMAINS (chunk)
-            // ==========================================================
-            $domainRows = [];
-            foreach ($domainIds as $idx => $domainId) {
-                $domainRows[] = [
-                    'sidebar_campaign_id' => $campaign->id,
-                    'domain_id' => $domainId,
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ];
-            }
-
-            foreach (array_chunk($domainRows, 200) as $chunk) {
-                SidebarCampaignDomain::insert($chunk);
-            }
-
-            // Fetch inserted domain row IDs (in insertion order for this campaign)
-            $domainRowIds = SidebarCampaignDomain::where('sidebar_campaign_id', $campaign->id)
-                ->orderBy('id', 'asc')
-                ->pluck('id')
-                ->all();
-
-            // ✅ Safety: make sure we have same count (pairing will be exact)
-            if (count($linkIds) !== $sidebarCount || count($domainRowIds) !== $sidebarCount) {
-                throw new \RuntimeException('Mismatch after insert: links/domains count not equal to sidebarCount.');
-            }
-
-            // ==========================================================
-            // 4) BULK INSERT TASKS (pair domain[i] with link[i]) (chunk)
-            // ==========================================================
-            $taskRows = [];
-            for ($i = 0; $i < $sidebarCount; $i++) {
-                $taskRows[] = [
-                    'sidebar_campaign_id' => $campaign->id,
-                    'sidebar_campaign_domain_id' => $domainRowIds[$i],
-                    'sidebar_campaign_link_id' => $linkIds[$i], // ✅ required (fixes your “no default value” error)
-
+                    'sidebar_count' => $sidebarCount,
+                    'domain_method' => $domain__methods[(int) $request->sel_domains],
                     'status' => 'queued',
-                    'attempt_count' => 0,
-                    'max_attempts' => 5,
 
-                    // snapshot (single row)
-                    'links_payload' => json_encode($links[$i], JSON_UNESCAPED_UNICODE),
+                    'total_targets' => $sidebarCount,
+                    'completed_targets' => 0,
+                    'failed_targets' => 0,
+                ]);
 
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ];
-            }
+                // ==========================================================
+                // 2) BULK INSERT LINKS (chunk)
+                // ==========================================================
+                $linkRows = [];
+                $method = (string) ($request->keywordmethod ?? 'normal'); // normal | bulk | rawanchor
 
-            foreach (array_chunk($taskRows, 200) as $chunk) {
-                SidebarCampaignTask::insert($chunk);
-            }
+                // ✅ DEBUG: Log what we're receiving
+                \Log::info('Sidebar Campaign Debug:', [
+                    'method' => $method,
+                    'keywordmethod_from_request' => $request->keywordmethod,
+                    'first_link_sample' => $links[0] ?? null,
+                ]);
 
-            // Fetch task IDs for dispatch
-            $taskIds = SidebarCampaignTask::where('sidebar_campaign_id', $campaign->id)
-                ->orderBy('id', 'asc')
-                ->pluck('id')
-                ->all();
+                // Only Raw Anchor uses JSON arrays for sidebar campaigns
+                $isMultiple = ($method === 'rawanchor');
 
-            // ✅ Dispatch jobs AFTER commit (also chunk dispatch to avoid burst)
-            DB::afterCommit(function () use ($taskIds) {
-                foreach (array_chunk($taskIds, 100) as $chunk) {
-                    foreach ($chunk as $taskId) {
-                        PublishSidebarBlogrollJob::dispatch($taskId)
-                            ->onQueue('sidebar_campaigns');
+                foreach ($links as $idx => $row) {
+                    $kwVal = $row['keyword'] ?? null; // string OR array
+                    $urlVal = $row['url'] ?? null;     // string OR array
+
+                    // ✅ Determine types based on method
+                    $kwType = $isMultiple ? 'json' : 'single';
+                    $urlType = $isMultiple ? 'json' : 'single';
+
+                    // ✅ Normalize storage based on method
+                    if ($isMultiple) {
+                        // Store arrays as JSON. If single string comes, wrap into array.
+                        $kwArr = is_array($kwVal) ? $kwVal : (is_null($kwVal) ? [] : [$kwVal]);
+                        $urlArr = is_array($urlVal) ? $urlVal : (is_null($urlVal) ? [] : [$urlVal]);
+
+                        $linkRows[] = [
+                            'sidebar_campaign_id' => $campaign->id,
+                            'sort_order' => $idx + 1,
+                            'target_url' => json_encode($urlArr),
+                            'anchor_keyword' => json_encode($kwArr),
+                            'target_url_type' => $urlType,
+                            'anchor_keyword_type' => $kwType,
+                            'nofollow' => ! empty($row['nofollow']),
+                            'sponsored' => ! empty($row['sponsored']),
+                            'ugc' => ! empty($row['ugc']),
+                            'noopener' => ! empty($row['noopener']),
+                            'noreferrer' => ! empty($row['noreferrer']),
+                            'raw_rel_attr' => trim((string) ($row['raw_rel_attr'] ?? '')),
+                            'created_at' => $now,
+                            'updated_at' => $now,
+                        ];
+                    } else {
+                        // Single string storage
+                        $linkRows[] = [
+                            'sidebar_campaign_id' => $campaign->id,
+                            'sort_order' => $idx + 1,
+                            'target_url' => trim((string) $urlVal),
+                            'anchor_keyword' => trim((string) $kwVal),
+                            'target_url_type' => $urlType,
+                            'anchor_keyword_type' => $kwType,
+                            'nofollow' => ! empty($row['nofollow']),
+                            'sponsored' => ! empty($row['sponsored']),
+                            'ugc' => ! empty($row['ugc']),
+                            'noopener' => ! empty($row['noopener']),
+                            'noreferrer' => ! empty($row['noreferrer']),
+                            'raw_rel_attr' => trim((string) ($row['raw_rel_attr'] ?? '')),
+                            'created_at' => $now,
+                            'updated_at' => $now,
+                        ];
                     }
                 }
-            });
 
-            return $campaign;
-        });
+                foreach (array_chunk($linkRows, 200) as $chunk) {
+                    SidebarCampaignLink::insert($chunk);
+                }
+
+                // Fetch inserted link IDs in correct pairing order (sort_order = 1..N)
+                $linkIds = SidebarCampaignLink::where('sidebar_campaign_id', $campaign->id)
+                    ->orderBy('sort_order', 'asc')
+                    ->pluck('id')
+                    ->all();
+
+                // ==========================================================
+                // 3) BULK INSERT DOMAINS (chunk)
+                // ==========================================================
+                $domainRows = [];
+                foreach ($domainIds as $idx => $domainId) {
+                    $domainRows[] = [
+                        'sidebar_campaign_id' => $campaign->id,
+                        'domain_id' => $domainId,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
+                }
+
+                foreach (array_chunk($domainRows, 200) as $chunk) {
+                    SidebarCampaignDomain::insert($chunk);
+                }
+
+                // Fetch inserted domain row IDs (in insertion order for this campaign)
+                $domainRowIds = SidebarCampaignDomain::where('sidebar_campaign_id', $campaign->id)
+                    ->orderBy('id', 'asc')
+                    ->pluck('id')
+                    ->all();
+
+                // ✅ Safety: make sure we have same count (pairing will be exact)
+                if (count($linkIds) !== $sidebarCount || count($domainRowIds) !== $sidebarCount) {
+                    throw new \RuntimeException('Mismatch after insert: links/domains count not equal to sidebarCount.');
+                }
+
+                // ==========================================================
+                // 4) BULK INSERT TASKS (pair domain[i] with link[i]) (chunk)
+                // ==========================================================
+                $taskRows = [];
+                for ($i = 0; $i < $sidebarCount; $i++) {
+                    $taskRows[] = [
+                        'sidebar_campaign_id' => $campaign->id,
+                        'sidebar_campaign_domain_id' => $domainRowIds[$i],
+                        'sidebar_campaign_link_id' => $linkIds[$i], // ✅ required (fixes your “no default value” error)
+
+                        'status' => 'queued',
+                        'attempt_count' => 0,
+                        'max_attempts' => 5,
+
+                        // snapshot (single row)
+                        'links_payload' => json_encode($links[$i], JSON_UNESCAPED_UNICODE),
+
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
+                }
+
+                foreach (array_chunk($taskRows, 200) as $chunk) {
+                    SidebarCampaignTask::insert($chunk);
+                }
+
+                // Fetch task IDs for dispatch
+                $taskIds = SidebarCampaignTask::where('sidebar_campaign_id', $campaign->id)
+                    ->orderBy('id', 'asc')
+                    ->pluck('id')
+                    ->all();
+
+                // ✅ Dispatch jobs AFTER commit (also chunk dispatch to avoid burst)
+                DB::afterCommit(function () use ($taskIds) {
+                    foreach (array_chunk($taskIds, 100) as $chunk) {
+                        foreach ($chunk as $taskId) {
+                            PublishSidebarBlogrollJob::dispatch($taskId)
+                                ->onQueue('sidebar_campaigns');
+                        }
+                    }
+                });
+
+                app(LocalClientBillingService::class)->applyFromRequest(
+                    $request,
+                    $campaign,
+                    $domainIds,
+                    'sidebar',
+                );
+
+                return $campaign;
+            });
+        } catch (ValidationException $e) {
+            return back()->withErrors($e->errors())->withInput();
+        }
 
         return redirect()
             ->route('admin.sidebar.campaign.create')
@@ -474,33 +505,40 @@ class SidebarCampaignController extends Controller
     {
         // ✅ Fetch only fields needed by this page
         $campaign = SidebarCampaign::query()
-            ->select(['id', 'campaign_no', 'last_bulk_updated_at'])
+            ->with('localClient')
+            ->select(['id', 'campaign_no', 'last_bulk_updated_at', 'local_client_id', 'billing_total', 'billing_currency', 'billing_snapshot', 'billing_payment_status', 'billing_payment_note', 'billing_paid_at', 'admin_id'])
             ->findOrFail($id);
 
         // Pagination
         $limit = 100;
+        $statusFilter = $request->string('status')->toString();
+        $tasksQuery = SidebarCampaignTask::query()->where('sidebar_campaign_id', $campaign->id);
+        $statusCounts = CampaignTaskStatusFilter::counts($tasksQuery);
 
         // ✅ Fetch sidebar tasks (this is equivalent to CampaignPost)
-        $campaignTasks = SidebarCampaignTask::query()
-            ->select([
-                'id',
-                'sidebar_campaign_id',
-                'sidebar_campaign_domain_id',
-                'sidebar_campaign_link_id',
-                'status',
-                'remote_id',
-                'remote_url',
-                'attempt_count',
-                'last_error',
-                'next_retry_at',
-                'content_updated_at',
-                'created_at',
-            ])
-            ->with([
-                'domainRow.domain',   // SidebarCampaignDomain → Domain
-                'linkRow',            // SidebarCampaignLink
-            ])
-            ->where('sidebar_campaign_id', $campaign->id)
+        $campaignTasks = CampaignTaskStatusFilter::apply(
+            SidebarCampaignTask::query()
+                ->select([
+                    'id',
+                    'sidebar_campaign_id',
+                    'sidebar_campaign_domain_id',
+                    'sidebar_campaign_link_id',
+                    'status',
+                    'remote_id',
+                    'remote_url',
+                    'attempt_count',
+                    'last_error',
+                    'next_retry_at',
+                    'content_updated_at',
+                    'created_at',
+                ])
+                ->with([
+                    'domainRow.domain',   // SidebarCampaignDomain → Domain
+                    'linkRow',            // SidebarCampaignLink
+                ])
+                ->where('sidebar_campaign_id', $campaign->id),
+            $statusFilter
+        )
             ->orderByDesc('id')
             ->paginate($limit)
             ->withQueryString();
@@ -516,7 +554,7 @@ class SidebarCampaignController extends Controller
 
         return view(
             'admin.campaigns.pbn-sidebar.view-campaign',
-            compact('campaign', 'campaignTasks', 'offset', 'hasPublishedLinks')
+            compact('campaign', 'campaignTasks', 'offset', 'hasPublishedLinks', 'statusFilter', 'statusCounts')
         );
     }
 

@@ -191,10 +191,15 @@
             <div class="flex items-start gap-3">
                 <span class="material-symbols-outlined text-[var(--primary-color)] !text-xl">info</span>
                 <div class="text-sm text-gray-700">
-                    Checks run on the <strong>domainCheck</strong> queue via a queue worker.
-                    Start the worker: <code class="bg-white !px-1 rounded text-xs">php artisan queue:work --queue=domainCheck</code>
+                    Status Checker UI runs on <strong>domainCheck</strong>; scheduled inventory sync uses
+                    <strong>domainHealthSync</strong> so bulk health checks do not block this page.
+                    Start workers:
+                    <code class="bg-white !px-1 rounded text-xs">php artisan queue:work --queue=domainCheck,domainHealthSync</code>
                     Slow sites get a <strong>second verification pass</strong> before marked disconnected.
-                    Endpoint: <code class="bg-white !px-1 rounded text-xs">/wp-json/external/v1/status</code>
+                    Default probe: <code class="bg-white !px-1 rounded text-xs">GET /wp-json/external/v1/status</code>
+                    Inventory checks use <strong>Authenticated POST</strong>
+                    <code class="bg-white !px-1 rounded text-xs">POST /wp-json/external/v1/status/check</code>
+                    when GET is blocked (enabled by default for inventory runs).
                 </div>
             </div>
         </div>
@@ -252,6 +257,18 @@
                     </p>
                 </div>
             </div>
+
+            <label class="inline-flex items-start gap-2 text-sm text-gray-700 cursor-pointer max-w-2xl">
+                <input type="checkbox" name="use_authenticated_check" value="1" class="rounded !mt-0.5" id="use_authenticated_check" checked>
+                <span>
+                    Use authenticated <strong>POST /status/check</strong> when public GET fails
+                    <span class="block text-xs text-gray-500 !mt-0.5">
+                        Recommended when GET /status is intercepted by Wordfence/Cloudflare.
+                        Uses each inventory domain’s stored API key to verify connectivity and key validity.
+                        Domains without an API key still use the public GET probe only.
+                    </span>
+                </span>
+            </label>
 
             <div class="flex flex-wrap gap-2">
                 <button type="submit" class="theme-btn" id="statusCheckSubmitBtn">
@@ -314,6 +331,7 @@
                         <th class="!px-4 !py-3">#</th>
                         <th class="!px-4 !py-3">Domain</th>
                         <th class="!px-4 !py-3">Connection</th>
+                        <th class="!px-4 !py-3">Classification</th>
                         <th class="!px-4 !py-3">In System</th>
                         <th class="!px-4 !py-3">Category</th>
                         <th class="!px-4 !py-3">Message</th>

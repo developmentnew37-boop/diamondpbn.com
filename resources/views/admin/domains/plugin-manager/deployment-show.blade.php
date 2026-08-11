@@ -86,6 +86,7 @@
                         <th class="!px-4 !py-3">Status</th>
                         <th class="!px-4 !py-3">Plugin file</th>
                         <th class="!px-4 !py-3">Resolved via</th>
+                        <th class="!px-4 !py-3">Audit</th>
                         <th class="!px-4 !py-3">Message</th>
                     </tr>
                 </thead>

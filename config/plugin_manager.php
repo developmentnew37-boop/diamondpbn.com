@@ -4,7 +4,31 @@ return [
 
     'max_domains_per_deployment' => (int) env('PLUGIN_MANAGER_MAX_DOMAINS', 500),
 
-    'max_zip_mb' => (int) env('PLUGIN_MANAGER_MAX_ZIP_MB', 10),
+    /*
+     * The WordPress agent accepts ZIP downloads up to 50 MB. The dashboard
+     * upload ceiling may be lowered independently, while the legacy
+     * PLUGIN_MANAGER_MAX_ZIP_MB variable remains supported by both settings.
+     */
+    'agent_max_zip_mb' => (int) env(
+        'PLUGIN_MANAGER_AGENT_MAX_ZIP_MB',
+        env('PLUGIN_MANAGER_MAX_ZIP_MB', 50)
+    ),
+
+    'dashboard_max_zip_mb' => (int) env(
+        'PLUGIN_MANAGER_DASHBOARD_MAX_ZIP_MB',
+        env('PLUGIN_MANAGER_MAX_ZIP_MB', 50)
+    ),
+
+    // Backward-compatible key used by existing upload code.
+    'max_zip_mb' => (int) env(
+        'PLUGIN_MANAGER_DASHBOARD_MAX_ZIP_MB',
+        env('PLUGIN_MANAGER_MAX_ZIP_MB', 50)
+    ),
+
+    'max_zip_bytes' => (int) env(
+        'PLUGIN_MANAGER_AGENT_MAX_ZIP_BYTES',
+        (int) env('PLUGIN_MANAGER_AGENT_MAX_ZIP_MB', env('PLUGIN_MANAGER_MAX_ZIP_MB', 50)) * 1024 * 1024
+    ),
 
     'storage_disk' => env('PLUGIN_MANAGER_STORAGE_DISK', 'local'),
 
@@ -13,6 +37,14 @@ return [
     'request_timeout' => (int) env('PLUGIN_MANAGER_REQUEST_TIMEOUT', 180),
 
     'connect_timeout' => (int) env('PLUGIN_MANAGER_CONNECT_TIMEOUT', 20),
+
+    'status_timeout' => (int) env('PLUGIN_MANAGER_STATUS_TIMEOUT', 15),
+
+    'status_connect_timeout' => (int) env('PLUGIN_MANAGER_STATUS_CONNECT_TIMEOUT', 10),
+
+    'insecure_tls' => filter_var(env('PLUGIN_MANAGER_INSECURE_TLS', false), FILTER_VALIDATE_BOOL),
+
+    'download_timeout' => (int) env('PLUGIN_MANAGER_DOWNLOAD_TIMEOUT', 300),
 
     'job_timeout' => (int) env('PLUGIN_MANAGER_JOB_TIMEOUT', 400),
 
@@ -28,7 +60,14 @@ return [
 
     'retention_days' => (int) env('PLUGIN_MANAGER_RETENTION_DAYS', 30),
 
-    'require_inventory_match' => (bool) env('PLUGIN_MANAGER_REQUIRE_INVENTORY', true),
+    'require_inventory' => filter_var(env('PLUGIN_MANAGER_REQUIRE_INVENTORY', true), FILTER_VALIDATE_BOOL),
+
+    // Backward-compatible name used by earlier dashboard builds.
+    'require_inventory_match' => filter_var(env('PLUGIN_MANAGER_REQUIRE_INVENTORY', true), FILTER_VALIDATE_BOOL),
+
+    'http_retry_attempts' => (int) env('PLUGIN_MANAGER_HTTP_RETRY_ATTEMPTS', 2),
+
+    'http_retry_max_delay_ms' => (int) env('PLUGIN_MANAGER_HTTP_RETRY_MAX_DELAY_MS', 1000),
 
     'require_connected_domain' => (bool) env('PLUGIN_MANAGER_REQUIRE_CONNECTED', true),
 

@@ -3,74 +3,42 @@
 namespace App\Jobs;
 
 use App\Models\Admin\Domain;
+use App\Services\WordPressAgentStatusService;
 use Illuminate\Bus\Queueable;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 
 class CheckDomainStatus implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    protected $domain, $category_id, $admin_id, $da, $dr, $tf, $ss, $ip, $api_key;
+    public function __construct(public readonly int $domainId) {}
 
-    public function __construct($domain, $category_id, $admin_id, $da, $dr, $tf, $ss, $ip, $api_key)
+    public function handle(WordPressAgentStatusService $statusService): void
     {
-        $this->domain = $domain;
-        $this->category_id = $category_id;
-        $this->admin_id = $admin_id;
-        $this->da = $da;
-        $this->dr = $dr;
-        $this->tf = $tf;
-        $this->ss = $ss;
-        $this->ip = $ip;
-        $this->api_key = $api_key;
-    }
+        $domain = Domain::query()->find($this->domainId);
 
-    public function handle()
-    {
-        $url = "https://{$this->domain}/wp-json/external/v1/status";
+        if ($domain === null) {
+            Log::warning('Domain status check skipped because domain was deleted', [
+                'domain_id' => $this->domainId,
+            ]);
 
-        $status = 0;  // Default: Not connected
-        $message = "Plugin Missing / API Route Not Found"; // Default message
-
-        try {
-            $response = Http::withoutVerifying()->timeout(30)->get($url);
-
-            if ($response->successful() && $response->json('status') == true) {
-                $status = 1;
-                $message = $response->json('message') ?? "Connected Successfully";
-            } else {
-                $status = 0;
-                $message = $response->json('message') ?? "Plugin Not Installed OR Invalid Endpoint";
-            }
-
-        } catch (\Exception $e) {
-            $status = 0;
-            $message = "Request Failed: ".$e->getMessage();
+            return;
         }
 
-        // Save or update domain (no duplicates)
-        Domain::updateOrCreate(
-            ['name' => $this->domain],
+        $apiKey = '';
+        try {
+            $apiKey = trim((string) ($domain->api_key ?? ''));
+        } catch (\Throwable) {
+            $apiKey = '';
+        }
 
-            [
-                'domain_category_id' => $this->category_id,
-                'admin_id' => $this->admin_id,
-                'da' => $this->da,
-                'dr' => $this->dr,
-                'tf' => $this->tf,
-                'ss' => $this->ss,
-                'ip' => $this->ip,
-                'api_key' => $this->api_key,
-                'status' => $status,
-            ]
-        );
+        $result = $statusService->probeWithAuthFallback((string) $domain->name, $apiKey);
+        $domain->forceFill($result->healthAttributes($domain->last_seen_at))->save();
 
-        // Log result clearly
-        Log::info("Domain Check → {$this->domain} | Status: {$status} | Message: {$message}");
+        Log::info("Domain Check → {$domain->name} | Code: {$result->code} | Probe: {$result->probeMethod} | Message: {$result->message}");
     }
 }

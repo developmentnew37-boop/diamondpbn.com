@@ -29,22 +29,23 @@ class HiddenLinksCampaignTasks extends Model
         'lock_token',
         'locked_until',
         'content_updated_at',
+        'dispatch_generation',
     ];
 
     protected $casts = [
-        'links_payload'    => 'array',
-        'remote_response'  => 'array',
+        'links_payload' => 'array',
+        'remote_response' => 'array',
 
-        'attempt_count'    => 'integer',
-        'max_attempts'     => 'integer',
-        'http_status'      => 'integer',
+        'attempt_count' => 'integer',
+        'max_attempts' => 'integer',
+        'http_status' => 'integer',
 
-        'next_retry_at'     => 'datetime',
-        'published_at'      => 'datetime',
-        'started_at'        => 'datetime',
-        'finished_at'       => 'datetime',
-        'locked_at'         => 'datetime',
-        'locked_until'      => 'datetime',
+        'next_retry_at' => 'datetime',
+        'published_at' => 'datetime',
+        'started_at' => 'datetime',
+        'finished_at' => 'datetime',
+        'locked_at' => 'datetime',
+        'locked_until' => 'datetime',
         'content_updated_at' => 'datetime',
     ];
 

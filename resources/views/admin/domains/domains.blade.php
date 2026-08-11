@@ -309,7 +309,7 @@
                                         <td class="border border-gray-200 font-sans !px-2 !py-[6px]">{{ $domain->ip }}
                                         </td>
                                         <td class="border border-gray-200 font-sans !px-2 !py-[6px]">
-                                            {{ $domain->api_key }}</td>
+                                            ••••••••••••</td>
                                         <td class="border border-gray-200 font-sans !px-2 !py-[6px] text-center">
                                             <div class="flex flex-col items-center">
                                                 @if ($domain->status == '1')

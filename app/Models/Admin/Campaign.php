@@ -43,17 +43,31 @@ class Campaign extends Model
         'total_targets',
         'completed_targets',
         'failed_targets',
+        'converted_to_schedule_campaign_id',
+        'conversion_locked_at',
         'started_at',
         'finished_at',
         'last_bulk_updated_at',
+        'local_client_id',
+        'billing_total',
+        'billing_currency',
+        'billing_snapshot',
+        'billing_payment_status',
+        'billing_paid_at',
+        'billing_paid_by_admin_id',
+        'billing_payment_note',
     ];
 
     protected $casts = [
-        'started_at'            => 'datetime',
-        'finished_at'           => 'datetime',
-        'last_bulk_updated_at'  => 'datetime',
+        'is_sticky_campaign' => 'boolean',
+        'conversion_locked_at' => 'datetime',
+        'started_at' => 'datetime',
+        'finished_at' => 'datetime',
+        'last_bulk_updated_at' => 'datetime',
+        'billing_snapshot' => 'array',
+        'billing_total' => 'decimal:2',
+        'billing_paid_at' => 'datetime',
     ];
-
 
     protected static function booted()
     {
@@ -82,5 +96,20 @@ class Campaign extends Model
     public function campaignPosts()
     {
         return $this->hasMany(CampaignPost::class, 'campaign_id');
+    }
+
+    public function domainReplacements()
+    {
+        return $this->hasMany(CampaignDomainReplacement::class, 'campaign_id');
+    }
+
+    public function convertedScheduleCampaign()
+    {
+        return $this->belongsTo(ScheduleCampaign::class, 'converted_to_schedule_campaign_id');
+    }
+
+    public function localClient()
+    {
+        return $this->belongsTo(LocalClient::class, 'local_client_id');
     }
 }

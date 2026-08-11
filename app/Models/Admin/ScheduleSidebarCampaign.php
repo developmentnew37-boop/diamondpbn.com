@@ -21,16 +21,31 @@ class ScheduleSidebarCampaign extends Model
         'failed_targets',
         'started_at',
         'finished_at',
+        'converted_from_sidebar_campaign_id',
+        'conversion_run_date',
+        'conversion_mode',
+        'conversion_pipeline_status',
+        'local_client_id',
+        'billing_total',
+        'billing_currency',
+        'billing_snapshot',
+        'billing_payment_status',
+        'billing_paid_at',
+        'billing_paid_by_admin_id',
+        'billing_payment_note',
     ];
 
     protected $casts = [
         'schedule_from_date' => 'date',
-        'schedule_to_date'   => 'date',
-        'started_at'         => 'datetime',
-        'finished_at'        => 'datetime',
+        'schedule_to_date' => 'date',
+        'started_at' => 'datetime',
+        'finished_at' => 'datetime',
+        'conversion_run_date' => 'date',
+        'billing_snapshot' => 'array',
+        'billing_total' => 'decimal:2',
+        'billing_paid_at' => 'datetime',
     ];
 
-    
     protected static function booted()
     {
         static::creating(function ($campaign) {
@@ -40,7 +55,6 @@ class ScheduleSidebarCampaign extends Model
         });
     }
 
-
     /* =========================
      | Relationships
      ========================= */
@@ -49,7 +63,6 @@ class ScheduleSidebarCampaign extends Model
     {
         return $this->belongsTo(DomainCategory::class, 'domain_category_id');
     }
-
 
     public function links()
     {
@@ -83,6 +96,11 @@ class ScheduleSidebarCampaign extends Model
         )->orderBy('schedule_date');
     }
 
+    public function sourceSidebarCampaign()
+    {
+        return $this->belongsTo(SidebarCampaign::class, 'converted_from_sidebar_campaign_id');
+    }
+
     /**
      * Set finished_at and status from current counts when all tasks are done.
      * Call after changing completed_targets/failed_targets (e.g. after deleting a task)
@@ -108,5 +126,10 @@ class ScheduleSidebarCampaign extends Model
             $this->status = 'failed';
         }
         $this->save();
+    }
+
+    public function localClient()
+    {
+        return $this->belongsTo(LocalClient::class, 'local_client_id');
     }
 }

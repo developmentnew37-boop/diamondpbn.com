@@ -2,6 +2,8 @@
 
 namespace App\Jobs;
 
+use App\Models\Admin\SidebarCampaign;
+use App\Models\Admin\SidebarCampaignTask;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -12,25 +14,20 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Throwable;
 
-use App\Models\Admin\SidebarCampaign;
-use App\Models\Admin\SidebarCampaignTask;
-use App\Models\Admin\SidebarCampaignDomain;
-use App\Models\Admin\SidebarCampaignLink;
-
 class PublishSidebarBlogrollJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 1;
 
-    public function __construct(public int $taskId)
+    public function __construct(public int $taskId, public int $dispatchGeneration = 0)
     {
         $this->onQueue('sidebar_campaigns');
     }
 
     public function handle(): void
     {
-        $lockTtlSec  = config('campaign.jobs.lock_ttl_seconds');
+        $lockTtlSec = config('campaign.jobs.lock_ttl_seconds');
         $maxAttempts = config('campaign.jobs.max_internal_retries');
         $baseBackoff = config('campaign.jobs.base_backoff_seconds');
 
@@ -44,19 +41,31 @@ class PublishSidebarBlogrollJob implements ShouldQueue
                 ->lockForUpdate()
                 ->find($this->taskId);
 
-            if (!$t) return null;
+            if (! $t) {
+                return null;
+            }
 
-            if (in_array($t->status, ['success', 'failed'], true)) return null;
-            if ($t->campaign && in_array($t->campaign->status, ['paused', 'cancelled'], true)) return null;
+            if ((int) $t->dispatch_generation !== $this->dispatchGeneration) {
+                return null;
+            }
 
-            if ($t->next_retry_at && $t->next_retry_at->isFuture()) return null;
+            if (in_array($t->status, ['success', 'failed'], true)) {
+                return null;
+            }
+            if ($t->campaign && in_array($t->campaign->status, ['paused', 'cancelled'], true)) {
+                return null;
+            }
+
+            if ($t->next_retry_at && $t->next_retry_at->isFuture()) {
+                return null;
+            }
 
             if ($t->locked_at && $t->locked_at->gt(now()->subSeconds($lockTtlSec))) {
                 return null;
             }
 
-            $t->status     = 'publishing';
-            $t->locked_at  = now();
+            $t->status = 'publishing';
+            $t->locked_at = now();
             $t->lock_token = $lockToken;
             $t->started_at = $t->started_at ?: now();
             $t->save();
@@ -64,7 +73,9 @@ class PublishSidebarBlogrollJob implements ShouldQueue
             return $t;
         });
 
-        if (!$task) return;
+        if (! $task) {
+            return;
+        }
 
         // Load relations needed
         $task->load([
@@ -76,14 +87,14 @@ class PublishSidebarBlogrollJob implements ShouldQueue
         try {
             // 🧠 STEP 2: Prepare endpoint + payload
             $domain = $task->domainRow?->domain;
-            $link   = $task->linkRow;
+            $link = $task->linkRow;
 
-            if (!$domain || !$link) {
+            if (! $domain || ! $link) {
                 throw new \Exception("Missing domain/link relation for task_id={$task->id}");
             }
 
             $apiKey = $domain->api_key ?? null;
-            if (!$apiKey) {
+            if (! $apiKey) {
                 throw new \Exception("Domain api_key missing domain_id={$domain->id}");
             }
 
@@ -91,11 +102,11 @@ class PublishSidebarBlogrollJob implements ShouldQueue
             if ($base === '') {
                 throw new \Exception("Domain name missing domain_id={$domain->id}");
             }
-            if (!preg_match('~^https?://~i', $base)) {
-                $base = 'https://' . $base;
+            if (! preg_match('~^https?://~i', $base)) {
+                $base = 'https://'.$base;
             }
 
-            $endpoint = rtrim($base, '/') . '/wp-json/external/v1/blogroll/add';
+            $endpoint = rtrim($base, '/').'/wp-json/external/v1/blogroll/add';
 
             // ✅ Always read boolean fields (needed for payload)
             $nofollow = (bool) ($link->nofollow ?? false);
@@ -105,7 +116,7 @@ class PublishSidebarBlogrollJob implements ShouldQueue
             $noreferrer = (bool) ($link->noreferrer ?? false);
 
             // ✅ Check if raw_rel_attr is available (from raw anchor mode)
-            $rawRelAttr = trim((string)($link->raw_rel_attr ?? ''));
+            $rawRelAttr = trim((string) ($link->raw_rel_attr ?? ''));
 
             if ($rawRelAttr !== '') {
                 // ✅ Use the complete rel string from raw HTML (supports ANY rel values)
@@ -177,7 +188,7 @@ class PublishSidebarBlogrollJob implements ShouldQueue
 
                 $payload = [
                     'keyword' => $keyword,
-                    'link'    => $targetUrl,
+                    'link' => $targetUrl,
                     'api_key' => (string) $apiKey,
                     'nofollow' => $nofollow ? 1 : 0,
                     'no_follow' => $nofollow ? 1 : 0,
@@ -207,8 +218,8 @@ class PublishSidebarBlogrollJob implements ShouldQueue
                     ->withBody(safeJsonEncode($payload), 'application/json; charset=utf-8')
                     ->post($endpoint);
 
-                if (!$res->successful()) {
-                    throw new \Exception("WP blogroll API failed ({$res->status()}): " . $res->body());
+                if (! $res->successful()) {
+                    throw new \Exception("WP blogroll API failed ({$res->status()}): ".$res->body());
                 }
 
                 $json = $res->json();
@@ -220,7 +231,7 @@ class PublishSidebarBlogrollJob implements ShouldQueue
                 ) {
                     $remoteId = (string) $json['data'][0]['id'];
                 }
-                if (!is_array($json)) {
+                if (! is_array($json)) {
                     $json = ['raw' => $res->body()];
                 }
 
@@ -236,24 +247,26 @@ class PublishSidebarBlogrollJob implements ShouldQueue
             DB::transaction(function () use ($task, $finalResponse, $finalRemoteId) {
 
                 $fresh = SidebarCampaignTask::lockForUpdate()->find($task->id);
-                if (!$fresh || $fresh->lock_token !== $task->lock_token) return;
+                if (! $fresh || $fresh->lock_token !== $task->lock_token) {
+                    return;
+                }
 
-                $fresh->status         = 'success';
-                $fresh->remote_id      = $finalRemoteId;
-                $fresh->http_status    = 200;
+                $fresh->status = 'success';
+                $fresh->remote_id = $finalRemoteId;
+                $fresh->http_status = 200;
                 $fresh->remote_response = $finalResponse;
-                $fresh->published_at   = now();
-                $fresh->finished_at    = now();
-                $fresh->last_error     = null;
-                $fresh->next_retry_at  = null;
-                $fresh->locked_at      = null;
-                $fresh->lock_token     = null;
+                $fresh->published_at = now();
+                $fresh->finished_at = now();
+                $fresh->last_error = null;
+                $fresh->next_retry_at = null;
+                $fresh->locked_at = null;
+                $fresh->lock_token = null;
                 $fresh->save();
 
                 // 🔒 LOCK campaign row FIRST
                 $campaign = SidebarCampaign::lockForUpdate()->find($fresh->sidebar_campaign_id);
 
-                if (!$campaign) {
+                if (! $campaign) {
                     return;
                 }
 
@@ -277,7 +290,9 @@ class PublishSidebarBlogrollJob implements ShouldQueue
             DB::transaction(function () use ($task, $e, $maxAttempts, $baseBackoff) {
 
                 $fresh = SidebarCampaignTask::lockForUpdate()->find($task->id);
-                if (!$fresh || $fresh->lock_token !== $task->lock_token) return;
+                if (! $fresh || $fresh->lock_token !== $task->lock_token) {
+                    return;
+                }
 
                 $fresh->attempt_count++;
                 $fresh->last_error = $e->getMessage();
@@ -290,19 +305,19 @@ class PublishSidebarBlogrollJob implements ShouldQueue
                     $delay = min($delay, 3600); // max 1 hour
 
                     $fresh->next_retry_at = now()->addSeconds($delay);
-                    $fresh->locked_at  = null;
+                    $fresh->locked_at = null;
                     $fresh->lock_token = null;
                     $fresh->save();
 
                     // ✅ re-dispatch job with delay
-                    PublishSidebarBlogrollJob::dispatch($fresh->id)
+                    PublishSidebarBlogrollJob::dispatch($fresh->id, (int) $fresh->dispatch_generation)
                         ->onQueue('sidebar_campaigns')
                         ->delay(now()->addSeconds($delay));
                 } else {
 
                     $fresh->status = 'failed';
                     $fresh->next_retry_at = null;
-                    $fresh->locked_at  = null;
+                    $fresh->locked_at = null;
                     $fresh->lock_token = null;
                     $fresh->finished_at = now();
                     $fresh->save();
@@ -312,7 +327,9 @@ class PublishSidebarBlogrollJob implements ShouldQueue
 
                     $campaign = SidebarCampaign::lockForUpdate()->find($fresh->sidebar_campaign_id);
 
-                    if (!$campaign) return;
+                    if (! $campaign) {
+                        return;
+                    }
 
                     $currentTotal = $campaign->completed_targets + $campaign->failed_targets; //
 
@@ -340,11 +357,15 @@ class PublishSidebarBlogrollJob implements ShouldQueue
     private function finalizeSidebarCampaignIfDone(int $campaignId): void
     {
         $campaign = SidebarCampaign::find($campaignId);
-        if (!$campaign) return;
+        if (! $campaign) {
+            return;
+        }
 
         $totalDone = $campaign->completed_targets + $campaign->failed_targets;
 
-        if ($totalDone < $campaign->total_targets) return;
+        if ($totalDone < $campaign->total_targets) {
+            return;
+        }
 
         $campaign->finished_at = now();
 

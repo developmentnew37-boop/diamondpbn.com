@@ -216,42 +216,78 @@ class PluginDeploymentService
             return;
         }
 
-        if (config('plugin_manager.require_connected_domain', true) && (int) $domain->status !== 1) {
-            $this->markSkipped($item, 'disconnected', 'Domain is not connected (plugin status check failed)');
+        $agentStatus = $this->remotePluginManager->fetchAgentStatus($domain);
+        $auditTrail = [$this->remotePluginManager->agentStatusAudit($domain, $agentStatus)];
+
+        if (! $agentStatus['ok']) {
+            $this->markSkipped(
+                $item,
+                (string) ($agentStatus['code'] ?? 'domain_offline'),
+                (string) ($agentStatus['message'] ?? 'Remote agent status check failed'),
+                metadata: [
+                    'http_status' => $agentStatus['http_status'] ?? null,
+                    'probe_method' => $agentStatus['probe_method'] ?? 'status',
+                    'response_time_ms' => $agentStatus['response_time_ms'] ?? null,
+                    'audit_trail' => $auditTrail,
+                ]
+            );
 
             return;
         }
 
-        $agentStatus = $this->remotePluginManager->fetchAgentStatus($domain);
-
         if (! $agentStatus['plugin_manager_supported']) {
             $minVersion = (string) config('plugin_manager.min_agent_version', '8.1.5');
             $remoteVersion = $agentStatus['plugin_version'] ?? 'unknown';
+            $code = (string) ($agentStatus['code'] ?? 'agent_unsupported');
 
             $this->markSkipped(
                 $item,
-                'agent_outdated',
-                "Remote agent outdated ({$remoteVersion}); requires Diamond PBN ≥ {$minVersion} with plugin manager API"
+                $code,
+                $code === 'agent_outdated'
+                    ? "Remote agent outdated ({$remoteVersion}); requires Diamond PBN ≥ {$minVersion} with plugin manager API"
+                    : "Remote agent does not support plugin management ({$remoteVersion}); requires Diamond PBN ≥ {$minVersion}",
+                metadata: [
+                    'http_status' => $agentStatus['http_status'] ?? null,
+                    'probe_method' => $agentStatus['probe_method'] ?? 'status',
+                    'response_time_ms' => $agentStatus['response_time_ms'] ?? null,
+                    'audit_trail' => $auditTrail,
+                ]
             );
 
             return;
         }
 
         $inventoryResult = $this->remotePluginManager->fetchPluginsInventory($domain);
-        $inventory = $inventoryResult['ok'] ? $inventoryResult['plugins'] : [];
+        $auditTrail = array_merge($auditTrail, $inventoryResult['audit'] ?? []);
+        $inventory = $inventoryResult['ok'] ? $inventoryResult['plugins'] : null;
 
         if (! $inventoryResult['ok']) {
+            if ($this->requiresInventory()) {
+                $this->markInventoryUnavailable($item, $inventoryResult, $auditTrail);
+
+                return;
+            }
+
             $pluginInfo = $this->remotePluginManager->fetchPluginInfo($domain, $package);
-            if ($pluginInfo['found']) {
+            $auditTrail = array_merge($auditTrail, $pluginInfo['audit'] ?? []);
+
+            if ($pluginInfo['ok'] && $pluginInfo['found'] === true) {
                 $inventory = [[
                     'slug' => $package->expectedSlug(),
                     'version' => $pluginInfo['version'],
                     'plugin_file' => $pluginInfo['plugin_file'],
                     'active' => $pluginInfo['active'],
                 ]];
+            } elseif ($pluginInfo['ok'] && $pluginInfo['found'] === false && $pluginInfo['http_status'] === 404) {
+                $inventory = [];
+            } else {
+                $this->markInventoryUnavailable($item, $pluginInfo, $auditTrail);
+
+                return;
             }
         }
 
+        /** @var array<int, array<string, mixed>> $inventory */
         $folderMatch = $this->preflight->findFolderMatch($inventory, $package);
         $exactMatch = $this->preflight->findExactVersionMatch($inventory, $package);
         $versionBefore = $exactMatch['version'] ?? $folderMatch['version'] ?? null;
@@ -274,7 +310,8 @@ class PluginDeploymentService
                 $exactMatch !== null ? 'already_current' : 'plugin_not_found',
                 $message,
                 $versionBefore,
-                $exactMatch !== null ? $versionBefore : null
+                $exactMatch !== null ? $versionBefore : null,
+                $this->resultMetadata($inventoryResult, $auditTrail)
             );
 
             return;
@@ -287,7 +324,8 @@ class PluginDeploymentService
                     'already_current',
                     'Already on version '.$package->version,
                     $versionBefore,
-                    $versionBefore
+                    $versionBefore,
+                    $this->resultMetadata($inventoryResult, $auditTrail)
                 );
 
                 return;
@@ -301,7 +339,8 @@ class PluginDeploymentService
                     'already_current',
                     'Already on version '.$versionBefore,
                     $versionBefore,
-                    $versionBefore
+                    $versionBefore,
+                    $this->resultMetadata($inventoryResult, $auditTrail)
                 );
 
                 return;
@@ -314,17 +353,13 @@ class PluginDeploymentService
                     'already_newer',
                     'Remote version '.$versionBefore.' is newer than package',
                     $versionBefore,
-                    $versionBefore
+                    $versionBefore,
+                    $this->resultMetadata($inventoryResult, $auditTrail)
                 );
 
                 return;
             }
 
-            if (in_array($intent, ['update', 'update_if_older'], true) && $folderMatch === null && $exactMatch === null) {
-                $this->markSkipped($item, 'plugin_not_found', 'Plugin not installed — use Install operation', $versionBefore);
-
-                return;
-            }
         }
 
         $result = $this->executeRemoteOperation(
@@ -335,6 +370,8 @@ class PluginDeploymentService
             $deployment->activate_after,
             $pluginFileHint
         );
+        $auditTrail = array_merge($auditTrail, $result['audit'] ?? []);
+        $correctedOperation = false;
 
         if (! $result['success'] && $operation === 'install' && $result['error_code'] === 'plugin_already_installed') {
             $result = $this->executeRemoteOperation(
@@ -346,30 +383,41 @@ class PluginDeploymentService
                 $pluginFileHint
             );
             $operation = 'update';
+            $correctedOperation = true;
+            $auditTrail = array_merge($auditTrail, $result['audit'] ?? []);
         }
 
-        if (! $result['success'] && $operation === 'delete' && $result['error_code'] === 'ambiguous_plugin') {
-            $result = $this->retryAmbiguousOperation(
+        if (! $correctedOperation
+            && ! $result['success']
+            && $operation === 'update'
+            && $result['error_code'] === 'plugin_not_found') {
+            $result = $this->executeRemoteOperation(
                 $domain,
                 $package,
-                'delete',
+                'install',
                 $downloadUrl,
-                false,
-                $result,
+                $deployment->activate_after,
                 $pluginFileHint
             );
+            $operation = 'install';
+            $correctedOperation = true;
+            $auditTrail = array_merge($auditTrail, $result['audit'] ?? []);
         }
 
-        if (! $result['success'] && in_array($operation, ['activate', 'deactivate'], true) && $result['error_code'] === 'ambiguous_plugin') {
-            $result = $this->retryAmbiguousOperation(
+        if (! $result['success'] && $result['error_code'] === 'ambiguous_plugin') {
+            $ambiguousResult = $this->retryAmbiguousOperation(
                 $domain,
                 $package,
                 $operation,
                 $downloadUrl,
-                false,
+                in_array($operation, ['install', 'update'], true) && $deployment->activate_after,
                 $result,
                 $pluginFileHint
             );
+            if ($ambiguousResult !== $result) {
+                $auditTrail = array_merge($auditTrail, $ambiguousResult['audit'] ?? []);
+            }
+            $result = $ambiguousResult;
         }
 
         $responseMs = $result['response_time_ms'] ?? null;
@@ -387,7 +435,8 @@ class PluginDeploymentService
                     'already_current',
                     $result['message'] ?: 'Already at target version',
                     $data['previous_version'] ?? $versionBefore,
-                    $data['new_version'] ?? $versionBefore
+                    $data['new_version'] ?? $versionBefore,
+                    $this->resultMetadata($result, $auditTrail)
                 );
 
                 return;
@@ -403,6 +452,7 @@ class PluginDeploymentService
                 'message' => $result['message'],
                 'attempts' => $item->attempts + 1,
                 'response_time_ms' => $responseMs,
+                ...$this->resultMetadata($result, $auditTrail),
                 'processed_at' => now(),
             ]);
 
@@ -418,6 +468,7 @@ class PluginDeploymentService
             'message' => $this->humanizeDeployError($result['error_code'] ?? null, $result['message'], $package),
             'attempts' => $item->attempts + 1,
             'response_time_ms' => $responseMs,
+            ...$this->resultMetadata($result, $auditTrail),
             'processed_at' => now(),
         ]);
     }
@@ -480,8 +531,22 @@ class PluginDeploymentService
         ?string $pluginFileHint
     ): array {
         return match ($operation) {
-            'install' => $this->remotePluginManager->installOrUpdate($domain, 'install', $package, $downloadUrl, $activateAfter),
-            'update' => $this->remotePluginManager->installOrUpdate($domain, 'update', $package, $downloadUrl, $activateAfter),
+            'install' => $this->remotePluginManager->installOrUpdate(
+                $domain,
+                'install',
+                $package,
+                $downloadUrl,
+                $activateAfter,
+                $pluginFileHint
+            ),
+            'update' => $this->remotePluginManager->installOrUpdate(
+                $domain,
+                'update',
+                $package,
+                $downloadUrl,
+                $activateAfter,
+                $pluginFileHint
+            ),
             'activate' => $this->remotePluginManager->activate($domain, $package),
             'deactivate' => $this->remotePluginManager->deactivate($domain, $package),
             'delete' => $this->remotePluginManager->deletePlugin($domain, $package, $pluginFileHint),
@@ -491,6 +556,11 @@ class PluginDeploymentService
                 'error_code' => 'invalid_operation',
                 'data' => [],
                 'response_time_ms' => 0,
+                'http_status' => null,
+                'request_url' => null,
+                'probe_method' => 'action:unknown',
+                'retry_count' => 0,
+                'audit' => [],
             ],
         };
     }
@@ -500,7 +570,8 @@ class PluginDeploymentService
         string $errorCode,
         string $message,
         ?string $versionBefore = null,
-        ?string $versionAfter = null
+        ?string $versionAfter = null,
+        array $metadata = []
     ): void {
         $item->update([
             'item_status' => 'skipped',
@@ -510,8 +581,50 @@ class PluginDeploymentService
             'version_before' => $versionBefore,
             'version_after' => $versionAfter,
             'attempts' => $item->attempts + 1,
+            ...$metadata,
             'processed_at' => now(),
         ]);
+    }
+
+    /** @param array<string, mixed> $result */
+    private function markInventoryUnavailable(
+        PluginDeploymentItem $item,
+        array $result,
+        array $auditTrail
+    ): void {
+        $item->update([
+            'item_status' => 'failed',
+            'operation_result' => 'failed',
+            'error_code' => 'inventory_unavailable',
+            'message' => 'Plugin inventory could not be verified; no remote change was attempted. '
+                .((string) ($result['message'] ?? 'Inventory request failed')),
+            'attempts' => $item->attempts + 1,
+            ...$this->resultMetadata($result, $auditTrail),
+            'processed_at' => now(),
+        ]);
+    }
+
+    /** @param array<string, mixed> $result */
+    private function resultMetadata(array $result, array $auditTrail): array
+    {
+        $lastAudit = $auditTrail !== [] ? $auditTrail[array_key_last($auditTrail)] : [];
+
+        return [
+            'http_status' => $result['http_status'] ?? ($lastAudit['http_status'] ?? null),
+            'request_url' => $result['request_url'] ?? ($lastAudit['request_url'] ?? null),
+            'probe_method' => $result['probe_method'] ?? ($lastAudit['probe_method'] ?? null),
+            'retry_count' => (int) ($result['retry_count'] ?? 0),
+            'audit_trail' => $auditTrail,
+            'response_time_ms' => $result['response_time_ms'] ?? ($lastAudit['response_time_ms'] ?? null),
+        ];
+    }
+
+    private function requiresInventory(): bool
+    {
+        return (bool) config(
+            'plugin_manager.require_inventory',
+            config('plugin_manager.require_inventory_match', true)
+        );
     }
 
     public function recalculateStats(PluginDeployment $deployment): void
@@ -587,6 +700,77 @@ class PluginDeploymentService
     }
 
     /**
+     * @param  array<int, string>  $uuids
+     * @return array{deleted: int, cancelled: int, not_found: int}
+     */
+    public function bulkDeleteDeployments(array $uuids, int $adminId): array
+    {
+        $uuids = array_values(array_unique(array_filter($uuids)));
+        $deleted = 0;
+        $cancelled = 0;
+
+        $deployments = PluginDeployment::query()
+            ->where('admin_id', $adminId)
+            ->whereIn('uuid', $uuids)
+            ->get()
+            ->keyBy('uuid');
+
+        foreach ($uuids as $uuid) {
+            $deployment = $deployments->get($uuid);
+            if (! $deployment) {
+                continue;
+            }
+
+            if ($deployment->isActive()) {
+                $cancelled++;
+            }
+
+            $this->deleteDeployment($deployment);
+            $deleted++;
+        }
+
+        return [
+            'deleted' => $deleted,
+            'cancelled' => $cancelled,
+            'not_found' => max(0, count($uuids) - $deleted),
+        ];
+    }
+
+    /**
+     * @return array{deleted: int, cancelled: int}
+     */
+    public function clearAllDeployments(int $adminId): array
+    {
+        $deleted = 0;
+        $cancelled = 0;
+
+        $deploymentIds = PluginDeployment::query()
+            ->where('admin_id', $adminId)
+            ->orderBy('id')
+            ->pluck('id')
+            ->all();
+
+        foreach ($deploymentIds as $deploymentId) {
+            $deployment = PluginDeployment::query()->find($deploymentId);
+            if (! $deployment) {
+                continue;
+            }
+
+            if ($deployment->isActive()) {
+                $cancelled++;
+            }
+
+            $this->deleteDeployment($deployment);
+            $deleted++;
+        }
+
+        return [
+            'deleted' => $deleted,
+            'cancelled' => $cancelled,
+        ];
+    }
+
+    /**
      * @return array{pending: int, processing: int, processed: int, progress_percent: int}
      */
     public function progressMetrics(PluginDeployment $deployment): array
@@ -654,8 +838,14 @@ class PluginDeploymentService
 
     public function jobTimeoutSeconds(): int
     {
+        // Per item: inventory plus at most initial, corrective, and ambiguity-resolving actions.
+        $worstCaseRemoteSeconds = $this->remotePluginManager->requestTimeout()
+            * $this->remotePluginManager->retryAttempts()
+            * 4
+            * $this->chunkSize();
+
         return max(
-            $this->remotePluginManager->requestTimeout() * $this->chunkSize() + 60,
+            $worstCaseRemoteSeconds + 60,
             (int) config('plugin_manager.job_timeout', 400)
         );
     }
@@ -687,7 +877,8 @@ class PluginDeploymentService
                 'id', 'domain', 'sort_order', 'item_status', 'operation_result',
                 'version_before', 'version_after', 'plugin_file', 'resolved_via',
                 'error_code', 'message',
-                'category', 'response_time_ms', 'processed_at', 'updated_at',
+                'category', 'response_time_ms', 'http_status', 'request_url',
+                'probe_method', 'audit_trail', 'retry_count', 'processed_at', 'updated_at',
             ]);
 
         if ($since !== null && $since !== '') {

@@ -178,6 +178,7 @@
     <form action="{{ route('admin.schedule.sidebar.campaign.store') }}" method="POST"
         class="w-full flex flex-wrap justify-between items-start content-card" id="sidebar-campaign">
         @csrf
+        @include('admin.campaigns.partials.local-client-billing-fields', ['billingCampaignType' => 'schedule_sidebar'])
         <h2 class="text-xl capitalize !mb-4 bg-[var(--primary-color)] text-white w-fit !p-2 rounded">Create Schedule Sidebar
             Campaigns
         </h2>

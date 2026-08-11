@@ -21,6 +21,11 @@ class PluginDeploymentItem extends Model
         'message',
         'attempts',
         'response_time_ms',
+        'http_status',
+        'request_url',
+        'probe_method',
+        'audit_trail',
+        'retry_count',
         'in_inventory',
         'domain_id',
         'category',
@@ -29,6 +34,7 @@ class PluginDeploymentItem extends Model
 
     protected $casts = [
         'in_inventory' => 'boolean',
+        'audit_trail' => 'array',
         'processed_at' => 'datetime',
     ];
 

@@ -71,6 +71,7 @@
 
         <div class="w-full flex flex-wrap justify-between items-start content-card">
             @csrf
+            @include('admin.campaigns.partials.local-client-billing')
             <div class="flex flex-wrap items-center gap-2 !mb-4">
                 <h2 class="text-lg capitalize bg-[var(--primary-color)] text-white w-fit !p-3 rounded">
                     {{ $campaign->campaign_no }} Blogroll Campaigns
@@ -97,6 +98,14 @@
                     Bulk delete selected
                 </button>
             </form>
+
+            @include('admin.campaigns.partials.post-status-filters', [
+                'routeName' => 'admin.sidebar.campaign.show',
+                'routeParameter' => 'campaign',
+                'campaign' => $campaign,
+                'statusFilter' => $statusFilter,
+                'statusCounts' => $statusCounts,
+            ])
 
             <div class="overflow-x-auto !mt-3 w-full">
                 <table
@@ -232,11 +241,26 @@
                                 {{-- Actions --}}
                                 <td class="border !px-2 !py-2">
                                     <div class="flex gap-2 justify-center">
+                                        @php
+                                            $canReplaceDomain = in_array($task->status, ['queued', 'failed'], true)
+                                                && ! $task->remote_id
+                                                && ! $task->remote_url
+                                                && ! $task->published_at
+                                                && ! $task->locked_at
+                                                && ! $task->lock_token;
+                                        @endphp
                                         @if ($task->status !== 'success')
                                             <a href="{{ route('admin.sidebar.campaign.retry.task', $task->id) }}"
                                                 class="bg-orange-500 rounded w-7 h-7 flex items-center justify-center"
                                                 title="Manual retry from first">
                                                 <span class="material-symbols-outlined text-white text-sm">refresh</span>
+                                            </a>
+                                        @endif
+                                        @if ($canReplaceDomain)
+                                            <a href="{{ route('admin.sidebar.campaign.domain-replacement.create', $task->id) }}"
+                                                class="bg-blue-600 rounded w-7 h-7 flex items-center justify-center hover:bg-blue-700"
+                                                title="Replace domain">
+                                                <span class="material-symbols-outlined text-white text-sm">swap_horiz</span>
                                             </a>
                                         @endif
                                         @if ($task->remote_id)

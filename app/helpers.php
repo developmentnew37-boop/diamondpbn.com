@@ -159,6 +159,7 @@ if (! function_exists('pluginManagerUploadLimits')) {
      *
      * @return array{
      *     max_zip_mb: int,
+     *     agent_max_zip_mb: int,
      *     php_upload_mb: float,
      *     php_post_mb: float,
      *     effective_bytes: int,
@@ -167,22 +168,26 @@ if (! function_exists('pluginManagerUploadLimits')) {
      *     server_ready: bool
      * }
      */
-    function pluginManagerUploadLimits(): array
+    function pluginManagerUploadLimits(?int $phpUploadBytes = null, ?int $phpPostBytes = null): array
     {
-        $maxZipMb = max(1, (int) config('plugin_manager.max_zip_mb', 10));
+        $dashboardLimit = config('plugin_manager.dashboard_max_zip_mb');
+        $maxZipMb = max(1, (int) ($dashboardLimit ?? config('plugin_manager.max_zip_mb', 50)));
+        $agentMaxZipMb = max(1, (int) config('plugin_manager.agent_max_zip_mb', 50));
         $configBytes = $maxZipMb * 1024 * 1024;
-        $uploadBytes = parseIniSizeBytes(ini_get('upload_max_filesize'));
-        $postBytes = parseIniSizeBytes(ini_get('post_max_size'));
-        $effectiveBytes = (int) min($configBytes, $uploadBytes, $postBytes);
+        $agentBytes = $agentMaxZipMb * 1024 * 1024;
+        $uploadBytes = $phpUploadBytes ?? parseIniSizeBytes(ini_get('upload_max_filesize'));
+        $postBytes = $phpPostBytes ?? parseIniSizeBytes(ini_get('post_max_size'));
+        $effectiveBytes = (int) min($configBytes, $agentBytes, $uploadBytes, $postBytes);
 
         return [
             'max_zip_mb' => $maxZipMb,
+            'agent_max_zip_mb' => $agentMaxZipMb,
             'php_upload_mb' => round($uploadBytes / 1024 / 1024, 2),
             'php_post_mb' => round($postBytes / 1024 / 1024, 2),
             'effective_bytes' => $effectiveBytes,
             'effective_mb' => round($effectiveBytes / 1024 / 1024, 2),
             'validation_kb' => max(1, (int) floor($effectiveBytes / 1024)),
-            'server_ready' => $effectiveBytes >= $configBytes,
+            'server_ready' => $uploadBytes >= $configBytes && $postBytes >= $configBytes,
         ];
     }
 }

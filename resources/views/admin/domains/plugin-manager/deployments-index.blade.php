@@ -87,9 +87,35 @@
                 </a>
             </div>
         @else
+            <div id="deploymentHistoryPanel"
+                class="flex flex-col gap-3"
+                data-bulk-delete-url="{{ route('admin.plugin-manager.deployments.bulk-destroy') }}"
+                data-clear-url="{{ route('admin.plugin-manager.deployments.clear') }}">
+
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 !pb-3 border-b border-gray-100">
+                    <div class="flex flex-wrap items-center gap-3">
+                        <label class="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+                            <input type="checkbox" id="deploymentSelectAll" class="pm-history-checkbox rounded border-gray-300">
+                            <span>Select all on page</span>
+                        </label>
+                        <span id="deploymentSelectedCount" class="text-xs text-gray-500 hidden"></span>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button type="button" id="deploymentBulkDeleteBtn" class="pm-btn pm-btn-muted !min-h-[38px] !py-2 text-sm" disabled>
+                            <span class="material-symbols-outlined !text-base">delete</span>
+                            Delete selected
+                        </button>
+                        <button type="button" id="deploymentClearHistoryBtn" class="pm-btn pm-btn-danger !min-h-[38px] !py-2 text-sm">
+                            <span class="material-symbols-outlined !text-base">delete_sweep</span>
+                            Clear all history
+                        </button>
+                    </div>
+                </div>
+
             <div class="pm-history-table-wrap">
                 <table class="pm-history-table">
                     <colgroup>
+                        <col class="pm-col-select">
                         <col class="pm-col-started">
                         <col class="pm-col-package">
                         <col class="pm-col-operation">
@@ -101,6 +127,7 @@
                     </colgroup>
                     <thead>
                         <tr>
+                            <th class="pm-th-select"></th>
                             <th>Started</th>
                             <th>Package</th>
                             <th>Operation</th>
@@ -119,6 +146,14 @@
                                 $scopeLabel = $deployment->domainCategory?->name ?? ($deployment->source === 'manual' ? 'Manual list' : '—');
                             @endphp
                             <tr class="pm-history-row" data-deployment-uuid="{{ $deployment->uuid }}">
+                                <td>
+                                    <div class="pm-cell pm-cell-select">
+                                        <input type="checkbox"
+                                            class="pm-history-checkbox deployment-row-checkbox rounded border-gray-300"
+                                            value="{{ $deployment->uuid }}"
+                                            aria-label="Select deployment from {{ $deployment->created_at->format('M j, Y H:i') }}">
+                                    </div>
+                                </td>
                                 <td>
                                     <div class="pm-cell pm-cell-date">
                                         <span class="pm-cell-primary">{{ $deployment->created_at->format('M j, Y') }}</span>
@@ -218,10 +253,11 @@
             </div>
 
             @if ($deployments->hasPages())
-                <div class="!mt-6 flex justify-center">
-                    {{ $deployments->links() }}
+                <div class="pm-history-pagination">
+                    {{ $deployments->onEachSide(1)->links() }}
                 </div>
             @endif
+            </div>
         @endif
     </div>
 @endsection

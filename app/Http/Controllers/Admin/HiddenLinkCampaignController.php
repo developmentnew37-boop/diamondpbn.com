@@ -2,34 +2,41 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
+use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
+use App\Http\Controllers\Admin\Concerns\ProvidesLocalClientsForForms;
+use App\Http\Controllers\Admin\Concerns\ValidatesBulkCampaignIds;
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
+use App\Jobs\BulkDeleteHiddenLinkCampaignsJob;
+use App\Jobs\BulkDeleteHiddenLinksJob;
+use App\Jobs\BulkRetryHiddenLinksCampaignTasksJob;
+use App\Jobs\BulkUpdateHiddenLinksJob;
+use App\Jobs\PublishHiddenLinksJob;
+use App\Models\Admin\Domain;
 use App\Models\Admin\DomainCategory;
 use App\Models\Admin\DomainSet;
-use Illuminate\Support\Facades\Auth;
-use App\Models\Admin\Domain;
-use Illuminate\Support\Facades\DB;
+use App\Models\Admin\HiddenLinksCampaign;
 use App\Models\Admin\HiddenLinksCampaignDomains;
 use App\Models\Admin\HiddenLinksCampaignLinks;
 use App\Models\Admin\HiddenLinksCampaignTasks;
-use App\Models\Admin\HiddenLinksCampaign;
-use App\Jobs\PublishHiddenLinksJob;
-use App\Jobs\BulkUpdateHiddenLinksJob;
-use App\Jobs\BulkDeleteHiddenLinksJob;
-use App\Jobs\BulkRetryHiddenLinksCampaignTasksJob;
-use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
-use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
-use App\Http\Controllers\Admin\Concerns\ValidatesBulkCampaignIds;
-use App\Jobs\BulkDeleteHiddenLinkCampaignsJob;
+use App\Services\LiveTaskDomainReplacement\LiveTaskBulkDomainReplacementService;
+use App\Services\LiveTaskDomainReplacement\LiveTaskReplacementProfile;
+use App\Services\LocalClientBillingService;
 use App\Services\PurgeLocalCampaignDataService;
-use App\Services\HiddenLinksApiService;
-use Spatie\SimpleExcel\SimpleExcelWriter;
+use App\Support\CampaignTaskStatusFilter;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
+use Spatie\SimpleExcel\SimpleExcelWriter;
 
 class HiddenLinkCampaignController extends Controller
 {
     use AppliesSuperAdminCampaignOwnerFilter;
     use AuthorizesAdminCampaign;
+    use ProvidesLocalClientsForForms;
     use ValidatesBulkCampaignIds;
 
     public function __construct()
@@ -51,7 +58,7 @@ class HiddenLinkCampaignController extends Controller
         // ✅ Remove empty search from URL
         if ($request->has('search') && trim($request->search) === '') {
             return redirect()->to(
-                url()->current() . '?' . http_build_query(
+                url()->current().'?'.http_build_query(
                     $request->except('search')
                 )
             );
@@ -66,8 +73,8 @@ class HiddenLinkCampaignController extends Controller
                 'domains',
                 // optional future use
                 'tasks as total_tasks',
-                'tasks as success_tasks' => fn($q) => $q->where('status', 'success'),
-                'tasks as failed_tasks'  => fn($q) => $q->where('status', 'failed'),
+                'tasks as success_tasks' => fn ($q) => $q->where('status', 'success'),
+                'tasks as failed_tasks' => fn ($q) => $q->where('status', 'failed'),
             ]);
 
         // 🔍 Search by campaign_no
@@ -75,7 +82,7 @@ class HiddenLinkCampaignController extends Controller
             $query->where(
                 'campaign_no',
                 'LIKE',
-                '%' . trim($request->search) . '%'
+                '%'.trim($request->search).'%'
             );
         }
 
@@ -89,9 +96,18 @@ class HiddenLinkCampaignController extends Controller
 
         $offset = ($campaigns->currentPage() - 1) * $limit;
 
+        $replaceableCampaignIds = [];
+        if ($admin->canCreateCampaigns()) {
+            $replaceableCampaignIds = app(LiveTaskBulkDomainReplacementService::class)
+                ->replaceableCampaignIds(
+                    LiveTaskReplacementProfile::hiddenLinks(),
+                    $campaigns->pluck('id')->all(),
+                );
+        }
+
         return view(
             'admin.campaigns.pbn-hidden-links.hidden-links-campaign',
-            array_merge(compact('campaigns', 'offset'), $ownerData)
+            array_merge(compact('campaigns', 'offset', 'replaceableCampaignIds'), $ownerData)
         );
     }
 
@@ -101,7 +117,7 @@ class HiddenLinkCampaignController extends Controller
     public function create()
     {
 
-        $campaignId = 'HLC-' . now()->format('YmdHis') . '-' . random_int(1000, 9999);
+        $campaignId = 'HLC-'.now()->format('YmdHis').'-'.random_int(1000, 9999);
         // // domain + article category
         $domainCategory = DomainCategory::all();
         // ** now providing user domain sets
@@ -109,7 +125,8 @@ class HiddenLinkCampaignController extends Controller
 
         $sites = Domain::all();
 
-        return view('admin.campaigns.pbn-hidden-links.create-hidden-links-campaign', compact('campaignId', 'domainCategory', 'domainSets', 'sites'));
+        return view('admin.campaigns.pbn-hidden-links.create-hidden-links-campaign', compact('campaignId', 'domainCategory', 'domainSets', 'sites'))
+            ->with('localClients', $this->activeLocalClientsForForms());
     }
 
     /**
@@ -125,7 +142,7 @@ class HiddenLinkCampaignController extends Controller
 
         // 2️⃣ Fallback if user enters garbage like /// or ###
         if ($base === '') {
-            $base = 'campaign-' . now()->timestamp;
+            $base = 'campaign-'.now()->timestamp;
         }
 
         $slug = $base;
@@ -140,21 +157,21 @@ class HiddenLinkCampaignController extends Controller
         return $slug;
     }
 
-
-
     public function store(Request $request)
     {
         // =====================================================
         // 1) Validate input
         // =====================================================
         $validated = $request->validate([
-            'campaign_no'         => 'required|string',
-            'domain_category_id'  => 'nullable|integer|exists:domain_categories,id',
-            'sidebar_quantity'    => 'required|integer|min:1',
+            'campaign_no' => 'required|string',
+            'domain_category_id' => 'nullable|integer|exists:domain_categories,id',
+            'sidebar_quantity' => 'required|integer|min:1',
 
-            'keywordsDataHolder'  => 'required|string', // JSON
-            'sel_domains'         => 'required|integer|in:0,1,2',
-            'campaigns_domains'   => 'required|string', // JSON
+            'keywordsDataHolder' => 'required|string', // JSON
+            'sel_domains' => 'required|integer|in:0,1,2',
+            'campaigns_domains' => 'required|string', // JSON
+            'local_client_id' => 'nullable|integer|exists:local_clients,id',
+            'billing_currency' => ['nullable', 'string', Rule::in(\App\Support\CurrencyFormatter::supportedCodes())],
         ]);
 
         $sidebarCount = (int) $request->sidebar_quantity;
@@ -163,7 +180,7 @@ class HiddenLinkCampaignController extends Controller
         // 2) Decode + validate links
         // =====================================================
         $links = json_decode((string) $request->keywordsDataHolder, true);
-        if (!is_array($links)) {
+        if (! is_array($links)) {
             return back()->with('cus__error', 'Links data is invalid JSON.')->withInput();
         }
 
@@ -171,7 +188,7 @@ class HiddenLinkCampaignController extends Controller
         // 3) Decode + validate domains
         // =====================================================
         $domainIds = json_decode((string) $request->campaigns_domains, true);
-        if (!is_array($domainIds)) {
+        if (! is_array($domainIds)) {
             return back()->with('cus__error', 'Domains data is invalid JSON.')->withInput();
         }
 
@@ -192,13 +209,13 @@ class HiddenLinkCampaignController extends Controller
         // 5) Validate each link row
         // =====================================================
         foreach ($links as $i => $row) {
-            $url = trim((string)($row['url'] ?? ''));
-            $kw  = trim((string)($row['keyword'] ?? ''));
+            $url = trim((string) ($row['url'] ?? ''));
+            $kw = trim((string) ($row['keyword'] ?? ''));
 
             if ($url === '' || $kw === '') {
                 return back()->with(
                     'cus__error',
-                    "Link row #" . ($i + 1) . " url/keyword cannot be empty."
+                    'Link row #'.($i + 1).' url/keyword cannot be empty.'
                 )->withInput();
             }
         }
@@ -212,102 +229,113 @@ class HiddenLinkCampaignController extends Controller
         // =====================================================
         // 6) Atomic DB transaction
         // =====================================================
-        $campaign = DB::transaction(function () use (
-            $request,
-            $campaignNo,
-            $sidebarCount,
-            $links,
-            $domainIds,
-            $domainMethods
-        ) {
+        try {
+            $campaign = DB::transaction(function () use (
+                $request,
+                $campaignNo,
+                $sidebarCount,
+                $links,
+                $domainIds,
+                $domainMethods
+            ) {
 
-            // -----------------------------------------
-            // A) Create campaign
-            // -----------------------------------------
-            $campaign = HiddenLinksCampaign::create([
-                'campaign_no'        => $campaignNo,
-                'domain_category_id' => $request->domain_category_id ?: null,
-                'admin_id'           => auth('admin')->id(),
+                // -----------------------------------------
+                // A) Create campaign
+                // -----------------------------------------
+                $campaign = HiddenLinksCampaign::create([
+                    'campaign_no' => $campaignNo,
+                    'domain_category_id' => $request->domain_category_id ?: null,
+                    'admin_id' => auth('admin')->id(),
 
-                'sidebar_count'      => $sidebarCount,
-                'domain_method'      => $domainMethods[(int)$request->sel_domains],
-                'status'             => 'queued',
+                    'sidebar_count' => $sidebarCount,
+                    'domain_method' => $domainMethods[(int) $request->sel_domains],
+                    'status' => 'queued',
 
-                'total_targets'      => $sidebarCount,
-                'completed_targets'  => 0,
-                'failed_targets'     => 0,
-            ]);
-
-            // -----------------------------------------
-            // B) Insert LINKS (keep IDs by index)
-            // -----------------------------------------
-            $linkIds = [];
-
-            foreach ($links as $idx => $row) {
-                $link = HiddenLinksCampaignLinks::create([
-                    'hidden_links_campaigns_id' => $campaign->id,
-                    'sort_order'                => $idx + 1,
-                    'target_url'                => trim($row['url']),
-                    'anchor_keyword'            => trim($row['keyword']),
-                    'nofollow'                  => !empty($row['nofollow']),
-                    'sponsored'                 => !empty($row['sponsored']),
-                    'ugc'                       => !empty($row['ugc']),
-                    'noopener'                  => !empty($row['noopener']),
-                    'noreferrer'                => !empty($row['noreferrer']),
-                    'raw_rel_attr'              => trim($row['raw_rel_attr'] ?? ''),
+                    'total_targets' => $sidebarCount,
+                    'completed_targets' => 0,
+                    'failed_targets' => 0,
                 ]);
 
-                $linkIds[$idx] = $link->id;
-            }
+                // -----------------------------------------
+                // B) Insert LINKS (keep IDs by index)
+                // -----------------------------------------
+                $linkIds = [];
 
-            // -----------------------------------------
-            // C) Insert DOMAINS (keep IDs by index)
-            // -----------------------------------------
-            $domainRowIds = [];
+                foreach ($links as $idx => $row) {
+                    $link = HiddenLinksCampaignLinks::create([
+                        'hidden_links_campaigns_id' => $campaign->id,
+                        'sort_order' => $idx + 1,
+                        'target_url' => trim($row['url']),
+                        'anchor_keyword' => trim($row['keyword']),
+                        'nofollow' => ! empty($row['nofollow']),
+                        'sponsored' => ! empty($row['sponsored']),
+                        'ugc' => ! empty($row['ugc']),
+                        'noopener' => ! empty($row['noopener']),
+                        'noreferrer' => ! empty($row['noreferrer']),
+                        'raw_rel_attr' => trim($row['raw_rel_attr'] ?? ''),
+                    ]);
 
-            foreach ($domainIds as $idx => $domainId) {
-                $row = HiddenLinksCampaignDomains::create([
-                    'hidden_links_campaigns_id' => $campaign->id,
-                    'domain_id'                 => $domainId,
-                ]);
-
-                $domainRowIds[$idx] = $row->id;
-            }
-
-            // -----------------------------------------
-            // D) Create TASKS (domain[i] ↔ link[i])
-            // -----------------------------------------
-            $taskIds = [];
-
-            for ($i = 0; $i < $sidebarCount; $i++) {
-                $task = HiddenLinksCampaignTasks::create([
-                    'hidden_links_campaigns_id'        => $campaign->id,
-                    'hidden_links_campaigns_domain_id' => $domainRowIds[$i],
-                    'hidden_links_campaigns_link_id'   => $linkIds[$i],
-
-                    'status'        => 'queued',
-                    'attempt_count' => 0,
-                    'max_attempts'  => 5,
-
-                    // snapshot (single link for audit/debug)
-                    'links_payload' => json_encode($links[$i], JSON_UNESCAPED_UNICODE),
-                ]);
-
-                $taskIds[] = $task->id;
-            }
-
-            // -----------------------------------------
-            // E) Dispatch jobs AFTER commit
-            // -----------------------------------------
-            DB::afterCommit(function () use ($taskIds) {
-                foreach ($taskIds as $taskId) {
-                    PublishHiddenLinksJob::dispatch($taskId)
-                        ->onQueue('hidden_links_campaigns');
+                    $linkIds[$idx] = $link->id;
                 }
-            });
 
-            return $campaign;
-        });
+                // -----------------------------------------
+                // C) Insert DOMAINS (keep IDs by index)
+                // -----------------------------------------
+                $domainRowIds = [];
+
+                foreach ($domainIds as $idx => $domainId) {
+                    $row = HiddenLinksCampaignDomains::create([
+                        'hidden_links_campaigns_id' => $campaign->id,
+                        'domain_id' => $domainId,
+                    ]);
+
+                    $domainRowIds[$idx] = $row->id;
+                }
+
+                // -----------------------------------------
+                // D) Create TASKS (domain[i] ↔ link[i])
+                // -----------------------------------------
+                $taskIds = [];
+
+                for ($i = 0; $i < $sidebarCount; $i++) {
+                    $task = HiddenLinksCampaignTasks::create([
+                        'hidden_links_campaigns_id' => $campaign->id,
+                        'hidden_links_campaigns_domain_id' => $domainRowIds[$i],
+                        'hidden_links_campaigns_link_id' => $linkIds[$i],
+
+                        'status' => 'queued',
+                        'attempt_count' => 0,
+                        'max_attempts' => 5,
+
+                        // snapshot (single link for audit/debug)
+                        'links_payload' => json_encode($links[$i], JSON_UNESCAPED_UNICODE),
+                    ]);
+
+                    $taskIds[] = $task->id;
+                }
+
+                // -----------------------------------------
+                // E) Dispatch jobs AFTER commit
+                // -----------------------------------------
+                DB::afterCommit(function () use ($taskIds) {
+                    foreach ($taskIds as $taskId) {
+                        PublishHiddenLinksJob::dispatch($taskId)
+                            ->onQueue('hidden_links_campaigns');
+                    }
+                });
+
+                app(LocalClientBillingService::class)->applyFromRequest(
+                    $request,
+                    $campaign,
+                    $domainIds,
+                    'hidden_links',
+                );
+
+                return $campaign;
+            });
+        } catch (ValidationException $e) {
+            return back()->withErrors($e->errors())->withInput();
+        }
 
         // =====================================================
         // 7) Redirect
@@ -320,40 +348,44 @@ class HiddenLinkCampaignController extends Controller
             );
     }
 
-
     /**
      * Display the specified resource.
      */
     public function show(Request $request, string $id)
     {
         $campaign = HiddenLinksCampaign::query()
-            ->with('domainCategory')
+            ->with(['domainCategory', 'localClient'])
             ->findOrFail($id);
 
         $limit = 20;
+        $statusFilter = $request->string('status')->toString();
+        $tasksQuery = HiddenLinksCampaignTasks::query()->where('hidden_links_campaigns_id', $campaign->id);
+        $statusCounts = CampaignTaskStatusFilter::counts($tasksQuery);
 
-        $campaignTasks = HiddenLinksCampaignTasks::query()
-            ->where('hidden_links_campaigns_id', $campaign->id)
-            ->with([
-                'domainRow.domain',
-                'linkRow',
-            ])
+        $campaignTasks = CampaignTaskStatusFilter::apply(
+            HiddenLinksCampaignTasks::query()
+                ->where('hidden_links_campaigns_id', $campaign->id)
+                ->with([
+                    'domainRow.domain',
+                    'linkRow',
+                ]),
+            $statusFilter
+        )
             ->orderByDesc('id')
             ->paginate($limit)
-            ->appends($request->all());
+            ->withQueryString();
 
         $offset = ($campaignTasks->currentPage() - 1) * $limit;
 
         return view(
             'admin.campaigns.pbn-hidden-links.view-campaign',
-            compact('campaign', 'campaignTasks', 'offset')
+            compact('campaign', 'campaignTasks', 'offset', 'statusFilter', 'statusCounts')
         );
     }
 
     /**
      * This is the report page function.
      */
-
     public function report(string $campaign_no, string $token)
     {
         // 1️⃣ Validate hidden links campaign via token (PUBLIC & SECURE)
@@ -401,7 +433,6 @@ class HiddenLinkCampaignController extends Controller
     /**
      * This is the export report function.
      */
-
     public function exportReport(string $campaign_no, string $token)
     {
         // 🔐 1️⃣ Validate hidden links campaign (PUBLIC & SECURE)
@@ -458,10 +489,10 @@ class HiddenLinkCampaignController extends Controller
         foreach ($tasks as $task) {
 
             $row = [
-                'S.No'       => $sno++,
-                'Live Link'     => $task->domainRow?->domain?->name ?? '-',
-                'Domain'     => $task->domainRow?->domain?->name ?? '-',
-                'Keyword'     => $task->linkRow?->anchor_keyword ?? '-',
+                'S.No' => $sno++,
+                'Live Link' => $task->domainRow?->domain?->name ?? '-',
+                'Domain' => $task->domainRow?->domain?->name ?? '-',
+                'Keyword' => $task->linkRow?->anchor_keyword ?? '-',
                 'URL' => $task->linkRow?->target_url ?? '-',
             ];
 
@@ -483,7 +514,6 @@ class HiddenLinkCampaignController extends Controller
         return $writer->toBrowser();
     }
 
-
     /**
      * Edit campaign: show batches (distinct keyword+url) for bulk update.
      */
@@ -497,13 +527,13 @@ class HiddenLinkCampaignController extends Controller
         foreach ($links as $link) {
             $k = trim((string) ($link->anchor_keyword ?? ''));
             $u = trim((string) ($link->target_url ?? ''));
-            $key = $k . "\n" . $u;
-            if (!isset($batches[$key])) {
+            $key = $k."\n".$u;
+            if (! isset($batches[$key])) {
                 $batches[$key] = [
                     'representative_link_id' => $link->id,
-                    'keyword'               => $k,
-                    'url'                   => $u,
-                    'link_ids'              => [],
+                    'keyword' => $k,
+                    'url' => $u,
+                    'link_ids' => [],
                 ];
             }
             $batches[$key]['link_ids'][] = $link->id;
@@ -553,7 +583,7 @@ class HiddenLinkCampaignController extends Controller
 
             $base = Str::slug($raw);
             if ($base === '') {
-                $base = 'campaign-' . now()->timestamp;
+                $base = 'campaign-'.now()->timestamp;
             }
             $slug = $base;
             $counter = 1;
@@ -575,7 +605,7 @@ class HiddenLinkCampaignController extends Controller
         }
 
         $representativeLinkIds = $request->input('batch_representative_link_id', []);
-        if (!is_array($representativeLinkIds)) {
+        if (! is_array($representativeLinkIds)) {
             $representativeLinkIds = [];
         }
         $isBulkTextarea = $request->exists('bulk_urls') && $request->exists('bulk_keywords');
@@ -586,7 +616,7 @@ class HiddenLinkCampaignController extends Controller
             if ($batchUrls === null || $batchKeywords === null) {
                 return redirect()
                     ->route('admin.hidden.link.campaign.edit', $campaign->id)
-                    ->with('cus__error', 'Bulk URLs and Bulk Keywords must each have exactly ' . $expected . ' non-empty lines.')
+                    ->with('cus__error', 'Bulk URLs and Bulk Keywords must each have exactly '.$expected.' non-empty lines.')
                     ->withInput($request->only(['bulk_urls', 'bulk_keywords']))
                     ->with(
                         'edit_hidden_link_campaign_tab',
@@ -608,19 +638,19 @@ class HiddenLinkCampaignController extends Controller
         foreach ($representativeLinkIds as $index => $repLinkId) {
             $repLinkId = (int) $repLinkId;
             $representative = HiddenLinksCampaignLinks::where('hidden_links_campaigns_id', $campaign->id)->find($repLinkId);
-            if (!$representative) {
+            if (! $representative) {
                 continue;
             }
 
             $newKeyword = trim((string) ($batchKeywords[$index] ?? ''));
-            $newUrl     = trim((string) ($batchUrls[$index] ?? ''));
+            $newUrl = trim((string) ($batchUrls[$index] ?? ''));
 
             if ($newKeyword === '' || $newUrl === '') {
                 continue;
             }
 
             $oldKeyword = trim((string) ($representative->anchor_keyword ?? ''));
-            $oldUrl     = trim((string) ($representative->target_url ?? ''));
+            $oldUrl = trim((string) ($representative->target_url ?? ''));
 
             if ($oldKeyword === $newKeyword && $oldUrl === $newUrl) {
                 continue;
@@ -643,7 +673,7 @@ class HiddenLinkCampaignController extends Controller
 
             foreach ($tasks as $task) {
                 $domain = $task->domainRow?->domain;
-                if (!$domain || !$domain->api_key) {
+                if (! $domain || ! $domain->api_key) {
                     continue;
                 }
                 $updates[] = ['task_id' => $task->id, 'keyword' => $newKeyword, 'link' => $newUrl];
@@ -651,7 +681,7 @@ class HiddenLinkCampaignController extends Controller
 
             HiddenLinksCampaignLinks::whereIn('id', $linkIds)->update([
                 'anchor_keyword' => $newKeyword,
-                'target_url'     => $newUrl,
+                'target_url' => $newUrl,
             ]);
             $queuedBatches++;
         }
@@ -678,9 +708,9 @@ class HiddenLinkCampaignController extends Controller
             foreach ($chunks as $chunk) {
                 BulkUpdateHiddenLinksJob::dispatch($chunk)->onQueue('update_hidden_links');
             }
-            $msg = $queuedBatches . ' batch(es) updated in DB. ' . count($updates) . ' link(s) queued for remote update. Run: php artisan queue:work --queue=update_hidden_links';
+            $msg = $queuedBatches.' batch(es) updated in DB. '.count($updates).' link(s) queued for remote update. Run: php artisan queue:work --queue=update_hidden_links';
         } else {
-            $msg = $queuedBatches . ' batch(es) updated in database (no published links on remote yet).';
+            $msg = $queuedBatches.' batch(es) updated in database (no published links on remote yet).';
         }
 
         return redirect()
@@ -695,7 +725,7 @@ class HiddenLinkCampaignController extends Controller
     {
         $task = HiddenLinksCampaignTasks::with('campaign')->find($id);
 
-        if (!$task || !$task->campaign) {
+        if (! $task || ! $task->campaign) {
             return back()->with('cus__error', 'Task or campaign not found.');
         }
 
@@ -710,16 +740,16 @@ class HiddenLinkCampaignController extends Controller
 
         DB::transaction(function () use ($task) {
             $fresh = HiddenLinksCampaignTasks::lockForUpdate()->find($task->id);
-            if (!$fresh || $fresh->status !== 'failed') {
+            if (! $fresh || $fresh->status !== 'failed') {
                 return;
             }
-            $fresh->status        = 'queued';
+            $fresh->status = 'queued';
             $fresh->attempt_count = 0;
-            $fresh->last_error    = null;
+            $fresh->last_error = null;
             $fresh->next_retry_at = null;
-            $fresh->locked_at     = null;
-            $fresh->lock_token    = null;
-            $fresh->finished_at   = null;
+            $fresh->locked_at = null;
+            $fresh->lock_token = null;
+            $fresh->finished_at = null;
             $fresh->save();
         });
 
@@ -736,6 +766,7 @@ class HiddenLinkCampaignController extends Controller
         if (count($lines) !== $expectedCount) {
             return null;
         }
+
         return $lines;
     }
 
@@ -747,7 +778,7 @@ class HiddenLinkCampaignController extends Controller
     {
         $task = HiddenLinksCampaignTasks::with(['domainRow.domain', 'linkRow', 'campaign'])->find($id);
 
-        if (!$task || !$task->campaign) {
+        if (! $task || ! $task->campaign) {
             return back()->with('cus__error', 'Task or campaign not found.');
         }
 
@@ -759,15 +790,15 @@ class HiddenLinkCampaignController extends Controller
             $domain = $task->domainRow?->domain;
             if ($domain && $domain->api_key) {
                 $res = HiddenLinksApiService::deleteEntry($domain->name, $domain->api_key, $task->remote_id);
-                if (!$res->successful()) {
-                    return back()->with('cus__error', 'Remote delete failed: ' . $res->body());
+                if (! $res->successful()) {
+                    return back()->with('cus__error', 'Remote delete failed: '.$res->body());
                 }
             }
         }
 
         DB::transaction(function () use ($task, $postStatus, $campaignId, &$campaignDeleted) {
             $campaign = HiddenLinksCampaign::lockForUpdate()->find($campaignId);
-            if (!$campaign) {
+            if (! $campaign) {
                 throw new \RuntimeException('Campaign not found');
             }
 
@@ -782,7 +813,7 @@ class HiddenLinkCampaignController extends Controller
                 $campaign->decrement('failed_targets');
             }
 
-            $linkId     = $task->hidden_links_campaigns_link_id;
+            $linkId = $task->hidden_links_campaigns_link_id;
             $domainRowId = $task->hidden_links_campaigns_domain_id;
             $task->delete();
             if ($linkId) {
@@ -816,7 +847,7 @@ class HiddenLinkCampaignController extends Controller
         $campaign = HiddenLinksCampaign::findOrFail($id);
 
         $taskIds = $request->input('task_ids', []);
-        if (!is_array($taskIds)) {
+        if (! is_array($taskIds)) {
             $taskIds = [];
         }
         $taskIds = array_values(array_filter(array_map('intval', $taskIds)));
@@ -836,7 +867,7 @@ class HiddenLinkCampaignController extends Controller
     public function bulkDeleteCampaigns(Request $request)
     {
         $request->validate([
-            'campaign_ids'   => 'required|array',
+            'campaign_ids' => 'required|array',
             'campaign_ids.*' => 'integer|min:1',
         ]);
 
@@ -847,7 +878,7 @@ class HiddenLinkCampaignController extends Controller
 
         $admin = Auth::guard('admin')->user();
         $query = HiddenLinksCampaign::whereIn('id', $ids);
-        if (!$admin->isSuperAdmin()) {
+        if (! $admin->isSuperAdmin()) {
             $query->where('admin_id', $admin->id);
         }
         $found = $query->pluck('id')->all();
@@ -857,7 +888,8 @@ class HiddenLinkCampaignController extends Controller
 
         BulkDeleteHiddenLinkCampaignsJob::dispatch($found)->onQueue('delete_hidden_links_campaign');
 
-        $msg = count($found) . ' campaign(s) queued for deletion (remote links will be removed, then data deleted). Run: php artisan queue:work --queue=delete_hidden_links_campaign';
+        $msg = count($found).' campaign(s) queued for deletion (remote links will be removed, then data deleted). Run: php artisan queue:work --queue=delete_hidden_links_campaign';
+
         return redirect()->route('admin.hidden.link.campaign.index')->with('cus__success', $msg);
     }
 
@@ -884,7 +916,7 @@ class HiddenLinkCampaignController extends Controller
 
         return redirect()
             ->route('admin.hidden.link.campaign.index')
-            ->with('cus__success', $n . ' campaign(s) removed from this dashboard only. Remote hidden links were not deleted.');
+            ->with('cus__success', $n.' campaign(s) removed from this dashboard only. Remote hidden links were not deleted.');
     }
 
     /**
@@ -908,7 +940,7 @@ class HiddenLinkCampaignController extends Controller
 
         return redirect()
             ->route('admin.hidden.link.campaign.index')
-            ->with('cus__success', 'Bulk retry queued for ' . $n . ' hidden links campaign(s). All failed tasks will be retried in the background. Run the queue worker to process them.');
+            ->with('cus__success', 'Bulk retry queued for '.$n.' hidden links campaign(s). All failed tasks will be retried in the background. Run the queue worker to process them.');
     }
 
     /**
@@ -918,10 +950,10 @@ class HiddenLinkCampaignController extends Controller
     {
         $task = HiddenLinksCampaignTasks::with(['domainRow.domain', 'linkRow', 'campaign'])->find($id);
 
-        if (!$task) {
+        if (! $task) {
             return back()->with('cus__error', 'Task not found');
         }
-        if (!$task->remote_id) {
+        if (! $task->remote_id) {
             return back()->with('cus__error', 'Task has no remote_id; only published entries can be updated.');
         }
 
@@ -935,25 +967,25 @@ class HiddenLinkCampaignController extends Controller
     {
         $task = HiddenLinksCampaignTasks::with(['domainRow.domain', 'linkRow'])->find($id);
 
-        if (!$task || !$task->linkRow) {
+        if (! $task || ! $task->linkRow) {
             return back()->with('cus__error', 'Task or link not found');
         }
-        if (!$task->remote_id) {
+        if (! $task->remote_id) {
             return back()->with('cus__error', 'Task has no remote_id; cannot update on remote.');
         }
 
         $domain = $task->domainRow?->domain;
-        if (!$domain || !$domain->api_key) {
+        if (! $domain || ! $domain->api_key) {
             return back()->with('cus__error', 'Domain or API key missing');
         }
 
         $request->validate([
             'keyword' => 'required|string|max:500',
-            'link'    => 'required|url|max:500',
+            'link' => 'required|url|max:500',
         ]);
 
         $keyword = trim($request->keyword);
-        $link    = trim($request->link);
+        $link = trim($request->link);
 
         $res = HiddenLinksApiService::updateEntry(
             $domain->name,
@@ -966,13 +998,13 @@ class HiddenLinkCampaignController extends Controller
                 ($task->linkRow->sponsored ?? false) ? 'sponsored' : null,
             ]))
         );
-        if (!$res->successful()) {
-            return back()->with('cus__error', 'Remote update failed: ' . $res->body());
+        if (! $res->successful()) {
+            return back()->with('cus__error', 'Remote update failed: '.$res->body());
         }
 
         $task->linkRow->update([
             'anchor_keyword' => $keyword,
-            'target_url'     => $link,
+            'target_url' => $link,
         ]);
         $task->update(['content_updated_at' => now()]);
 
@@ -993,7 +1025,7 @@ class HiddenLinkCampaignController extends Controller
     public function purgeLocalOnly(string $id)
     {
         $campaign = HiddenLinksCampaign::find($id);
-        if (!$campaign) {
+        if (! $campaign) {
             return back()->with('cus__error', 'Campaign not found');
         }
         $this->authorizeCampaignAccess($campaign);

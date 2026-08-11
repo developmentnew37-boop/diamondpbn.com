@@ -20,6 +20,7 @@
           'admin.hidden.link.campaign.show',
           'admin.sticky.campaign',
       ];
+      $findCampaignRoutes = ['admin.reports.find-campaign'];
       $domainRoutes = ['admin.set', 'admin.select.category', 'admin.domain', 'admin.redirect', 'admin.webhook-secrets', 'admin.pending-domains', 'admin.transfer-domains', 'admin.domain.status-checker'];
       $articleAddRoutes = [
           'admin.articles.opt',
@@ -27,8 +28,11 @@
           'admin.articles.language',
           'admin.articles.upload',
       ];
-      $dripfeedRoutes = ['admin.schedule.campaign', 'admin.schedule.sticky.campaign', 'admin.schedule.sidebar.campaign', 'admin.wp.schedule.campaign'];
+      $dripfeedRoutes = ['admin.schedule.campaign', 'admin.schedule.sticky.campaign', 'admin.schedule.sidebar.campaign', 'admin.wp.schedule.campaign', 'admin.convert.post.converted', 'admin.convert.sidebar.converted'];
+      $isConvertCampaignActive = (str_starts_with($currentRoute, 'admin.convert.post') && ! str_starts_with($currentRoute, 'admin.convert.post.converted'))
+          || (str_starts_with($currentRoute, 'admin.convert.sidebar') && ! str_starts_with($currentRoute, 'admin.convert.sidebar.converted'));
       $userRoutes = ['admin.user'];
+      $localClientRoutes = ['admin.local-clients'];
 
       $pendingCounts = \App\Models\Admin\PendingDomain::cachedSidebarCounts();
       $pendingDomainUnviewedCount = $pendingCounts['unviewed'];
@@ -110,8 +114,25 @@
                       Post</a>
               </div>
               @endif
+          </div>
 
-              <div class="menu-item side-menu-btn order-5 {{ $isActive($domainRoutes) ? 'active' : '' }}"
+          @if ($sidebarAdmin->canCreateCampaigns())
+          <div class="menu-section">
+              <div class="menu-title">Find Campaign</div>
+              <a href="{{ route('admin.reports.find-campaign') }}"
+                  class="menu-item {{ $isActive($findCampaignRoutes) ? 'active' : '' }}">
+                  <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                  <span class="menu-text">Find Campaign</span>
+              </a>
+          </div>
+          @endif
+
+          <div class="menu-section flex flex-col">
+              <div class="menu-title shrink-0">Domains</div>
+              <div class="menu-item side-menu-btn {{ $isActive($domainRoutes) ? 'active' : '' }}"
                   data-submenu-open="{{ $isActive($domainRoutes) ? 'true' : 'false' }}">
                   <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <circle cx="12" cy="12" r="10"></circle>
@@ -120,13 +141,13 @@
                           d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z">
                       </path>
                   </svg>
-                  <span class="menu-text">Domains </span>
+                  <span class="menu-text">Domains</span>
                   <svg class="menu-arrow {{ $isActive($domainRoutes) ? 'rotate-90' : '' }}" width="16"
                       height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <polyline points="9 18 15 12 9 6"></polyline>
                   </svg>
               </div>
-              <div class="submenu order-5 {{ $isActive($domainRoutes) ? 'open' : '' }}">
+              <div class="submenu {{ $isActive($domainRoutes) ? 'open' : '' }}">
                   <a href="{{ route('admin.set.index') }}"
                       class="submenu-item {{ str_starts_with($currentRoute, 'admin.set') ? 'active' : '' }}">Domains
                       Set </a>
@@ -157,6 +178,150 @@
                   <a href="{{ route('admin.webhook-secrets.index') }}"
                       class="submenu-item {{ str_starts_with($currentRoute, 'admin.webhook-secrets') ? 'active' : '' }} !flex justify-between">Webhook Secrets</a>
               </div>
+          </div>
+
+          {{-- articles section --}}
+          <div class="menu-section ">
+              <div class="menu-title">Articles</div>
+
+              <a href="{{ route('admin.article.index') }}"
+                  class="menu-item {{ str_starts_with($currentRoute, 'admin.article.') && ! str_starts_with($currentRoute, 'admin.article.trashed') && ! str_starts_with($currentRoute, 'admin.article.restore-used') ? 'active' : '' }}">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="menu-icon">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                      <polyline points="14 2 14 8 20 8"></polyline>
+                      <line x1="16" y1="13" x2="8" y2="13"></line>
+                      <line x1="16" y1="17" x2="8" y2="17"></line>
+                      <polyline points="10 9 9 9 8 9"></polyline>
+                  </svg>
+                  <span class="menu-text">Articles</span>
+              </a>
+
+              <div class="menu-item side-menu-btn {{ $isActive($articleAddRoutes) ? 'active' : '' }}"
+                  data-submenu-open="{{ $isActive($articleAddRoutes) ? 'true' : 'false' }}">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="menu-icon">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                      <polyline points="14 2 14 8 20 8"></polyline>
+                      <line x1="12" y1="18" x2="12" y2="12"></line>
+                      <line x1="9" y1="15" x2="15" y2="15"></line>
+                  </svg>
+                  <span class="menu-text">Add Articles</span>
+                  <svg class="menu-arrow {{ $isActive($articleAddRoutes) ? 'rotate-90' : '' }}" width="16"
+                      height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+              </div>
+              <div class="submenu {{ $isActive($articleAddRoutes) ? 'open' : '' }}">
+                  <a href="{{ route('admin.articles.opt') }}"
+                      class="submenu-item {{ $currentRoute === 'admin.articles.opt' ? 'active' : '' }}">Add
+                      Articles</a>
+                  <a href="{{ route('admin.articles.category.index') }}"
+                      class="submenu-item {{ str_starts_with($currentRoute, 'admin.articles.category') ? 'active' : '' }}">Category</a>
+                  <a href="{{ route('admin.articles.language.index') }}"
+                      class="submenu-item {{ str_starts_with($currentRoute, 'admin.articles.language') ? 'active' : '' }}">Language</a>
+              </div>
+
+              <a href="{{ route('admin.articles.set.index') }}"
+                  class="menu-item {{ str_starts_with($currentRoute, 'admin.articles.set') ? 'active' : '' }}">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="menu-icon">
+                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                      <line x1="9" y1="13" x2="15" y2="13"></line>
+                      <line x1="9" y1="17" x2="15" y2="17"></line>
+                  </svg>
+                  <span class="menu-text">Article Set</span>
+              </a>
+
+              <a href="{{ route('admin.article.restore-used.index') }}"
+                  class="menu-item {{ str_starts_with($currentRoute, 'admin.article.restore-used') ? 'active' : '' }}">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="menu-icon">
+                      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                      <path d="M3 3v5h5"></path>
+                  </svg>
+                  <span class="menu-text">Restore Articles</span>
+              </a>
+
+              <a href="{{ route('admin.article.trashed.index') }}"
+                  class="menu-item {{ str_starts_with($currentRoute, 'admin.article.trashed') ? 'active' : '' }}">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="menu-icon">
+                      <path d="M3 6h18"></path>
+                      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                      <line x1="10" y1="11" x2="10" y2="17"></line>
+                      <line x1="14" y1="11" x2="14" y2="17"></line>
+                  </svg>
+                  <span class="menu-text">Delete Articles</span>
+              </a>
+          </div>
+
+          @if ($sidebarAdmin->canCreateCampaigns())
+          <div class="menu-section">
+              <div class="menu-title">Convert Campaign</div>
+              <div class="menu-item side-menu-btn {{ $isConvertCampaignActive ? 'active' : '' }}"
+                  data-submenu-open="{{ $isConvertCampaignActive ? 'true' : 'false' }}">
+                  <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M7 16V4m0 0L3 8m4-4l4 4"></path>
+                      <path d="M17 8v12m0 0l4-4m-4 4l-4-4"></path>
+                  </svg>
+                  <span class="menu-text">Convert Campaign</span>
+                  <svg class="menu-arrow {{ $isConvertCampaignActive ? 'rotate-90' : '' }}" width="16"
+                      height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+              </div>
+              <div class="submenu {{ $isConvertCampaignActive ? 'open' : '' }}">
+                  <a href="{{ route('admin.convert.post.step1') }}"
+                      class="submenu-item {{ str_starts_with($currentRoute, 'admin.convert.post') && !str_starts_with($currentRoute, 'admin.convert.post.converted') ? 'active' : '' }}">Convert post campaign</a>
+                  <a href="{{ route('admin.convert.sidebar.step1') }}"
+                      class="submenu-item {{ str_starts_with($currentRoute, 'admin.convert.sidebar') && !str_starts_with($currentRoute, 'admin.convert.sidebar.converted') ? 'active' : '' }}">Convert sidebar campaign</a>
+              </div>
+          </div>
+          @endif
+
+          <div class="menu-section ">
+              <div class="menu-title">Addons</div>
+              @if ($sidebarAdmin->canCreateCampaigns())
+              <a href="{{ route('admin.sticky.campaign.create') }}"
+                  class="menu-item {{ $currentRoute === 'admin.sticky.campaign.create' ? 'active' : '' }}">
+                  <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                      <line x1="9" y1="3" x2="9" y2="21"></line>
+                  </svg>
+                  <span class="menu-text">Sticky</span>
+              </a>
+
+              <div class="menu-item side-menu-btn {{ $isActive($dripfeedRoutes) ? 'active' : '' }}"
+                  data-submenu-open="{{ $isActive($dripfeedRoutes) ? 'true' : 'false' }}">
+                  <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <polyline points="12 6 12 12 16 14"></polyline>
+                  </svg>
+                  <span class="menu-text ">DripFeed</span>
+                  <svg class="menu-arrow {{ $isActive($dripfeedRoutes) ? 'rotate-90' : '' }}" width="16"
+                      height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+              </div>
+              <div class="submenu {{ $isActive($dripfeedRoutes) ? 'open' : '' }}">
+                  <a href="{{ route('admin.convert.post.converted.index') }}"
+                      class="submenu-item {{ str_starts_with($currentRoute, 'admin.convert.post.converted') ? 'active' : '' }}">Live → Dripfeed (posts)</a>
+                  <a href="{{ route('admin.convert.sidebar.converted.index') }}"
+                      class="submenu-item {{ str_starts_with($currentRoute, 'admin.convert.sidebar.converted') ? 'active' : '' }}">Live → Scheduled (sidebar)</a>
+                  <a href="{{ route('admin.schedule.campaign.index') }}"
+                      class="submenu-item {{ str_starts_with($currentRoute, 'admin.schedule.campaign') && !str_starts_with($currentRoute, 'admin.wp.schedule') && !str_starts_with($currentRoute, 'admin.schedule.sticky.campaign') ? 'active' : '' }}">Schedule
+                      Post</a>
+                  <a href="{{ route('admin.schedule.sticky.campaign.index') }}"
+                      class="submenu-item {{ str_starts_with($currentRoute, 'admin.schedule.sticky.campaign') ? 'active' : '' }}">Schedule Sticky Post</a>
+                  <a href="{{ route('admin.wp.schedule.campaign.index') }}"
+                      class="submenu-item {{ str_starts_with($currentRoute, 'admin.wp.schedule.campaign') ? 'active' : '' }}">WP Scheduled</a>
+                  <a href="{{ route('admin.schedule.sidebar.campaign.index') }}"
+                      class="submenu-item {{ str_starts_with($currentRoute, 'admin.schedule.sidebar.campaign') ? 'active' : '' }}">
+                      <div class="w-full !flex items-center gap-1 relative">Schedule Blogroll
+                         {{-- <span --}}
+                              {{-- class="menu-badge !text-[8px] absolute -top-2 -right-1">SOON</span> --}}
+
+                      </div>
+                  </a>
+              </div>
+              @endif
           </div>
 
           {{-- Plugin Manager: Super Admin and Admin only --}}
@@ -191,112 +356,24 @@
           </div>
           @endif
 
-          {{-- articles section --}}
-          <div class="menu-section ">
-              <div class="menu-title">Articles</div>
-
-              <a href="{{ route('admin.article.index') }}"
-                  class="menu-item {{ str_starts_with($currentRoute, 'admin.article.') && ! str_starts_with($currentRoute, 'admin.article.trashed') ? 'active' : '' }}">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="menu-icon">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                      <polyline points="14 2 14 8 20 8"></polyline>
-                      <line x1="16" y1="13" x2="8" y2="13"></line>
-                      <line x1="16" y1="17" x2="8" y2="17"></line>
-                      <polyline points="10 9 9 9 8 9"></polyline>
+          @if ($sidebarAdmin->isSuperAdmin())
+          <div class="menu-section">
+              <div class="menu-title">Local Clients</div>
+              <a href="{{ route('admin.local-clients.index') }}"
+                  class="menu-item {{ $isActive($localClientRoutes) ? 'active' : '' }}">
+                  <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                      <circle cx="9" cy="7" r="4"></circle>
+                      <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                      <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
                   </svg>
-                  <span class="menu-text">Articles</span>
-              </a>
-
-              <a href="{{ route('admin.article.trashed.index') }}"
-                  class="menu-item {{ str_starts_with($currentRoute, 'admin.article.trashed') ? 'active' : '' }}">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="menu-icon">
-                      <path d="M3 6h18"></path>
-                      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
-                      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
-                      <line x1="10" y1="11" x2="10" y2="17"></line>
-                      <line x1="14" y1="11" x2="14" y2="17"></line>
-                  </svg>
-                  <span class="menu-text">Deleted used articles</span>
-              </a>
-
-              <div class="menu-item side-menu-btn {{ $isActive($articleAddRoutes) ? 'active' : '' }}"
-                  data-submenu-open="{{ $isActive($articleAddRoutes) ? 'true' : 'false' }}">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="menu-icon">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                      <polyline points="14 2 14 8 20 8"></polyline>
-                      <line x1="12" y1="18" x2="12" y2="12"></line>
-                      <line x1="9" y1="15" x2="15" y2="15"></line>
-                  </svg>
-                  <span class="menu-text ">Add Articles</span>
-                  <svg class="menu-arrow {{ $isActive($articleAddRoutes) ? 'rotate-90' : '' }}" width="16"
-                      height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <polyline points="9 18 15 12 9 6"></polyline>
-                  </svg>
-              </div>
-              <div class="submenu {{ $isActive($articleAddRoutes) ? 'open' : '' }}">
-                  <a href="{{ route('admin.articles.opt') }}"
-                      class="submenu-item {{ $currentRoute === 'admin.articles.opt' ? 'active' : '' }}">Add
-                      Articles</a>
-                  <a href="{{ route('admin.articles.category.index') }}"
-                      class="submenu-item {{ str_starts_with($currentRoute, 'admin.articles.category') ? 'active' : '' }}">Category</a>
-                  <a href="{{ route('admin.articles.language.index') }}"
-                      class="submenu-item {{ str_starts_with($currentRoute, 'admin.articles.language') ? 'active' : '' }}">Language</a>
-              </div>
-
-              <a href="{{ route('admin.articles.set.index') }}"
-                  class="menu-item {{ str_starts_with($currentRoute, 'admin.articles.set') ? 'active' : '' }}">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="menu-icon">
-                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-                      <line x1="9" y1="13" x2="15" y2="13"></line>
-                      <line x1="9" y1="17" x2="15" y2="17"></line>
-                  </svg>
-                  <span class="menu-text">Article Set</span>
+                  <span class="menu-text">Local Clients</span>
               </a>
           </div>
+          @endif
 
-          <div class="menu-section ">
-              <div class="menu-title">Addons</div>
-              @if ($sidebarAdmin->canCreateCampaigns())
-              <a href="{{ route('admin.sticky.campaign.create') }}"
-                  class="menu-item {{ $currentRoute === 'admin.sticky.campaign.create' ? 'active' : '' }}">
-                  <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                      <line x1="9" y1="3" x2="9" y2="21"></line>
-                  </svg>
-                  <span class="menu-text">Sticky</span>
-              </a>
-
-              <div class="menu-item side-menu-btn {{ $isActive($dripfeedRoutes) ? 'active' : '' }}"
-                  data-submenu-open="{{ $isActive($dripfeedRoutes) ? 'true' : 'false' }}">
-                  <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <circle cx="12" cy="12" r="10"></circle>
-                      <polyline points="12 6 12 12 16 14"></polyline>
-                  </svg>
-                  <span class="menu-text ">DripFeed</span>
-                  <svg class="menu-arrow {{ $isActive($dripfeedRoutes) ? 'rotate-90' : '' }}" width="16"
-                      height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <polyline points="9 18 15 12 9 6"></polyline>
-                  </svg>
-              </div>
-              <div class="submenu {{ $isActive($dripfeedRoutes) ? 'open' : '' }}">
-                  <a href="{{ route('admin.schedule.campaign.index') }}"
-                      class="submenu-item {{ str_starts_with($currentRoute, 'admin.schedule.campaign') && !str_starts_with($currentRoute, 'admin.wp.schedule') && !str_starts_with($currentRoute, 'admin.schedule.sticky.campaign') ? 'active' : '' }}">Schedule
-                      Post</a>
-                  <a href="{{ route('admin.schedule.sticky.campaign.index') }}"
-                      class="submenu-item {{ str_starts_with($currentRoute, 'admin.schedule.sticky.campaign') ? 'active' : '' }}">Schedule Sticky Post</a>
-                  <a href="{{ route('admin.wp.schedule.campaign.index') }}"
-                      class="submenu-item {{ str_starts_with($currentRoute, 'admin.wp.schedule.campaign') ? 'active' : '' }}">WP Scheduled</a>
-                  <a href="{{ route('admin.schedule.sidebar.campaign.index') }}"
-                      class="submenu-item {{ str_starts_with($currentRoute, 'admin.schedule.sidebar.campaign') ? 'active' : '' }}">
-                      <div class="w-full !flex items-center gap-1 relative">Schedule Blogroll
-                         {{-- <span --}}
-                              {{-- class="menu-badge !text-[8px] absolute -top-2 -right-1">SOON</span> --}}
-
-                      </div>
-                  </a>
-              </div>
-              @endif
-
+          <div class="menu-section">
+              <div class="menu-title">Invoice Generator</div>
               <a href="{{ route('admin.invoice.generator') }}"
                   class="menu-item {{ $currentRoute === 'admin.invoice.generator' ? 'active' : '' }}">
                   <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

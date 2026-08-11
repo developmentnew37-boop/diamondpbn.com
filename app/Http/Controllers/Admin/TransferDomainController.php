@@ -25,7 +25,7 @@ class TransferDomainController extends Controller
     public function step1(Request $request): View
     {
         $query = PendingDomain::query()
-            ->select(['id', 'domain_name', 'api_key', 'viewed', 'webhook_secret_id', 'created_at'])
+            ->select(['id', 'domain_name', 'viewed', 'webhook_secret_id', 'created_at'])
             ->with('webhookSecret:id,name')
             ->where('status', 'pending')
             ->orderBy('created_at', 'desc');

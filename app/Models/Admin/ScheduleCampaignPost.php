@@ -6,15 +6,22 @@ use Illuminate\Database\Eloquent\Model;
 
 class ScheduleCampaignPost extends Model
 {
-     protected $table = 'schedule_campaigns_posts';
+    protected $table = 'schedule_campaigns_posts';
 
     protected $fillable = [
         'schedule_campaign_id',
+        'source_campaign_post_id',
+        'is_converted_live',
+        'conversion_phase',
+        'conversion_publish_date',
+        'last_conversion_error',
+        'last_conversion_attempt_at',
         'schedule_campaign_article_id',
         'schedule_campaign_domain_id',
         'schedule_at',
         'status',
         'attempt_count',
+        'dispatch_generation',
         'last_attempt_at',
         'next_retry_at',
         'last_error',
@@ -30,13 +37,15 @@ class ScheduleCampaignPost extends Model
     ];
 
     protected $casts = [
-        'schedule_at'      => 'datetime',
-        'last_attempt_at'  => 'datetime',
-        'next_retry_at'    => 'datetime',
-        'locked_at'        => 'datetime',
-        'locked_until'     => 'datetime',
-        'published_at'     => 'datetime',
-        'remote_response'  => 'array',
+        'schedule_at' => 'datetime',
+        'is_converted_live' => 'boolean',
+        'conversion_publish_date' => 'date',
+        'last_conversion_attempt_at' => 'datetime',
+        'last_attempt_at' => 'datetime',
+        'next_retry_at' => 'datetime',
+        'locked_at' => 'datetime',
+        'published_at' => 'datetime',
+        'remote_response' => 'array',
     ];
 
     /* =======================

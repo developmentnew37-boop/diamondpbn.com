@@ -83,11 +83,7 @@
                     <dt class="pd-detail-dt">API key</dt>
                     <dd class="pd-detail-dd">
                         <div class="pd-api-key-box">
-                            <code class="pd-api-key-value" id="pendingApiKey">{{ $pendingDomain->api_key }}</code>
-                            <button type="button" class="pd-copy-btn" data-api-key="{{ $pendingDomain->api_key }}" onclick="copyApiKey(this)">
-                                <span class="material-symbols-outlined !text-base">content_copy</span>
-                                Copy
-                            </button>
+                            <code class="pd-api-key-value">••••••••••••</code>
                         </div>
                     </dd>
                 </div>
@@ -271,48 +267,6 @@
 
 @push('scripts')
     <script>
-        function copyApiKey(button) {
-            const apiKey = button.getAttribute('data-api-key') || '';
-            const originalHtml = button.innerHTML;
-
-            if (navigator.clipboard && window.isSecureContext) {
-                navigator.clipboard.writeText(apiKey).then(function () {
-                    showCopySuccess(button, originalHtml);
-                }).catch(function () {
-                    fallbackCopy(apiKey, button, originalHtml);
-                });
-                return;
-            }
-
-            fallbackCopy(apiKey, button, originalHtml);
-        }
-
-        function fallbackCopy(apiKey, button, originalHtml) {
-            const textarea = document.createElement('textarea');
-            textarea.value = apiKey;
-            textarea.style.position = 'fixed';
-            textarea.style.left = '-9999px';
-            document.body.appendChild(textarea);
-            textarea.select();
-            let success = false;
-            try {
-                success = document.execCommand('copy');
-            } catch (e) {}
-            document.body.removeChild(textarea);
-            if (success) {
-                showCopySuccess(button, originalHtml);
-            }
-        }
-
-        function showCopySuccess(button, originalHtml) {
-            button.innerHTML = '<span class="material-symbols-outlined !text-base">check</span> Copied';
-            button.classList.add('is-success');
-            setTimeout(function () {
-                button.innerHTML = originalHtml;
-                button.classList.remove('is-success');
-            }, 2000);
-        }
-
         function showRejectModal() {
             document.getElementById('rejectModal').classList.remove('hidden');
             document.getElementById('rejectModal').classList.add('flex');

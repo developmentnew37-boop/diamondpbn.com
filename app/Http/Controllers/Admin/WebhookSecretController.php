@@ -8,6 +8,7 @@ use App\Models\Admin\WebhookSecret;
 use App\Services\WebhookSecretRotationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 
@@ -16,7 +17,7 @@ class WebhookSecretController extends Controller
     /**
      * Display listing of webhook secrets
      */
-    public function index(WebhookSecretRotationService $rotationService): View
+    public function index(WebhookSecretRotationService $rotationService): Response
     {
         $secrets = WebhookSecret::withCount('awaitingPendingDomains as pending_domains_count')
             ->orderBy('created_at', 'desc')
@@ -26,12 +27,12 @@ class WebhookSecretController extends Controller
         $rotationHourOptions = WebhookRotationSetting::selectableHourOptions();
         $dueForRotationCount = $rotationService->secretsDueForRotation()->count();
 
-        return view('admin.domains.webhook-secrets.index', compact(
+        return response()->view('admin.domains.webhook-secrets.index', compact(
             'secrets',
             'rotationSetting',
             'rotationHourOptions',
             'dueForRotationCount'
-        ));
+        ))->header('Cache-Control', 'no-store, private');
     }
 
     /**
@@ -51,9 +52,10 @@ class WebhookSecretController extends Controller
             'name' => 'required|string|max:255|unique:webhook_secrets,name',
         ]);
 
+        $plainSecret = WebhookSecret::generateSecret();
         $secret = WebhookSecret::create([
             'name' => $request->name,
-            'secret' => WebhookSecret::generateSecret(),
+            'secret' => $plainSecret,
             'is_active' => true,
             'secret_rotated_at' => now(),
         ]);
@@ -66,7 +68,8 @@ class WebhookSecretController extends Controller
 
         return redirect()
             ->route('admin.webhook-secrets.index')
-            ->with('success', 'Webhook secret created successfully');
+            ->with('success', 'Webhook secret created successfully')
+            ->with('one_time_webhook_secret', $plainSecret);
     }
 
     /**
@@ -110,7 +113,7 @@ class WebhookSecretController extends Controller
      */
     public function regenerate(WebhookSecret $webhookSecret): RedirectResponse
     {
-        $webhookSecret->rotateSecret();
+        $plainSecret = $webhookSecret->rotateSecret();
 
         Log::warning('Webhook secret regenerated', [
             'id' => $webhookSecret->id,
@@ -120,7 +123,8 @@ class WebhookSecretController extends Controller
 
         return redirect()
             ->back()
-            ->with('warning', 'Webhook secret regenerated. Update all integrations using this secret.');
+            ->with('warning', 'Webhook secret regenerated. Copy it now and update all integrations.')
+            ->with('one_time_webhook_secret', $plainSecret);
     }
 
     /**

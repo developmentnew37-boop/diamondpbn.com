@@ -265,7 +265,7 @@
                                                 @endif
                                             </div>
                                             <div class="flex flex-wrap items-center gap-3 !mt-2 text-xs text-gray-500">
-                                                <span>API Key: {{ substr($domain->api_key, 0, 16) }}...</span>
+                                                <span>API Key: ••••••••••••</span>
                                                 <span>{{ $domain->created_at->diffForHumans() }}</span>
                                                 @if ($domain->webhookSecret)
                                                     <span>{{ $domain->webhookSecret->name }}</span>

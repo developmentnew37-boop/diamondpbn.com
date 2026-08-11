@@ -81,18 +81,37 @@
                     </div>
 
                     <div class="w-full !p-4 bg-gray-50 border border-gray-200 rounded">
-                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                            <div class="flex-1">
-                                <strong class="text-gray-800 text-sm">Current Secret:</strong>
-                                <code class="!ml-2 !px-2 !py-1 bg-white text-xs rounded border border-gray-300">{{ substr($webhookSecret->secret, 0, 20) }}...</code>
+                        @php
+                            $plainSecret = null;
+                            try {
+                                $plainSecret = $webhookSecret->secret;
+                            } catch (\Throwable) {
+                                $plainSecret = null;
+                            }
+                        @endphp
+                        <strong class="text-gray-800 text-sm block !mb-2">Current Secret</strong>
+                        @if ($plainSecret)
+                            <div class="flex flex-wrap items-center gap-2">
+                                <code id="editWebhookSecret"
+                                    class="!px-2 !py-1 bg-white text-xs rounded border border-gray-300 break-all"
+                                    data-secret="{{ $plainSecret }}"
+                                    data-masked="••••••••••••">••••••••••••</code>
+                                <button type="button"
+                                    class="inline-flex items-center justify-center rounded bg-gray-700 text-white w-8 h-8 border-0 cursor-pointer"
+                                    title="Reveal / hide secret"
+                                    onclick="toggleEditWebhookSecret(this)">
+                                    <span class="material-symbols-outlined !text-base">visibility</span>
+                                </button>
+                                <button type="button"
+                                    class="inline-flex items-center justify-center rounded bg-blue-600 text-white w-8 h-8 border-0 cursor-pointer"
+                                    title="Copy secret"
+                                    onclick="copyEditWebhookSecret(@js($plainSecret), this)">
+                                    <span class="material-symbols-outlined !text-base">content_copy</span>
+                                </button>
                             </div>
-                            <button type="button" id="copySecretBtn"
-                                class="!px-3 !py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded transition-all"
-                                data-secret="{{ $webhookSecret->secret }}">
-                                Copy Full Secret
-                            </button>
-                        </div>
-                        <small class="text-gray-600 text-xs block !mt-2">To change the secret, use the "Regenerate" button on the listing page</small>
+                        @else
+                            <code class="!px-2 !py-1 bg-white text-xs rounded border border-red-300 text-red-600">Unable to decrypt</code>
+                        @endif
                     </div>
 
                     <div class="w-full !p-4 bg-white border border-gray-200 rounded">
@@ -135,49 +154,76 @@
 
 @push('scripts')
     <script>
-        document.getElementById('copySecretBtn').addEventListener('click', function() {
-            const secret = this.getAttribute('data-secret');
-            const button = this;
-            const originalText = button.textContent;
+        function toggleEditWebhookSecret(button) {
+            const el = document.getElementById('editWebhookSecret');
+            if (!el) return;
 
-            // Try modern clipboard API first
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(secret).then(function() {
-                    showSuccess(button, originalText);
-                }).catch(function() {
-                    fallbackCopy(secret, button, originalText);
-                });
+            const icon = button.querySelector('.material-symbols-outlined');
+            const revealed = el.classList.toggle('secret-revealed');
+
+            if (revealed) {
+                el.textContent = el.dataset.secret || '';
+                if (icon) icon.textContent = 'visibility_off';
+                button.title = 'Hide secret';
             } else {
-                fallbackCopy(secret, button, originalText);
+                el.textContent = el.dataset.masked || '••••••••••••';
+                if (icon) icon.textContent = 'visibility';
+                button.title = 'Reveal / hide secret';
             }
-        });
-
-        function fallbackCopy(text, button, originalText) {
-            const textArea = document.createElement('textarea');
-            textArea.value = text;
-            textArea.style.position = 'fixed';
-            textArea.style.left = '-999999px';
-            document.body.appendChild(textArea);
-            textArea.select();
-
-            try {
-                document.execCommand('copy');
-                showSuccess(button, originalText);
-            } catch (err) {
-                alert('Failed to copy. Please copy manually.');
-            }
-
-            document.body.removeChild(textArea);
         }
 
-        function showSuccess(button, originalText) {
-            button.textContent = 'Copied!';
-            button.classList.add('copy-success');
+        function copyEditWebhookSecret(text, button) {
+            const icon = button.querySelector('.material-symbols-outlined');
+            const originalIcon = icon ? icon.textContent : '';
 
-            setTimeout(function() {
-                button.textContent = originalText;
-                button.classList.remove('copy-success');
-            }, 2000);
+            const done = function(success) {
+                if (!icon) {
+                    if (!success) alert('Failed to copy. Please copy manually.');
+                    return;
+                }
+
+                if (success) {
+                    icon.textContent = 'check';
+                    button.style.backgroundColor = '#10b981';
+                    setTimeout(function() {
+                        icon.textContent = originalIcon;
+                        button.style.backgroundColor = '';
+                    }, 2000);
+                } else {
+                    alert('Failed to copy. Please copy manually.');
+                }
+            };
+
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).then(function() {
+                    done(true);
+                }).catch(function() {
+                    done(fallbackCopyEdit(text));
+                });
+                return;
+            }
+
+            done(fallbackCopyEdit(text));
+        }
+
+        function fallbackCopyEdit(text) {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.left = '-9999px';
+            document.body.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+
+            let success = false;
+            try {
+                success = document.execCommand('copy');
+            } catch (err) {
+                console.error('Copy failed:', err);
+            }
+
+            document.body.removeChild(textarea);
+            return success;
         }
     </script>
 @endpush

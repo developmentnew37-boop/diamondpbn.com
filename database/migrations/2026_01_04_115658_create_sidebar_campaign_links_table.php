@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('sidebar_campaign_links')) {
+            return;
+        }
+
         Schema::create('sidebar_campaign_links', function (Blueprint $table) {
             $table->id();
 

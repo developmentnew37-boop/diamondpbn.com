@@ -12,9 +12,10 @@ class PluginDeployPayloadBuilder
     public function installOrUpdate(
         PluginPackage $package,
         string $downloadUrl,
-        bool $activate
+        bool $activate,
+        ?string $pluginFile = null
     ): array {
-        return [
+        $payload = [
             'delivery' => 'url',
             'download_url' => $downloadUrl,
             'expected_checksum_sha256' => $package->checksum_sha256,
@@ -23,6 +24,12 @@ class PluginDeployPayloadBuilder
             'target_version' => $package->version,
             'activate' => $activate,
         ];
+
+        if ($pluginFile !== null && $pluginFile !== '') {
+            $payload['plugin_file'] = $pluginFile;
+        }
+
+        return $payload;
     }
 
     /**

@@ -2,6 +2,8 @@
 
 namespace App\Jobs;
 
+use App\Models\Admin\ScheduleSidebarCampaign;
+use App\Models\Admin\ScheduleSidebarCampaignTask;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -12,28 +14,23 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Throwable;
 
-use App\Models\Admin\{
-    ScheduleSidebarCampaign,
-    ScheduleSidebarCampaignTask
-};
-
 class PublishScheduledSidebarBlogrollJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 1;
 
-    public function __construct(public int $scheduleTaskId)
+    public function __construct(public int $scheduleTaskId, public int $dispatchGeneration = 0)
     {
         $this->onQueue('scheduled_sidebar_campaigns');
     }
 
     public function handle(): void
     {
-        $lockTtlSec  = config('campaign.jobs.lock_ttl_seconds');
+        $lockTtlSec = config('campaign.jobs.lock_ttl_seconds');
         $maxAttempts = config('campaign.jobs.max_internal_retries');
         $baseBackoff = config('campaign.jobs.base_backoff_seconds');
-        $lockToken   = (string) Str::uuid();
+        $lockToken = (string) Str::uuid();
 
         /* =====================================================
          | STEP 1: LOCK SCHEDULE TASK
@@ -44,20 +41,28 @@ class PublishScheduledSidebarBlogrollJob implements ShouldQueue
                 ->with(['campaign', 'domain.domain', 'link'])
                 ->find($this->scheduleTaskId);
 
-            if (!$t) return null;
+            if (! $t) {
+                return null;
+            }
+
+            if ((int) $t->dispatch_generation !== $this->dispatchGeneration) {
+                return null;
+            }
 
             if (in_array($t->status, ['publishing', 'success', 'failed'], true)) {
                 return null;
             }
 
-            if ($t->schedule_at->isFuture()) return null;
+            if ($t->schedule_at->isFuture()) {
+                return null;
+            }
 
             if ($t->locked_at && $t->locked_at->gt(now()->subSeconds($lockTtlSec))) {
                 return null;
             }
 
-            $t->status     = 'publishing';
-            $t->locked_at  = now();
+            $t->status = 'publishing';
+            $t->locked_at = now();
             $t->lock_token = $lockToken;
             $t->save();
 
@@ -68,24 +73,26 @@ class PublishScheduledSidebarBlogrollJob implements ShouldQueue
             return $t;
         });
 
-        if (!$task) return;
+        if (! $task) {
+            return;
+        }
 
         try {
             /* =====================================================
              | STEP 2: LOAD DOMAIN + LINK DATA
              ===================================================== */
             $scheduledDomain = $task->domain; // ScheduleSidebarCampaignDomain
-            $domain          = $scheduledDomain?->domain; // Domain
-            $link            = $task->link;   // ScheduleSidebarCampaignLink
+            $domain = $scheduledDomain?->domain; // Domain
+            $link = $task->link;   // ScheduleSidebarCampaignLink
 
-            if (!$domain || !$link) {
+            if (! $domain || ! $link) {
                 throw new \Exception(
                     "Missing domain or link for schedule_task_id={$task->id}"
                 );
             }
 
             $apiKey = $domain->api_key ?? null;
-            if (!$apiKey) {
+            if (! $apiKey) {
                 throw new \Exception("API key missing for domain_id={$domain->id}");
             }
 
@@ -94,11 +101,11 @@ class PublishScheduledSidebarBlogrollJob implements ShouldQueue
                 throw new \Exception("Domain name missing for domain_id={$domain->id}");
             }
 
-            if (!preg_match('~^https?://~i', $base)) {
-                $base = 'https://' . $base;
+            if (! preg_match('~^https?://~i', $base)) {
+                $base = 'https://'.$base;
             }
 
-            $endpoint = rtrim($base, '/') . '/wp-json/external/v1/blogroll/add';
+            $endpoint = rtrim($base, '/').'/wp-json/external/v1/blogroll/add';
 
             // ✅ Always read boolean fields (needed for payload)
             $nofollow = (bool) ($link->nofollow ?? false);
@@ -108,7 +115,7 @@ class PublishScheduledSidebarBlogrollJob implements ShouldQueue
             $noreferrer = (bool) ($link->noreferrer ?? false);
 
             // ✅ Check if raw_rel_attr is available (from raw anchor mode)
-            $rawRelAttr = trim((string)($link->raw_rel_attr ?? ''));
+            $rawRelAttr = trim((string) ($link->raw_rel_attr ?? ''));
 
             if ($rawRelAttr !== '') {
                 // ✅ Use the complete rel string from raw HTML (supports ANY rel values)
@@ -167,7 +174,7 @@ class PublishScheduledSidebarBlogrollJob implements ShouldQueue
 
                 $payload = [
                     'keyword' => (string) $keyword,
-                    'link'    => (string) $targetUrl,
+                    'link' => (string) $targetUrl,
                     'api_key' => (string) $apiKey,
                     'nofollow' => $nofollow ? 1 : 0,
                     'no_follow' => $nofollow ? 1 : 0,
@@ -198,9 +205,9 @@ class PublishScheduledSidebarBlogrollJob implements ShouldQueue
                     ->asJson()
                     ->post($endpoint, $payload);
 
-                if (!$res->successful()) {
+                if (! $res->successful()) {
                     throw new \Exception(
-                        "WP blogroll API failed ({$res->status()}): " . $res->body()
+                        "WP blogroll API failed ({$res->status()}): ".$res->body()
                     );
                 }
 
@@ -221,15 +228,17 @@ class PublishScheduledSidebarBlogrollJob implements ShouldQueue
             DB::transaction(function () use ($task, $finalResponse, $finalRemoteId) {
 
                 $fresh = ScheduleSidebarCampaignTask::lockForUpdate()->find($task->id);
-                if (!$fresh || $fresh->lock_token !== $task->lock_token) return;
+                if (! $fresh || $fresh->lock_token !== $task->lock_token) {
+                    return;
+                }
 
-                $fresh->status          = 'success';
-                $fresh->remote_id       = $finalRemoteId;
-                $fresh->http_status     = 200;
+                $fresh->status = 'success';
+                $fresh->remote_id = $finalRemoteId;
+                $fresh->http_status = 200;
                 $fresh->remote_response = $finalResponse;
-                $fresh->published_at    = now();
-                $fresh->locked_at       = null;
-                $fresh->lock_token      = null;
+                $fresh->published_at = now();
+                $fresh->locked_at = null;
+                $fresh->lock_token = null;
                 $fresh->save();
 
                 ScheduleSidebarCampaign::whereKey(
@@ -244,7 +253,9 @@ class PublishScheduledSidebarBlogrollJob implements ShouldQueue
             DB::transaction(function () use ($task, $e, $maxAttempts, $baseBackoff) {
 
                 $fresh = ScheduleSidebarCampaignTask::lockForUpdate()->find($task->id);
-                if (!$fresh || $fresh->lock_token !== $task->lock_token) return;
+                if (! $fresh || $fresh->lock_token !== $task->lock_token) {
+                    return;
+                }
 
                 $fresh->attempt_count++;
                 $fresh->last_error = $e->getMessage();
@@ -256,20 +267,20 @@ class PublishScheduledSidebarBlogrollJob implements ShouldQueue
                         3600
                     );
 
-                    $fresh->status        = 'queued';
+                    $fresh->status = 'queued';
                     $fresh->next_retry_at = now()->addSeconds($delay);
-                    $fresh->locked_at     = null;
-                    $fresh->lock_token    = null;
+                    $fresh->locked_at = null;
+                    $fresh->lock_token = null;
                     $fresh->save();
 
-                    PublishScheduledSidebarBlogrollJob::dispatch($fresh->id)
+                    PublishScheduledSidebarBlogrollJob::dispatch($fresh->id, (int) $fresh->dispatch_generation)
                         ->delay(now()->addSeconds($delay))
                         ->onQueue('scheduled_sidebar_campaigns');
                 } else {
 
-                    $fresh->status      = 'failed';
-                    $fresh->locked_at   = null;
-                    $fresh->lock_token  = null;
+                    $fresh->status = 'failed';
+                    $fresh->locked_at = null;
+                    $fresh->lock_token = null;
                     $fresh->save();
 
                     ScheduleSidebarCampaign::whereKey(
@@ -290,7 +301,7 @@ class PublishScheduledSidebarBlogrollJob implements ShouldQueue
     {
         DB::transaction(function () use ($campaignId) {
             $campaign = ScheduleSidebarCampaign::lockForUpdate()->find($campaignId);
-            if (!$campaign) {
+            if (! $campaign) {
                 return;
             }
 

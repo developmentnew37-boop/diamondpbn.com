@@ -5,12 +5,14 @@ namespace App\Http\Controllers\Admin;
 use App\Exceptions\InsufficientCampaignArticlesException;
 use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
 use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
+use App\Http\Controllers\Admin\Concerns\ProvidesLocalClientsForForms;
 use App\Http\Controllers\Admin\Concerns\ValidatesBulkCampaignIds;
 use App\Http\Controllers\Controller;
 use App\Jobs\BulkRetryScheduleCampaignPostsJob;
 use App\Jobs\BulkUpdateScheduleCampaignPostsJob;
 use App\Jobs\DeleteScheduleCampaignJob;
 use App\Jobs\PublishScheduledCampaignPostJob;
+use App\Jobs\SyncConvertedCampaignRemoteStatusJob;
 use App\Models\Admin\Article;
 use App\Models\Admin\ArticleCategory;
 use App\Models\Admin\ArticleLanguage;
@@ -24,8 +26,13 @@ use App\Models\Admin\ScheduleCampaignDomain;
 use App\Models\Admin\ScheduleCampaignPost;
 use App\Services\CampaignArticleReservationService;
 use App\Services\CampaignKeywordPairValidator;
+use App\Services\ConvertedPostRemoteSyncService;
 use App\Services\EditCampaignMultiLevelKeywordState;
+use App\Services\LiveTaskDomainReplacement\LiveTaskBulkDomainReplacementService;
+use App\Services\LiveTaskDomainReplacement\LiveTaskReplacementProfile;
+use App\Services\LocalClientBillingService;
 use App\Services\PurgeLocalCampaignDataService;
+use App\Support\CampaignTaskStatusFilter;
 use App\Support\WordPressApiFetchedPost;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -34,12 +41,15 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Spatie\SimpleExcel\SimpleExcelWriter;
 
 class ScheduleCampaignController extends Controller
 {
     use AppliesSuperAdminCampaignOwnerFilter;
     use AuthorizesAdminCampaign;
+    use ProvidesLocalClientsForForms;
     use ValidatesBulkCampaignIds;
 
     public function __construct()
@@ -83,9 +93,18 @@ class ScheduleCampaignController extends Controller
 
         $offset = ($campaigns->currentPage() - 1) * $limit;
 
+        $replaceableCampaignIds = [];
+        if ($admin->canCreateCampaigns()) {
+            $replaceableCampaignIds = app(LiveTaskBulkDomainReplacementService::class)
+                ->replaceableCampaignIds(
+                    LiveTaskReplacementProfile::schedulePost(),
+                    $campaigns->pluck('id')->all(),
+                );
+        }
+
         return view(
             'admin.campaigns.pbn-post.schedule-campaign',
-            array_merge(compact('campaigns', 'offset'), ['isStickySchedule' => false], $ownerData)
+            array_merge(compact('campaigns', 'offset', 'replaceableCampaignIds'), ['isStickySchedule' => false], $ownerData)
         );
     }
 
@@ -124,9 +143,18 @@ class ScheduleCampaignController extends Controller
 
         $offset = ($campaigns->currentPage() - 1) * $limit;
 
+        $replaceableCampaignIds = [];
+        if ($admin->canCreateCampaigns()) {
+            $replaceableCampaignIds = app(LiveTaskBulkDomainReplacementService::class)
+                ->replaceableCampaignIds(
+                    LiveTaskReplacementProfile::schedulePost(),
+                    $campaigns->pluck('id')->all(),
+                );
+        }
+
         return view(
             'admin.campaigns.pbn-post.schedule-campaign',
-            array_merge(compact('campaigns', 'offset'), ['isStickySchedule' => true], $ownerData)
+            array_merge(compact('campaigns', 'offset', 'replaceableCampaignIds'), ['isStickySchedule' => true], $ownerData)
         );
     }
 
@@ -155,7 +183,10 @@ class ScheduleCampaignController extends Controller
             'admin.campaigns.pbn-post.create-schedule-campaign',
             array_merge(
                 compact('campaignId', 'domainCategory', 'articleCategory', 'articleSet', 'domainSets', 'articleLanguages'),
-                ['isStickySchedule' => false]
+                [
+                    'isStickySchedule' => false,
+                    'localClients' => $this->activeLocalClientsForForms(),
+                ]
             )
         );
     }
@@ -177,7 +208,10 @@ class ScheduleCampaignController extends Controller
             'admin.campaigns.pbn-post.create-schedule-campaign',
             array_merge(
                 compact('campaignId', 'domainCategory', 'articleCategory', 'articleSet', 'domainSets', 'articleLanguages'),
-                ['isStickySchedule' => true]
+                [
+                    'isStickySchedule' => true,
+                    'localClients' => $this->activeLocalClientsForForms(),
+                ]
             )
         );
     }
@@ -268,6 +302,8 @@ class ScheduleCampaignController extends Controller
             'keywordmethod' => 'nullable|in:normal,bulk,multiple,multi_bulk,raw_html',
             'keywordsDataHolder' => 'required|string',
             'campaigns_domains' => 'required|string',
+            'local_client_id' => 'nullable|integer|exists:local_clients,id',
+            'billing_currency' => ['nullable', 'string', Rule::in(\App\Support\CurrencyFormatter::supportedCodes())],
         ]);
 
         $articleIds = array_values(array_filter(
@@ -338,6 +374,8 @@ class ScheduleCampaignController extends Controller
             }
         } catch (InsufficientCampaignArticlesException $e) {
             return back()->with('cus__error', $e->getMessage())->withInput();
+        } catch (ValidationException $e) {
+            return back()->withErrors($e->errors())->withInput();
         } catch (\Throwable $e) {
             report($e);
 
@@ -552,6 +590,14 @@ class ScheduleCampaignController extends Controller
             foreach (array_chunk($postRows, 200) as $chunk) {
                 ScheduleCampaignPost::insert($chunk);
             }
+
+            app(LocalClientBillingService::class)->applyFromRequest(
+                $request,
+                $campaign,
+                $domainIds,
+                'schedule_post',
+                $isStickySchedule,
+            );
         });
 
         return $substitutionCount;
@@ -719,6 +765,14 @@ class ScheduleCampaignController extends Controller
             if (! empty($rows)) {
                 ScheduleCampaignPost::insert($rows);
             }
+
+            app(LocalClientBillingService::class)->applyFromRequest(
+                $request,
+                $campaign,
+                $domainIds,
+                'schedule_post',
+                $isStickySchedule,
+            );
         });
 
         return $substitutionCount;
@@ -727,41 +781,85 @@ class ScheduleCampaignController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(string $id)
+    public function show(Request $request, string $id, ConvertedPostRemoteSyncService $remoteSync)
     {
         // 🔐 Fetch scheduled campaign
-        $campaign = ScheduleCampaign::findOrFail($id);
+        $campaign = ScheduleCampaign::with(['sourceCampaign', 'localClient'])->findOrFail($id);
+
+        if (filled($campaign->converted_from_campaign_id)) {
+            $remoteSync->syncCampaignPosts($campaign);
+            $campaign->refresh();
+
+            $stillNeedsSync = ScheduleCampaignPost::query()
+                ->with(['campaignDomain.domain'])
+                ->where('schedule_campaign_id', $campaign->id)
+                ->where('is_converted_live', true)
+                ->get()
+                ->contains(fn (ScheduleCampaignPost $post) => $remoteSync->needsRemoteSync($post));
+
+            if ($stillNeedsSync) {
+                SyncConvertedCampaignRemoteStatusJob::dispatch((int) $campaign->id)
+                    ->onQueue('campaign_conversions');
+            }
+        }
 
         $limit = 100;
+        $statusFilter = $request->string('status')->toString();
+        $postsQuery = ScheduleCampaignPost::query()->where('schedule_campaign_id', $campaign->id);
+        $isConvertedLiveCampaign = filled($campaign->converted_from_campaign_id);
 
-        // 📦 Fetch scheduled posts
-        $campaignPost = ScheduleCampaignPost::with([
-            'campaignDomain.domain',
-            'campaignArticle.article',
-        ])
-            ->where('schedule_campaign_id', $campaign->id)
-            ->paginate($limit)
-            ->withQueryString();
+        if ($isConvertedLiveCampaign) {
+            $statusCounts = CampaignTaskStatusFilter::countsForConvertedLivePosts($postsQuery);
+            $postsBaseQuery = ScheduleCampaignPost::with([
+                'campaignDomain.domain',
+                'campaignArticle.article',
+            ])->where('schedule_campaign_id', $campaign->id);
 
-        // ->orderByDesc('id')
+            $campaignPost = CampaignTaskStatusFilter::applyForConvertedLivePost(
+                $postsBaseQuery,
+                $statusFilter !== '' ? $statusFilter : null,
+            )
+                ->orderBy('schedule_at')
+                ->orderBy('id')
+                ->paginate($limit)
+                ->withQueryString();
+        } else {
+            $statusCounts = CampaignTaskStatusFilter::counts($postsQuery);
+            $campaignPost = CampaignTaskStatusFilter::apply(
+                ScheduleCampaignPost::with([
+                    'campaignDomain.domain',
+                    'campaignArticle.article',
+                ])
+                    ->where('schedule_campaign_id', $campaign->id),
+                $statusFilter
+            )
+                ->orderBy('schedule_at')
+                ->orderBy('id')
+                ->paginate($limit)
+                ->withQueryString();
+        }
 
         $offset = ($campaignPost->currentPage() - 1) * $limit;
 
         return view(
             'admin.campaigns.pbn-post.view-schedule-campaign',
-            compact('campaign', 'campaignPost', 'offset')
+            compact('campaign', 'campaignPost', 'offset', 'statusFilter', 'statusCounts', 'isConvertedLiveCampaign')
         );
     }
 
     /**
      * Show the form for editing the specified resource.
      */
-    public function report(string $campaign_no, string $token)
+    public function report(string $campaign_no, string $token, ConvertedPostRemoteSyncService $remoteSync)
     {
         // 🔐 1️⃣ Validate schedule campaign via token
         $campaign = ScheduleCampaign::where('campaign_no', $campaign_no)
             ->where('report_token', $token)
             ->firstOrFail();
+
+        if (filled($campaign->converted_from_campaign_id)) {
+            $remoteSync->syncCampaignPosts($campaign);
+        }
 
         // 📊 2️⃣ Aggregate stats
         $stats = ScheduleCampaignPost::where('schedule_campaign_id', $campaign->id)
@@ -783,6 +881,8 @@ class ScheduleCampaignController extends Controller
             'campaignArticle',
         ])
             ->where('schedule_campaign_id', $campaign->id)
+            ->orderBy('schedule_at')
+            ->orderBy('id')
             ->get();
 
         // 🔎 4️⃣ Max keyword/URL pairs across all posts (mixed single + multi-link campaigns)
@@ -832,6 +932,7 @@ class ScheduleCampaignController extends Controller
             'campaignArticle',
         ])
             ->where('schedule_campaign_id', $campaign->id)
+            ->orderBy('schedule_at')
             ->orderBy('id')
             ->get();
 
@@ -1484,7 +1585,7 @@ class ScheduleCampaignController extends Controller
             'lock_token' => null,
         ]);
 
-        PublishScheduledCampaignPostJob::dispatch($post->id)->onQueue('scheduled_campaigns');
+        PublishScheduledCampaignPostJob::dispatch($post->id, (int) ($post->dispatch_generation ?? 0))->onQueue('scheduled_campaigns');
 
         return back()->with('cus__success', 'Post queued for retry.');
     }

@@ -9,10 +9,16 @@ sudo apt install supervisor
 
 ## 2. Deploy the config
 
-- Replace `/var/www/pbn_automation_software` with your actual project path on the VPS.
+- Replace `/var/www/pbn_automation_software` or `/var/www/diamondpbn` with your actual project path on the VPS.
 - Replace `user=www-data` with your web server user (e.g. `www-data`, `nginx`, or your deploy user).
 
-Copy configs to Supervisor:
+**Production (diamondpbn VPS — multi-worker setup):** use the full split config:
+
+```bash
+sudo cp deploy/supervisor/diamondpbn.conf /etc/supervisor/conf.d/diamondpbn.conf
+```
+
+**Single combined worker (smaller installs):**
 
 ```bash
 sudo cp deploy/supervisor/laravel-worker.conf /etc/supervisor/conf.d/laravel-worker.conf

@@ -1,13 +1,13 @@
 @extends('admin.layout.layout')
 
-@section('title', 'Deleted used articles')
+@section('title', 'Delete Articles')
 
 @section('main-content')
 
     <div class="page-header">
         <div class="w-full flex flex-wrap items-center">
             <div class="w-1/2 flex flex-col gap-2 flex-wrap">
-                <h2 class="page-title">Deleted used articles</h2>
+                <h2 class="page-title">Delete Articles</h2>
                 <div class="breadcrumb">
                     <div class="breadcrumb-item">
                         <a href="{{ route('admin.dashboard') }}" class="breadcrumb-link">Dashboard</a>
@@ -18,7 +18,7 @@
                         <span>›</span>
                     </div>
                     <div class="breadcrumb-item">
-                        <span class="breadcrumb-link">Deleted used (trash)</span>
+                        <span class="breadcrumb-link">Delete Articles</span>
                     </div>
                 </div>
             </div>

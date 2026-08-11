@@ -33,10 +33,11 @@
     <div id="pluginManagerAlert" class="w-full hidden !mt-2" role="alert"></div>
 
     @if (! $uploadLimits['server_ready'])
-        <div class="w-full content-card !mt-4 !p-4 bg-red-50 border border-red-200 text-red-800 text-sm" role="alert">
-            <strong>Upload limit misconfigured on this server.</strong>
+        <div class="w-full content-card !mt-4 !p-4 bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm" role="alert">
+            <strong>Server upload limit is below the dashboard ceiling.</strong>
             App allows {{ $uploadLimits['max_zip_mb'] }} MB ZIPs, but PHP allows
             upload {{ $uploadLimits['php_upload_mb'] }} MB / post {{ $uploadLimits['php_post_mb'] }} MB.
+            ZIPs up to {{ $uploadLimits['effective_mb'] }} MB can still be uploaded now.
             On the VPS, set <code class="bg-white !px-1 rounded">client_max_body_size {{ $uploadLimits['max_zip_mb'] + 2 }}M;</code> in nginx
             and <code class="bg-white !px-1 rounded">upload_max_filesize</code> / <code class="bg-white !px-1 rounded">post_max_size</code>
             in PHP, then reload nginx and PHP-FPM. See <code class="bg-white !px-1 rounded">deploy/nginx/upload-limits.conf</code>.

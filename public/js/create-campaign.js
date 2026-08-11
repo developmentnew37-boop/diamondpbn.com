@@ -971,7 +971,7 @@ window.addEventListener("DOMContentLoaded", () => {
         articleTableBody,
         loader,
         paginationLoader,
-        per_page = 100,
+        per_page = 50,
         isPagination = false,
         postCount,
         openPopup,
@@ -1270,7 +1270,7 @@ window.addEventListener("DOMContentLoaded", () => {
         tableBody,
         loader,
         paginationLoader,
-        per_page = 100,
+        per_page = 50,
         isPagination = false,
         autoSelect = false
     }) {
@@ -1419,7 +1419,7 @@ window.addEventListener("DOMContentLoaded", () => {
         tableBody,
         loader,
         paginationLoader,
-        per_page = 100,
+        per_page = 50,
         isPagination = false,
         autoSelect = false
     }) {
@@ -1723,7 +1723,7 @@ window.addEventListener("DOMContentLoaded", () => {
                     if (loader) loader.classList.remove("hidden");
 
                     let currentPage = 1;
-                    let per_page = 100;
+                    let per_page = 50;
                     let paginationLoader = document.querySelector('.pagination-loader');
                     let isPagination = false;
                     // ✅ WAIT for DOM to render
@@ -1816,7 +1816,7 @@ window.addEventListener("DOMContentLoaded", () => {
                             articleTableBody: articleTableBody,
                             loader: searchLoader,
                             paginationLoader: document.querySelector('.pagination-loader'),
-                            per_page: 100,
+                            per_page: 50,
                             postCount,
                             autoSelect: true
                         });
@@ -1966,7 +1966,7 @@ window.addEventListener("DOMContentLoaded", () => {
                             articleTableBody: articleTableBody,
                             loader: loader,
                             paginationLoader: document.querySelector('.pagination-loader'),
-                            per_page: 100,
+                            per_page: 50,
                             postCount: postCount,
                             openPopup: openPopup,
                             autoSelect: true
@@ -3667,6 +3667,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
                 const icon = step__04?.querySelector('.check-icon');
                 const loader = step__04?.querySelector('.loader');
+                let manualReady = false;
 
                 try {
                     icon?.classList.add('hidden');
@@ -3688,10 +3689,10 @@ window.addEventListener("DOMContentLoaded", () => {
                             res.message || 'Domain validation failed.',
                             Array.isArray(res?.data?.missing) ? res.data.missing : []
                         );
-                        return;
+                    } else {
+                        campaignDomainHolder.value = JSON.stringify(res.data.domain_ids);
+                        manualReady = true;
                     }
-
-                    campaignDomainHolder.value = JSON.stringify(res.data.domain_ids);
 
                 } catch (error) {
                     console.error('Domain validation error:', error);
@@ -3700,6 +3701,17 @@ window.addEventListener("DOMContentLoaded", () => {
                 } finally {
                     icon?.classList.remove('hidden');
                     loader?.classList.add('hidden');
+                }
+
+                if (!manualReady) {
+                    return;
+                }
+            }
+
+            if (typeof window.validateLocalClientBillingBeforeSubmit === 'function') {
+                const billingReady = await window.validateLocalClientBillingBeforeSubmit();
+                if (!billingReady) {
+                    return;
                 }
             }
 

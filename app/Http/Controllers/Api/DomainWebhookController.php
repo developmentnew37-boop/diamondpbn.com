@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Admin\PendingDomain;
 use App\Models\Admin\WebhookSecret;
+use App\Services\CredentialBlindIndex;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use Throwable;
 
 class DomainWebhookController extends Controller
 {
@@ -46,7 +48,8 @@ class DomainWebhookController extends Controller
 
         $domainName = normalizeDomainName($request->input('domain_name'));
         $apiKey = $request->input('api_key');
-        $providedSecret = $request->input('secret');
+        $blindIndex = app(CredentialBlindIndex::class);
+        $providedSecret = $blindIndex->normalize($request->input('secret'));
 
         if ($domainName === '') {
             return response()->json([
@@ -55,10 +58,38 @@ class DomainWebhookController extends Controller
             ], 422);
         }
 
+        if ($providedSecret === null) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid or inactive webhook secret',
+            ], 403);
+        }
+
         // Find matching webhook secret
-        $webhookSecret = WebhookSecret::where('secret', $providedSecret)
+        $lookupHash = $blindIndex->hash($providedSecret, CredentialBlindIndex::WEBHOOK_SECRET);
+        $webhookSecret = WebhookSecret::where('secret_lookup_hash', $lookupHash)
             ->where('is_active', true)
             ->first();
+
+        // Rolling-deployment compatibility for rows not converted yet.
+        if ($webhookSecret === null) {
+            foreach (WebhookSecret::query()->where('is_active', true)->whereNull('secret_lookup_hash')->cursor() as $legacySecret) {
+                try {
+                    if (! $legacySecret->validateSecret($providedSecret)) {
+                        continue;
+                    }
+                } catch (Throwable) {
+                    Log::error('Unable to decrypt legacy webhook secret', ['id' => $legacySecret->id]);
+
+                    continue;
+                }
+
+                $legacySecret->forceFill(['secret_lookup_hash' => $lookupHash])->save();
+                $webhookSecret = $legacySecret;
+
+                break;
+            }
+        }
 
         if (! $webhookSecret) {
             Log::warning('Invalid webhook secret provided', [

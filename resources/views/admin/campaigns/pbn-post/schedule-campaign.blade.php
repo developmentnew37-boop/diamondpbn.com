@@ -48,66 +48,24 @@
     </div>
 
     {{-- success & error alerts --}}
-    <div class="w-full flex flex-col gap-2 items-center !mt-2 !mb-2">
+    <div class="w-full flex flex-col gap-2 items-center !mt-2">
         @if (session('cus__success') || session('cus__error'))
-            <div class="w-full flex flex-col gap-2">
+            <div class="w-full flex flex-col gap-2 !mb-2">
                 @if (session('cus__success'))
-                    <div class="js-cus-alert !p-4 text-sm rounded bg-green-100 text-green-700" role="alert">
-                        {{ session('cus__success') }}
+                    <div class="!p-4 text-sm rounded bg-green-100 text-green-700 w-full" role="alert">
+                        <span class="font-medium">{{ session('cus__success') }}</span>
                     </div>
                 @endif
 
                 @if (session('cus__error'))
-                    <div class="js-cus-alert !p-4 text-sm rounded bg-red-100 text-red-700" role="alert">
-                        {{ session('cus__error') }}
+                    <div class="!p-4 text-sm rounded bg-red-100 text-red-700 w-full" role="alert">
+                        <span class="font-medium">{{ session('cus__error') }}</span>
                     </div>
                 @endif
             </div>
         @endif
-    </div>  
 
-    {{-- filters --}}
-    <div class="flex flex-col gap-3 content-card w-full min-w-0">
-
-        {{-- <div class="w-full flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-start">
-            <div class="w-full sm:w-auto shrink-0">
-                <select id="domain-category" class="bg-white border border-gray-300 h-11 !px-3 text-sm w-full sm:w-[92px] rounded-md outline-none focus:border-orange-600">
-                    <option value="">select</option>
-                </select>
-            </div>
-
-            <div class="w-full sm:w-auto sm:min-w-0">
-                <form class="w-full flex flex-col gap-2 sm:flex-row sm:flex-nowrap sm:items-center sm:gap-2" method="post">
-                    @csrf
-                    <select class="bg-white border border-gray-300 h-11 !px-3 text-sm w-full sm:w-[240px] md:w-[340px] lg:w-[420px] rounded-md outline-none focus:border-orange-600">
-                        <option value="">Bulk actions</option>
-                        <option value="1">Delete</option>
-                    </select>
-                    <input type="hidden" id="valHolders">
-                    <button type="submit"
-                        class="h-11 !px-5 text-sm font-medium inline-flex items-center justify-center transition-all bg-[var(--sidebar-bg)] hover:bg-[var(--primary-color)] text-white rounded-md cursor-pointer shadow-sm shrink-0 w-full sm:w-auto">
-                        Apply
-                    </button>
-                </form>
-            </div>
-        </div> --}}
-
-        <div class="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[320px_minmax(320px,420px)] gap-3 items-stretch justify-start min-w-0">
-            @include('admin.campaigns.partials.campaign-owner-filter')
-            <form method="GET" action="{{ url()->current() }}" class="relative w-full min-w-0">
-                @foreach (request()->except(['search', 'page']) as $key => $value)
-                    @continue(is_array($value))
-                    <input type="hidden" name="{{ $key }}" value="{{ $value }}">
-                @endforeach
-
-                <input type="search" name="search" placeholder="search here" value="{{ request('search') }}"
-                    class="bg-gray-100 shadow border border-gray-200 h-12 !px-3 !pl-3 !pr-[50px] text-sm leading-normal w-full rounded outline-none">
-
-                <button type="submit" class="w-12 h-12 absolute right-0 top-0 bg-[var(--sidebar-bg)] rounded-r">
-                    🔍
-                </button>
-            </form>
-        </div>
+        @include('admin.campaigns.partials.campaign-list-toolbar')
     </div>
 
     {{-- table --}}
@@ -115,30 +73,35 @@
         <h2 class="text-xl capitalize !mb-4 bg-[var(--primary-color)] text-white !p-2 rounded">
             {{ !empty($isStickySchedule) ? 'Schedule Sticky Post Campaigns' : 'Scheduled Campaigns' }}
         </h2>
-        <form id="schedule-bulk-purge-local-form" action="{{ route('admin.schedule.campaign.bulk.purge.local') }}" method="POST" class="hidden">@csrf</form>
-        <form id="schedule-bulk-retry-failed-form" action="{{ route('admin.schedule.campaign.bulk.retry.failed') }}" method="POST" class="hidden">@csrf</form>
-        <div class="w-full flex flex-wrap items-center gap-2 !mb-2">
-            <button type="button" id="schedule-bulk-purge-local-btn"
-                class="!px-3 !py-2 rounded bg-orange-600 text-white text-sm hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Remove selected from this app only">
-                Bulk remove locally only
-            </button>
-            <button type="button" id="schedule-bulk-retry-failed-btn"
-                class="!px-3 !py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Retry all failed posts in selected campaigns">
-                Bulk Retry Failed Posts
-            </button>
-            <span class="text-sm text-gray-500">Select campaigns with checkboxes, then retry failed posts or remove local records.</span>
-        </div>
+        @include('admin.campaigns.partials.campaign-list-bulk-bar', [
+            'purgeFormId' => 'schedule-bulk-purge-local-form',
+            'purgeBtnId' => 'schedule-bulk-purge-local-btn',
+            'retryFormId' => 'schedule-bulk-retry-failed-form',
+            'retryBtnId' => 'schedule-bulk-retry-failed-btn',
+            'purgeAction' => route('admin.schedule.campaign.bulk.purge.local'),
+            'retryAction' => route('admin.schedule.campaign.bulk.retry.failed'),
+            'retryLabel' => 'Posts',
+            'purgeTitle' => 'Remove selected from this app only',
+            'retryTitle' => 'Retry all failed posts in selected campaigns',
+            'helpText' => 'Select campaigns with checkboxes, then retry failed posts or remove local records.',
+        ])
 
-        <div class="overflow-x-auto w-full max-w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
-            <table class="campaign-list-table display w-full min-w-[1100px] border border-gray-200 text-sm whitespace-nowrap searchable-table">
+        <div class="overflow-x-auto !mt-3 w-full max-w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
+            @php
+                $clTh = 'border border-gray-200 font-sans !font-normal !px-2 !py-3 capitilize text-left';
+                $clTd = 'border border-gray-200 font-sans !px-2 !py-3';
+                $clTdCenter = 'border border-gray-200 font-sans !px-2 !py-3 text-center';
+                $clTdProgress = 'border border-gray-200 font-sans !px-2 !py-3 min-w-[140px]';
+                $clTdActions = 'actions-col border border-gray-200 font-sans !px-2 !py-3 min-w-[252px]';
+                $clTdCheckbox = 'border border-gray-200 font-sans !px-2 !py-3 text-center';
+            @endphp
+            <table class="campaign-list-table display w-full min-w-[1100px] border border-gray-200 border-collapse text-sm whitespace-nowrap searchable-table">
                 <thead>
                     <tr class="bg-gray-800 text-white">
                         <th><input type="checkbox" id="bulk-checkBox-selector" class="scale-125"></th>
                         @php
                             $tHead = [
-                                'S.No',
+                                'sno',
                                 'Campaign No',
                                 'Domain Category',
                                 'Schedule From',
@@ -155,8 +118,8 @@
                         @endphp
                         @foreach ($tHead as $t)
                             <th @class([
-                                'border !px-2 !py-3 text-left !font-normal',
-                                'actions-col min-w-[252px]' => $t === 'Actions',
+                                $clTh,
+                                'actions-col' => $t === 'Actions',
                             ])>{{ $t }}</th>
                         @endforeach
                     </tr>
@@ -187,58 +150,51 @@
                         @endphp
 
                         <tr class="hover:bg-gray-50">
-                            <td class="border !px-2 !py-3 text-center">
+                            <td class="{{ $clTdCheckbox }}">
                                 <input type="checkbox" class="multi-check campaign-bulk-cb" name="campaign_ids[]" value="{{ $campaign->id }}">
                             </td>
 
-                            <td class="border !px-2 !py-3 text-center">
+                            <td class="{{ $clTdCenter }}">
                                 {{ $index + 1 + $offset }}
                             </td>
 
-                            <td class="border !px-2 !py-3">
+                            <td class="{{ $clTd }}">
                                 {{ $campaign->campaign_no }}
                             </td>
 
-                            <td class="border !px-2 !py-3">
+                            <td class="{{ $clTd }}">
                                 {{ optional($campaign->domainCategory)->name ?? '-' }}
                             </td>
 
-                            {{-- Schedule From --}}
-                            <td class="border !px-2 !py-3 text-center">
-                                {{ optional($campaign->schedule_from_date)?->format('d M Y') ?? '-' }}
+                            <td class="{{ $clTdCenter }}">
+                                {{ optional($campaign->schedule_from_date)?->format('d-M-Y') ?? '-' }}
                             </td>
 
-                            {{-- Schedule To --}}
-                            <td class="border !px-2 !py-3 text-center">
-                                {{ optional($campaign->schedule_to_date)?->format('d M Y') ?? '-' }}
+                            <td class="{{ $clTdCenter }}">
+                                {{ optional($campaign->schedule_to_date)?->format('d-M-Y') ?? '-' }}
                             </td>
 
-                            <td class="border !px-2 !py-3 text-center">{{ $total }}</td>
-                            <td class="border !px-2 !py-3 text-center">{{ $completed }}</td>
-                            <td class="border !px-2 !py-3 text-center">{{ $failed }}</td>
-                            <td class="border !px-2 !py-3 text-center">{{ $pending }}</td>
+                            <td class="{{ $clTdCenter }}">{{ $total }}</td>
+                            <td class="{{ $clTdCenter }}">{{ $completed }}</td>
+                            <td class="{{ $clTdCenter }}">{{ $failed }}</td>
+                            <td class="{{ $clTdCenter }}">{{ $pending }}</td>
 
-                            <td class="border !px-2 !py-3 min-w-[140px]">
-                                <div class="w-full bg-gray-200 h-2 rounded">
-                                    <div class="h-2 rounded
-                                        {{ $progress >= 80 ? 'bg-green-500' : ($progress >= 50 ? 'bg-yellow-500' : 'bg-red-500') }}"
-                                        style="width: {{ $progress }}%">
-                                    </div>
-                                </div>
-                                <div class="text-xs text-center mt-1">{{ $progress }}%</div>
+                            <td class="{{ $clTdProgress }}">
+                                @include('admin.campaigns.partials.campaign-list-progress', ['progress' => $progress])
                             </td>
 
-                            <td class="border !px-2 !py-3 text-center">
-                                <span class="!px-2 !py-1 rounded text-xs font-semibold {{ $statusClass }}">
-                                    {{ ucfirst($status) }}
-                                </span>
+                            <td class="{{ $clTdCenter }}">
+                                @include('admin.campaigns.partials.campaign-list-status-badge', [
+                                    'label' => ucfirst($status),
+                                    'statusClass' => $statusClass,
+                                ])
                             </td>
 
-                            <td class="border !px-2 !py-3">
+                            <td class="{{ $clTd }}">
                                 {{ $campaign->created_at->format('d-M-Y H:i') }}
                             </td>
 
-                            <td class="actions-col border !px-2 !py-3 min-w-[252px]">
+                            <td class="{{ $clTdActions }}">
                                 @include('admin.campaigns.partials.campaign-list-actions', [
                                     'viewUrl' => route('admin.schedule.campaign.show', $campaign->id),
                                     'editUrl' => route('admin.schedule.campaign.edit', $campaign->id),
@@ -251,13 +207,16 @@
                                     'purgeAction' => route('admin.schedule.campaign.purge.local', $campaign->id),
                                     'destroyConfirm' => 'Delete this campaign? All posts will be removed from the database and from the remote site.',
                                     'purgeConfirm' => 'Remove this campaign from the dashboard only? Remote posts stay published. You will not be able to edit this campaign here anymore.',
+                                    'bulkReplaceUrl' => in_array((int) $campaign->id, $replaceableCampaignIds ?? [], true)
+                                        ? route('admin.schedule.campaign.bulk-domain-replacement.create', $campaign)
+                                        : null,
                                 ])
                             </td>
                         </tr>
 
                     @empty
                         <tr>
-                            <td colspan="14" class="text-center !py-4 text-gray-500 bg-gray-100">
+                            <td colspan="14" class="text-center !py-4 text-gray-500 bg-gray-100 font-sans">
                                 {{ !empty($isStickySchedule) ? 'No schedule sticky post campaigns found...' : 'No schedule campaigns found...' }}
                             </td>
                         </tr>

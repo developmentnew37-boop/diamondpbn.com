@@ -53,6 +53,7 @@
 @endif
 
 <div class="content-card mt-3">
+    @include('admin.campaigns.partials.local-client-billing')
 
     <div class="flex flex-wrap items-center gap-2 !mb-4">
         <h2 class="text-lg bg-[var(--primary-color)] text-white w-fit !px-3 !py-2 rounded">
@@ -71,6 +72,14 @@
         <button type="submit" class="!px-3 !py-2 rounded bg-red-600 text-white text-sm hover:bg-red-700"
             onclick="return confirm('Remove selected links from remote sites and database?');">Bulk delete selected</button>
     </form>
+
+    @include('admin.campaigns.partials.post-status-filters', [
+        'routeName' => 'admin.hidden.link.campaign.show',
+        'routeParameter' => 'campaign',
+        'campaign' => $campaign,
+        'statusFilter' => $statusFilter,
+        'statusCounts' => $statusCounts,
+    ])
 
     <div class="overflow-x-auto w-full">
         <table class="display w-full border border-gray-200 border-collapse text-sm whitespace-nowrap searchable-table">
@@ -182,10 +191,25 @@
 
                         <td class="border !px-2 !py-2">
                             <div class="flex gap-2 justify-center">
-                                @if ($task->status === 'failed')
+                                @php
+                                    $canReplaceDomain = in_array($task->status, ['queued', 'failed'], true)
+                                        && ! $task->remote_id
+                                        && ! $task->remote_url
+                                        && ! $task->published_at
+                                        && ! $task->locked_at
+                                        && ! $task->lock_token;
+                                @endphp
+                                @if (in_array($task->status, ['queued', 'failed', 'publishing']))
                                     <a href="{{ route('admin.hidden.link.campaign.retry.task', $task->id) }}"
                                         class="bg-blue-500 rounded w-7 h-7 flex items-center justify-center" title="Retry this task">
                                         <span class="material-symbols-outlined text-white !text-sm">replay</span>
+                                    </a>
+                                @endif
+                                @if ($canReplaceDomain)
+                                    <a href="{{ route('admin.hidden.link.campaign.domain-replacement.create', $task->id) }}"
+                                        class="bg-blue-600 rounded w-7 h-7 flex items-center justify-center hover:bg-blue-700"
+                                        title="Replace domain">
+                                        <span class="material-symbols-outlined text-white text-sm">swap_horiz</span>
                                     </a>
                                 @endif
                                 @if ($task->remote_id)

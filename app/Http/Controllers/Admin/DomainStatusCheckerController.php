@@ -31,10 +31,14 @@ class DomainStatusCheckerController extends Controller
             'domains_list' => 'required_if:source,manual|nullable|string|max:100000',
             'domain_category_id' => 'nullable|integer|exists:domain_categories,id',
             'update_inventory' => 'nullable|boolean',
+            'use_authenticated_check' => 'nullable|boolean',
         ]);
 
         $source = $request->input('source', 'manual');
         $updateInventory = $request->boolean('update_inventory');
+        $useAuthenticatedCheck = $source === 'inventory'
+            ? $request->boolean('use_authenticated_check', true)
+            : $request->boolean('use_authenticated_check');
         $truncated = false;
         $totalInScope = null;
         $selectedCategoryId = $request->filled('domain_category_id')
@@ -80,7 +84,8 @@ class DomainStatusCheckerController extends Controller
                 $domains,
                 $source,
                 $updateInventory,
-                $source === 'inventory' ? $selectedCategoryId : null
+                $source === 'inventory' ? $selectedCategoryId : null,
+                $useAuthenticatedCheck
             );
         } catch (\Throwable $e) {
             report($e);
@@ -144,6 +149,10 @@ class DomainStatusCheckerController extends Controller
                 'domain' => $item->domain,
                 'check_status' => $item->check_status,
                 'connected' => $item->connected,
+                'status_code' => $item->status_code,
+                'probe_method' => $item->probe_method,
+                'agent_version' => $item->agent_version,
+                'http_status' => $item->http_status,
                 'message' => $item->message,
                 'attempts' => $item->attempts,
                 'response_time_ms' => $item->response_time_ms,

@@ -25,7 +25,7 @@
     async function parseJsonResponse(response) {
         const text = await response.text();
         if (response.status === 413) {
-            let message = 'Upload rejected (413): server body size limit is too small. On nginx set client_max_body_size to at least 12M and reload nginx + PHP-FPM.';
+            let message = 'Upload rejected (413): the live web-server body limit is lower than this file size. Increase nginx and PHP upload limits, then reload nginx/PHP-FPM.';
             if (text && text.trim().startsWith('{')) {
                 try {
                     const payload = JSON.parse(text);
@@ -209,6 +209,12 @@
 
             els.body.innerHTML = sorted.map((r) => {
                 const message = r.message || r.error_code || '';
+                const audit = [
+                    r.probe_method || null,
+                    r.http_status ? `HTTP ${r.http_status}` : null,
+                    r.retry_count ? `${r.retry_count} retries` : null,
+                    r.audit_attempts ? `${r.audit_attempts} attempts` : null,
+                ].filter(Boolean).join(' · ');
                 return `
                 <tr class="border-b border-gray-100">
                     <td class="!px-4 !py-2">${r.index}</td>
@@ -220,6 +226,7 @@
                     <td class="!px-4 !py-2">${statusBadge(r.item_status)}</td>
                     <td class="!px-4 !py-2 font-mono text-xs text-gray-600">${escapeHtml(r.plugin_file || '—')}</td>
                     <td class="!px-4 !py-2 text-xs text-gray-600">${escapeHtml(r.resolved_via || '—')}</td>
+                    <td class="!px-4 !py-2 text-xs text-gray-600">${escapeHtml(audit || '—')}</td>
                     <td class="!px-4 !py-2 text-xs text-gray-600">${escapeHtml(message)}</td>
                 </tr>
             `;
@@ -343,10 +350,111 @@
                 }
 
                 showAlert(data.message, 'success');
+                refreshDeploymentSelectionUi();
             } catch (err) {
                 showAlert(err.message || 'Delete failed.', 'error');
                 btn.disabled = false;
             }
         });
     });
+
+    // --- Deployment history bulk actions ---
+    const historyPanel = document.getElementById('deploymentHistoryPanel');
+    if (historyPanel) {
+        const selectAll = document.getElementById('deploymentSelectAll');
+        const bulkDeleteBtn = document.getElementById('deploymentBulkDeleteBtn');
+        const clearHistoryBtn = document.getElementById('deploymentClearHistoryBtn');
+        const selectedCountEl = document.getElementById('deploymentSelectedCount');
+        const rowCheckboxes = () => Array.from(document.querySelectorAll('.deployment-row-checkbox'));
+
+        function refreshDeploymentSelectionUi() {
+            const boxes = rowCheckboxes();
+            const checked = boxes.filter((cb) => cb.checked);
+            const count = checked.length;
+
+            if (selectedCountEl) {
+                if (count > 0) {
+                    selectedCountEl.textContent = count + ' selected';
+                    selectedCountEl.classList.remove('hidden');
+                } else {
+                    selectedCountEl.classList.add('hidden');
+                }
+            }
+
+            if (bulkDeleteBtn) {
+                bulkDeleteBtn.disabled = count === 0;
+            }
+
+            if (selectAll && boxes.length > 0) {
+                selectAll.checked = count === boxes.length;
+                selectAll.indeterminate = count > 0 && count < boxes.length;
+            }
+        }
+
+        selectAll?.addEventListener('change', () => {
+            rowCheckboxes().forEach((cb) => {
+                cb.checked = selectAll.checked;
+            });
+            refreshDeploymentSelectionUi();
+        });
+
+        rowCheckboxes().forEach((cb) => {
+            cb.addEventListener('change', refreshDeploymentSelectionUi);
+        });
+
+        bulkDeleteBtn?.addEventListener('click', async () => {
+            const uuids = rowCheckboxes().filter((cb) => cb.checked).map((cb) => cb.value);
+            if (uuids.length === 0) return;
+
+            if (!confirm('Delete ' + uuids.length + ' selected deployment record(s) from history?')) return;
+
+            clearAlert();
+            bulkDeleteBtn.disabled = true;
+
+            try {
+                const res = await fetch(historyPanel.dataset.bulkDeleteUrl, {
+                    method: 'DELETE',
+                    headers: {
+                        'X-CSRF-TOKEN': csrfToken,
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: JSON.stringify({ uuids }),
+                });
+                const data = await parseJsonResponse(res);
+                if (!res.ok || !data.success) throw new Error(data.message || 'Bulk delete failed');
+
+                showAlert(data.message, 'success');
+                window.setTimeout(() => window.location.reload(), 600);
+            } catch (err) {
+                showAlert(err.message || 'Bulk delete failed.', 'error');
+                refreshDeploymentSelectionUi();
+            }
+        });
+
+        clearHistoryBtn?.addEventListener('click', async () => {
+            if (!confirm('Clear ALL deployment history? This removes every record and cancels any active runs. This cannot be undone.')) return;
+
+            clearAlert();
+            clearHistoryBtn.disabled = true;
+
+            try {
+                const res = await fetch(historyPanel.dataset.clearUrl, {
+                    method: 'DELETE',
+                    headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                const data = await parseJsonResponse(res);
+                if (!res.ok || !data.success) throw new Error(data.message || 'Clear history failed');
+
+                showAlert(data.message, 'success');
+                window.setTimeout(() => window.location.reload(), 600);
+            } catch (err) {
+                showAlert(err.message || 'Clear history failed.', 'error');
+                clearHistoryBtn.disabled = false;
+            }
+        });
+
+        refreshDeploymentSelectionUi();
+    }
 })();

@@ -162,7 +162,7 @@
             <div class="flex flex-wrap items-center gap-2 shrink-0 w-full md:w-auto justify-start md:justify-end">
                 <a href="{{ route('admin.article.trashed.index') }}"
                     class="flex flex-1 sm:flex-initial !p-2 !py-3 text-sm font-normal justify-center duration-300 bg-gray-700 hover:bg-gray-600 text-white rounded whitespace-nowrap">
-                    Deleted used articles
+                    Delete Articles
                 </a>
                 <a href="{{ route('admin.articles.opt') }}"
                     class="flex flex-1 sm:flex-initial !p-2 !py-3 text-[16px] font-normal min-w-[140px] justify-center duration-300 bg-black hover:bg-[var(--primary-color)] text-white rounded whitespace-nowrap">+

@@ -2,12 +2,8 @@
 
 namespace App\Models\Admin;
 
-use Illuminate\Database\Eloquent\Model;
 use App\Models\Admin;
-use App\Models\Admin\DomainCategory;
-use App\Models\Admin\HiddenLinksCampaignDomains;
-use App\Models\Admin\HiddenLinksCampaignLinks;
-use App\Models\Admin\HiddenLinksCampaignTasks;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
 /**
@@ -50,16 +46,27 @@ class HiddenLinksCampaign extends Model
         'started_at',
         'finished_at',
         'last_bulk_updated_at',
+        'local_client_id',
+        'billing_total',
+        'billing_currency',
+        'billing_snapshot',
+        'billing_payment_status',
+        'billing_paid_at',
+        'billing_paid_by_admin_id',
+        'billing_payment_note',
     ];
 
     protected $casts = [
-        'sidebar_count'       => 'integer',
-        'total_targets'       => 'integer',
-        'completed_targets'   => 'integer',
-        'failed_targets'      => 'integer',
-        'started_at'          => 'datetime',
-        'finished_at'         => 'datetime',
+        'sidebar_count' => 'integer',
+        'total_targets' => 'integer',
+        'completed_targets' => 'integer',
+        'failed_targets' => 'integer',
+        'started_at' => 'datetime',
+        'finished_at' => 'datetime',
         'last_bulk_updated_at' => 'datetime',
+        'billing_snapshot' => 'array',
+        'billing_total' => 'decimal:2',
+        'billing_paid_at' => 'datetime',
     ];
 
     // =========================
@@ -108,5 +115,10 @@ class HiddenLinksCampaign extends Model
     public function scopeActive($q)
     {
         return $q->whereIn('status', ['queued', 'running', 'paused']);
+    }
+
+    public function localClient()
+    {
+        return $this->belongsTo(LocalClient::class, 'local_client_id');
     }
 }

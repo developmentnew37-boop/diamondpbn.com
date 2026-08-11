@@ -69,12 +69,39 @@
         @endif
     </div>
 
+    @if (! empty($isConvertedLiveCampaign) && filled($campaign->converted_from_sidebar_campaign_id))
+        <div class="content-card !mt-4 !p-4 bg-orange-50 border border-orange-200 text-sm">
+            <strong>Converted from live sidebar campaign</strong>
+            @if ($campaign->sourceSidebarCampaign)
+                ({{ $campaign->sourceSidebarCampaign->campaign_no }})
+            @endif
+            · Pipeline: {{ $campaign->conversion_pipeline_status ?? '—' }}
+            @if ($campaign->conversion_run_date)
+                · Conversion day: {{ \Carbon\Carbon::parse($campaign->conversion_run_date)->format('d M Y') }}
+            @endif
+            <form action="{{ route('admin.convert.sidebar.bulk-retry', $campaign->id) }}" method="post" class="inline !ml-3">
+                @csrf
+                <button type="submit" class="text-[var(--primary-color)] underline bg-transparent border-0 cursor-pointer">Retry failed conversion tasks</button>
+            </form>
+            <span class="text-gray-600">· Due slots publish on WordPress automatically; future slots stay hidden until their schedule date. WordPress status refreshes when you open this page.</span>
+        </div>
+    @endif
+
     {{-- ================= Campaign Header ================= --}}
+    @include('admin.campaigns.partials.local-client-billing')
     <div class="content-card w-full">
 
         <h2 class="text-lg !mb-4 bg-[var(--primary-color)] text-white !px-4 !py-2 rounded w-fit">
             {{ $campaign->campaign_no }} — Scheduled Sidebar Campaign
         </h2>
+
+        @include('admin.campaigns.partials.post-status-filters', [
+            'routeName' => 'admin.schedule.sidebar.campaign.show',
+            'routeParameter' => 'schedule',
+            'campaign' => $campaign,
+            'statusFilter' => $statusFilter,
+            'statusCounts' => $statusCounts,
+        ])
 
         {{-- ================= Tasks Table ================= --}}
         <div class="overflow-x-auto mt-4">
@@ -129,13 +156,17 @@
                             </td>
 
                             {{-- Target URL --}}
-                            <td class="border !px-2 !py-2 max-w-[260px] truncate" title="{{ $task->link?->target_url }}">
-                                {{ $task->link?->target_url ?? '-' }}
+                            @php
+                                $targetUrlCell = \App\Support\ReportDisplay::url($task->link?->target_url);
+                                $anchorCell = \App\Support\ReportDisplay::keyword($task->link?->anchor_keyword);
+                            @endphp
+                            <td class="border !px-2 !py-2 max-w-[260px] truncate" title="{{ $targetUrlCell['title'] }}">
+                                {{ $targetUrlCell['display'] }}
                             </td>
 
                             {{-- Anchor --}}
-                            <td class="border !px-2 !py-2">
-                                {{ $task->link?->anchor_keyword ?? '-' }}
+                            <td class="border !px-2 !py-2" title="{{ $anchorCell['title'] }}">
+                                {{ $anchorCell['display'] }}
                             </td>
 
                             {{-- Nofollow --}}
@@ -148,11 +179,17 @@
                                 {{ $task->remote_id ?? '-' }}
                             </td>
 
-                            {{-- Remote URL --}}
+                            {{-- Remote URL (View opens the PBN domain, not the outbound target link) --}}
+                            @php
+                                $domainName = optional($task->domain?->domain)->name;
+                                $domainViewUrl = $domainName
+                                    ? (preg_match('~^https?://~i', $domainName) ? $domainName : 'https://'.$domainName)
+                                    : null;
+                            @endphp
                             <td class="border !px-2 !py-2 text-center">
-                                @if ($task->remote_url)
-                                    <a href="{{ $task->remote_url }}" target="_blank"
-                                        class="bg-yellow-500 text-white rounded px-2 py-1 text-xs">
+                                @if ($domainViewUrl)
+                                    <a href="{{ $domainViewUrl }}" target="_blank" rel="noopener noreferrer"
+                                        class="bg-yellow-500 text-white rounded !px-2 !py-1 text-xs hover:bg-yellow-600">
                                         View
                                     </a>
                                 @else
@@ -165,11 +202,14 @@
                                 {{ $task->attempt_count }}
                             </td>
                             <td class="border !px-2 !py-2 text-xs">
-                                {{ $task->schedule_at?->format('d M Y H:i') ?? '-' }}
+                                @php
+                                    $scheduleDisplay = \App\Support\ScheduleSidebarReportStatus::slotDate($task);
+                                @endphp
+                                {{ $scheduleDisplay ? \Carbon\Carbon::parse($scheduleDisplay)->format('d M Y') : '-' }}
                             </td>
                             {{-- Last Error --}}
-                            <td class="border !px-2 !py-2 max-w-[300px] truncate" title="{{ $task->last_error }}">
-                                {{ $task->last_error ?? '-' }}
+                            <td class="border !px-2 !py-2 max-w-[300px] truncate" title="{{ $task->last_conversion_error ?? $task->last_error }}">
+                                {{ $task->last_conversion_error ?? $task->last_error ?? '-' }}
                             </td>
 
                             {{-- Next Retry --}}
@@ -180,17 +220,22 @@
                             {{-- Status --}}
                             <td class="border !px-2 !py-2 text-center">
                                 @php
-                                    $statusMap = [
-                                        'queued' => 'bg-gray-100 text-gray-700',
-                                        'publishing' => 'bg-yellow-100 text-yellow-700',
-                                        'success' => 'bg-green-100 text-green-700',
-                                        'failed' => 'bg-red-100 text-red-700',
-                                    ];
+                                    if (! empty($isConvertedLiveCampaign) && $task->is_converted_live) {
+                                        $reportStatus = \App\Support\ScheduleSidebarReportStatus::forReport($task);
+                                        $statusLabel = $reportStatus['label'];
+                                        $statusClass = $reportStatus['class'];
+                                    } else {
+                                        $statusMap = [
+                                            'queued' => ['Queued', 'bg-gray-100 text-gray-700'],
+                                            'publishing' => ['Publishing', 'bg-yellow-100 text-yellow-700'],
+                                            'success' => ['Success', 'bg-green-100 text-green-700'],
+                                            'failed' => ['Failed', 'bg-red-100 text-red-700'],
+                                        ];
+                                        [$statusLabel, $statusClass] = $statusMap[$task->status] ?? [ucfirst($task->status), 'bg-gray-100 text-gray-600'];
+                                    }
                                 @endphp
-                                <span
-                                    class="!px-2 !py-1 rounded text-xs font-semibold
-                                {{ $statusMap[$task->status] ?? 'bg-gray-100 text-gray-600' }}">
-                                    {{ ucfirst($task->status) }}
+                                <span class="!px-2 !py-1 rounded text-xs font-semibold {{ $statusClass }}">
+                                    {{ $statusLabel }}
                                 </span>
                             </td>
 
@@ -214,8 +259,26 @@
                                             <span class="material-symbols-outlined text-white !text-sm">edit</span>
                                         </a>
                                     @endif
-                                    @if (in_array($task->status, ['queued', 'failed', 'publishing']))
+                                    @php
+                                        $replaceProfile = $task->is_converted_live
+                                            ? \App\Services\LiveTaskDomainReplacement\LiveTaskReplacementProfile::convertedScheduleSidebar()
+                                            : \App\Services\LiveTaskDomainReplacement\LiveTaskReplacementProfile::scheduleSidebar();
+                                        $canReplaceDomain = app(\App\Services\LiveTaskDomainReplacement\LiveTaskDomainReplacementService::class)
+                                            ->ineligibleReason($replaceProfile, $task) === null;
+                                    @endphp
+                                    @if ($canReplaceDomain)
+                                        <a href="{{ route('admin.schedule.sidebar.campaign.domain-replacement.create', $task->id) }}"
+                                            class="bg-blue-600 w-7 h-7 inline-flex items-center justify-center rounded hover:bg-blue-700"
+                                            title="Replace domain">
+                                            <span class="material-symbols-outlined text-white !text-sm">swap_horiz</span>
+                                        </a>
+                                    @endif
+                                    @if (in_array($task->status, ['queued', 'failed', 'publishing']) || ($task->is_converted_live && in_array($task->conversion_phase, ['failed', 'pending_draft', 'drafted'], true)))
+                                        @if (! empty($isConvertedLiveCampaign) && $task->is_converted_live)
+                                        <form action="{{ route('admin.convert.sidebar.retry-task', $task->id) }}" method="post" class="inline">
+                                        @else
                                         <form action="{{ route('admin.schedule.sidebar.campaign.retry.task', $task->id) }}" method="post" class="inline">
+                                        @endif
                                             @csrf
                                             <button type="submit" class="bg-blue-500 w-7 h-7 inline-flex items-center justify-center rounded hover:bg-blue-600 border-0 cursor-pointer" title="Retry">
                                                 <span class="material-symbols-outlined text-white !text-sm">replay</span>

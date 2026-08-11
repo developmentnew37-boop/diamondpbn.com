@@ -6,14 +6,16 @@ use App\Jobs\ProcessDomainStatusCheckChunkJob;
 use App\Models\Admin\Domain;
 use App\Models\Admin\DomainStatusCheck;
 use App\Models\Admin\DomainStatusCheckItem;
-use Illuminate\Http\Client\Pool;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 
 class DomainStatusCheckerService
 {
     public const MAX_DOMAINS = 500;
+
+    public function __construct(
+        private readonly WordPressAgentStatusService $agentStatusService
+    ) {}
 
     /**
      * @return array<int, string>
@@ -71,7 +73,8 @@ class DomainStatusCheckerService
         array $domainNames,
         string $source,
         bool $updateInventory,
-        ?int $categoryId = null
+        ?int $categoryId = null,
+        bool $useAuthenticatedCheck = false,
     ): DomainStatusCheck {
         $inventoryByName = Domain::query()
             ->with('domainCategory:id,name')
@@ -86,6 +89,7 @@ class DomainStatusCheckerService
             $domainNames,
             $source,
             $updateInventory,
+            $useAuthenticatedCheck,
             $categoryId,
             $inventoryByName,
             $inInventoryCount
@@ -98,8 +102,11 @@ class DomainStatusCheckerService
                 'total_count' => count($domainNames),
                 'in_inventory_count' => $inInventoryCount,
                 'update_inventory' => $updateInventory,
+                'use_authenticated_check' => $useAuthenticatedCheck,
                 'domain_category_id' => $categoryId,
-                'status_message' => 'Queued — waiting for queue worker (domainCheck)',
+                'status_message' => $useAuthenticatedCheck
+                    ? 'Queued — authenticated POST /status/check (domainCheck worker)'
+                    : 'Queued — waiting for queue worker (domainCheck)',
             ]);
 
             $rows = [];
@@ -180,7 +187,7 @@ class DomainStatusCheckerService
             ->whereIn('id', $items->pluck('id'))
             ->update(['check_status' => 'checking']);
 
-        $results = $this->probeDomains($items, $isRetry);
+        $results = $this->probeDomains($items, $isRetry, (bool) $check->use_authenticated_check);
 
         foreach ($items as $item) {
             $this->applyProbeResults($item, $results[$item->id] ?? [
@@ -270,9 +277,9 @@ class DomainStatusCheckerService
 
     /**
      * @param  Collection<int, DomainStatusCheckItem>  $items
-     * @return array<int, array{connected: bool, message: string, response_time_ms: int|null}>
+     * @return array<int, array<string, mixed>>
      */
-    public function probeDomains(Collection $items, bool $isRetry): array
+    public function probeDomains(Collection $items, bool $isRetry, bool $useAuthenticatedCheck = false): array
     {
         if ($items->isEmpty()) {
             return [];
@@ -281,33 +288,67 @@ class DomainStatusCheckerService
         $timeout = $isRetry ? $this->retryRequestTimeout() : $this->requestTimeout();
         $connectTimeout = $isRetry ? $this->retryConnectTimeout() : $this->connectTimeout();
 
-        $responses = Http::pool(function (Pool $pool) use ($items, $timeout, $connectTimeout) {
-            foreach ($items as $item) {
-                $pool->as((string) $item->id)
-                    ->withoutVerifying()
-                    ->timeout($timeout)
-                    ->connectTimeout($connectTimeout)
-                    ->withHeaders([
-                        'Accept' => 'application/json',
-                        'User-Agent' => 'DiamondPBN-StatusChecker/1.0',
-                    ])
-                    ->get($this->statusEndpointUrl($item->domain));
-            }
-        });
+        if ($useAuthenticatedCheck) {
+            $apiKeysByDomainId = Domain::query()
+                ->whereIn('id', $items->pluck('domain_id')->filter()->all())
+                ->get(['id', 'api_key'])
+                ->mapWithKeys(function (Domain $domain) {
+                    try {
+                        $key = trim((string) ($domain->api_key ?? ''));
+                    } catch (\Throwable) {
+                        $key = '';
+                    }
+
+                    return [(int) $domain->id => $key];
+                });
+
+            $targets = $items->mapWithKeys(function ($item) use ($apiKeysByDomainId) {
+                $apiKey = $item->domain_id
+                    ? ($apiKeysByDomainId[(int) $item->domain_id] ?? '')
+                    : '';
+
+                return [
+                    $item->id => [
+                        'domain' => $item->domain,
+                        'api_key' => $apiKey,
+                    ],
+                ];
+            })->all();
+
+            $responses = $this->agentStatusService->probeManyWithAuthFallback(
+                $targets,
+                $timeout,
+                $connectTimeout
+            );
+        } else {
+            $domains = $items->mapWithKeys(fn ($item) => [$item->id => $item->domain])->all();
+            $responses = $this->agentStatusService->probeMany($domains, $timeout, $connectTimeout);
+        }
 
         $results = [];
 
         foreach ($items as $item) {
-            $response = $responses[(string) $item->id] ?? null;
-            $interpreted = $this->interpretResponse($response);
-
-            if ($response && method_exists($response, 'transferStats') && $response->transferStats) {
-                $interpreted['response_time_ms'] = (int) round($response->transferStats->getTransferTime() * 1000);
-            } else {
-                $interpreted['response_time_ms'] = null;
-            }
-
-            $results[$item->id] = $interpreted;
+            $result = $responses[$item->id] ?? null;
+            $results[$item->id] = $result === null
+                ? [
+                    'connected' => false,
+                    'status_code' => 'domain_offline',
+                    'message' => 'No response received',
+                    'probe_method' => $useAuthenticatedCheck ? 'auth_rest' : 'rest',
+                    'agent_version' => null,
+                    'http_status' => null,
+                    'response_time_ms' => null,
+                ]
+                : [
+                    'connected' => $result->ok,
+                    'status_code' => $result->code,
+                    'message' => $result->message,
+                    'probe_method' => $result->probeMethod,
+                    'agent_version' => $result->pluginVersion,
+                    'http_status' => $result->httpStatus,
+                    'response_time_ms' => $result->responseTimeMs,
+                    'agent_result' => $result,
+                ];
         }
 
         return $results;
@@ -318,9 +359,20 @@ class DomainStatusCheckerService
         $connected = (bool) ($result['connected'] ?? false);
         $message = (string) ($result['message'] ?? 'Unknown response');
         $attempts = $item->attempts + 1;
+        $classification = [
+            'status_code' => $result['status_code'] ?? 'domain_offline',
+            'probe_method' => $result['probe_method'] ?? 'rest',
+            'agent_version' => $result['agent_version'] ?? null,
+            'http_status' => $result['http_status'] ?? null,
+        ];
+
+        if ($item->domain_id && isset($result['agent_result'])) {
+            $domain = Domain::query()->find($item->domain_id);
+            $domain?->persistAgentHealth($result['agent_result']);
+        }
 
         if ($connected) {
-            $item->update([
+            $item->update($classification + [
                 'check_status' => 'connected',
                 'connected' => true,
                 'message' => $isRetry ? 'Connected (verified on 2nd check)' : $message,
@@ -333,7 +385,7 @@ class DomainStatusCheckerService
         }
 
         if (! $isRetry) {
-            $item->update([
+            $item->update($classification + [
                 'check_status' => 'retry_pending',
                 'connected' => false,
                 'message' => $message.' — queued for verification',
@@ -345,7 +397,7 @@ class DomainStatusCheckerService
             return;
         }
 
-        $item->update([
+        $item->update($classification + [
             'check_status' => 'disconnected',
             'connected' => false,
             'message' => $isRetry
@@ -419,143 +471,6 @@ class DomainStatusCheckerService
         return self::MAX_DOMAINS;
     }
 
-    /**
-     * @return array{connected: bool, message: string, http_status: int|null}
-     */
-    private function interpretResponse(mixed $response): array
-    {
-        $httpStatus = ($response && method_exists($response, 'status')) ? $response->status() : null;
-
-        try {
-            if (! $response) {
-                return [
-                    'connected' => false,
-                    'message' => 'No response received (timeout or connection error)',
-                    'http_status' => null,
-                ];
-            }
-
-            if (! $response->successful()) {
-                return [
-                    'connected' => false,
-                    'message' => $this->buildHttpErrorMessage($response),
-                    'http_status' => $httpStatus,
-                ];
-            }
-
-            if ($this->isPluginStatusConnected($response)) {
-                return [
-                    'connected' => true,
-                    'message' => $this->extractApiMessage($response) ?: 'Plugin Connected',
-                    'http_status' => $httpStatus,
-                ];
-            }
-
-            return [
-                'connected' => false,
-                'message' => $this->buildPluginFalseMessage($response),
-                'http_status' => $httpStatus,
-            ];
-        } catch (\Throwable $e) {
-            return [
-                'connected' => false,
-                'message' => 'Request failed: '.$e->getMessage(),
-                'http_status' => $httpStatus,
-            ];
-        }
-    }
-
-    private function statusEndpointUrl(string $domain): string
-    {
-        return 'https://'.normalizeDomainName($domain).'/wp-json/external/v1/status';
-    }
-
-    private function isPluginStatusConnected(mixed $response): bool
-    {
-        $body = $response->json();
-
-        if (! is_array($body)) {
-            return false;
-        }
-
-        $status = $body['status'] ?? ($body['data']['status'] ?? null);
-
-        if ($status === true || $status === 1) {
-            return true;
-        }
-
-        if (is_string($status)) {
-            return in_array(strtolower(trim($status)), ['true', '1', 'yes', 'ok', 'connected'], true);
-        }
-
-        if (! empty($body['success']) && $this->isTruthyStatus($body['data']['status'] ?? null)) {
-            return true;
-        }
-
-        return false;
-    }
-
-    private function isTruthyStatus(mixed $status): bool
-    {
-        if ($status === true || $status === 1) {
-            return true;
-        }
-
-        if (is_string($status)) {
-            return in_array(strtolower(trim($status)), ['true', '1', 'yes', 'ok', 'connected'], true);
-        }
-
-        return false;
-    }
-
-    private function extractApiMessage(mixed $response): ?string
-    {
-        $body = $response->json();
-
-        if (! is_array($body)) {
-            return null;
-        }
-
-        $message = $body['message'] ?? ($body['data']['message'] ?? null);
-
-        return is_string($message) && trim($message) !== '' ? trim($message) : null;
-    }
-
-    private function buildHttpErrorMessage(mixed $response): string
-    {
-        $apiMessage = $this->extractApiMessage($response);
-        $code = $response->json('code');
-        $status = $response->status();
-
-        if ($apiMessage && $code) {
-            return "HTTP {$status} ({$code}): {$apiMessage}";
-        }
-
-        if ($apiMessage) {
-            return "HTTP {$status}: {$apiMessage}";
-        }
-
-        return match ($status) {
-            404 => 'HTTP 404: Plugin Missing / API Route Not Found',
-            403 => 'HTTP 403: Access forbidden (firewall or security plugin)',
-            500, 502, 503 => "HTTP {$status}: Remote server error",
-            default => "HTTP {$status}",
-        };
-    }
-
-    private function buildPluginFalseMessage(mixed $response): string
-    {
-        $apiMessage = $this->extractApiMessage($response);
-        $body = $response->json();
-        $rawStatus = is_array($body) ? ($body['status'] ?? 'missing') : 'invalid-json';
-
-        if ($apiMessage) {
-            return $apiMessage;
-        }
-
-        return 'Plugin not connected (API returned status='.json_encode($rawStatus).')';
-    }
-
     public function chunkSize(): int
     {
         return max(1, min(25, (int) config('domain_status_checker.chunk_size', 8)));
@@ -620,6 +535,10 @@ class DomainStatusCheckerService
                 'sort_order',
                 'check_status',
                 'connected',
+                'status_code',
+                'probe_method',
+                'agent_version',
+                'http_status',
                 'message',
                 'attempts',
                 'response_time_ms',

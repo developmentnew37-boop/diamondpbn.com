@@ -84,9 +84,9 @@
                         @php
                             $domain = optional($post->campaignDomain?->domain)->name ?? '-';
 
-                            $isLive = $post->status === 'success';
-                            $statusText = $isLive ? 'Live' : 'Not Live';
-                            $statusClass = $isLive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700';
+                            $reportStatus = \App\Support\SchedulePostReportStatus::forReport($post);
+                            $statusText = $reportStatus['label'];
+                            $statusClass = $reportStatus['class'];
 
                             $ca = $post->campaignArticle;
 

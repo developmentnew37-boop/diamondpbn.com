@@ -6,7 +6,6 @@ use Illuminate\Database\Eloquent\Model;
 
 class SidebarCampaignTask extends Model
 {
-
     protected $table = 'sidebar_campaign_tasks';
 
     protected $fillable = [
@@ -30,8 +29,8 @@ class SidebarCampaignTask extends Model
         'started_at',
         'finished_at',
         'content_updated_at',
+        'dispatch_generation',
     ];
-
 
     protected $casts = [
         'links_payload' => 'array',      // if longtext, still ok (Laravel will json_encode/decode)
@@ -39,9 +38,9 @@ class SidebarCampaignTask extends Model
         'next_retry_at' => 'datetime',
         'locked_at' => 'datetime',
         'locked_until' => 'datetime',
-        'published_at'      => 'datetime',
-        'started_at'        => 'datetime',
-        'finished_at'       => 'datetime',
+        'published_at' => 'datetime',
+        'started_at' => 'datetime',
+        'finished_at' => 'datetime',
         'content_updated_at' => 'datetime',
     ];
 

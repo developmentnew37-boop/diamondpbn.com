@@ -12,7 +12,7 @@
                     <input type="hidden" name="{{ $key }}" value="{{ $value }}">
                 @endforeach
 
-                <input type="search" name="search" placeholder="Search campaign no..." id="search_category"
+                <input type="search" name="search" placeholder="{{ $searchPlaceholder ?? 'Search campaign no...' }}" id="search_category"
                     value="{{ request('search') }}"
                     class="bg-gray-100 shadow border border-gray-200 h-12 !px-3 !pr-[50px] text-sm leading-normal w-full rounded outline-none focus:border-[var(--primary-color)]">
 

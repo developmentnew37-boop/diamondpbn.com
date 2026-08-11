@@ -425,6 +425,11 @@
         class="w-full max-w-full min-w-0 flex flex-wrap justify-between items-start content-card">
         @csrf
 
+        @include('admin.campaigns.partials.local-client-billing-fields', [
+            'billingCampaignType' => !empty($is_sticky) ? 'sticky' : 'post',
+            'isStickyBilling' => !empty($is_sticky),
+        ])
+
         <h2 class="text-base sm:text-xl capitalize !mb-4 bg-[var(--primary-color)] text-white w-full max-w-full sm:w-fit !p-2 rounded">Create Post Campaigns
         </h2>
         {{-- xxxxxxxxxxxxxxxxxx campaigns button xxxxxxxxxxxxxxxxxxxxxxxxxxxx --}}

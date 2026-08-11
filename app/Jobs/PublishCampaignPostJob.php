@@ -2,21 +2,21 @@
 
 namespace App\Jobs;
 
-
+use App\Models\Admin\Article;
+use App\Models\Admin\Campaign;
+use App\Models\Admin\CampaignArticle;
+use App\Models\Admin\CampaignDomain;
+use App\Models\Admin\CampaignPost;
+use App\Services\CampaignPostContentBuilder;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
-use App\Models\Admin\Campaign;
-use App\Models\Admin\CampaignArticle;
-use App\Models\Admin\CampaignPost;
-use App\Models\Admin\CampaignDomain;
-use App\Models\Admin\Article;
-use App\Services\CampaignPostContentBuilder;
 use Throwable;
 
 class PublishCampaignPostJob implements ShouldQueue
@@ -25,14 +25,19 @@ class PublishCampaignPostJob implements ShouldQueue
 
     public int $tries = 1;
 
-    public function __construct(public int $campaignPostId)
-    {
+    public int $dispatchGeneration = 0;
+
+    public function __construct(
+        public int $campaignPostId,
+        int $dispatchGeneration = 0,
+    ) {
+        $this->dispatchGeneration = $dispatchGeneration;
         $this->onQueue('campaigns');
     }
 
     public function handle(): void
     {
-        $lockTtlSec  = config('campaign.jobs.lock_ttl_seconds');
+        $lockTtlSec = config('campaign.jobs.lock_ttl_seconds');
         $maxAttempts = config('campaign.jobs.max_internal_retries');
         $baseBackoff = config('campaign.jobs.base_backoff_seconds');
 
@@ -46,26 +51,39 @@ class PublishCampaignPostJob implements ShouldQueue
                 ->lockForUpdate()
                 ->find($this->campaignPostId);
 
-            if (!$p) return null;
+            if (! $p) {
+                return null;
+            }
 
-            if (in_array($p->status, ['success', 'failed'], true)) return null;
-            if (in_array($p->campaign->status, ['paused', 'cancelled'], true)) return null;
+            if ($p->dispatch_generation !== $this->dispatchGeneration) {
+                return null;
+            }
+            if (in_array($p->status, ['success', 'failed'], true)) {
+                return null;
+            }
+            if (in_array($p->campaign->status, ['paused', 'cancelled'], true)) {
+                return null;
+            }
 
-            if ($p->next_retry_at && $p->next_retry_at->isFuture()) return null;
+            if ($p->next_retry_at && $p->next_retry_at->isFuture()) {
+                return null;
+            }
 
             if ($p->locked_at && $p->locked_at->gt(now()->subSeconds($lockTtlSec))) {
                 return null;
             }
 
-            $p->status     = 'publishing';
-            $p->locked_at  = now();
+            $p->status = 'publishing';
+            $p->locked_at = now();
             $p->lock_token = $lockToken;
             $p->save();
 
             return $p;
         });
 
-        if (!$post) return;
+        if (! $post) {
+            return;
+        }
 
         // Load everything needed
         $post->load([
@@ -74,7 +92,7 @@ class PublishCampaignPostJob implements ShouldQueue
             'campaignArticle.article',
         ]);
 
-
+        $finalizeCampaign = false;
 
         try {
             // 🧠 STEP 2: Build content
@@ -109,6 +127,10 @@ class PublishCampaignPostJob implements ShouldQueue
             ]);
 
             // 🌐 STEP 3: Send to WordPress
+            if (! $this->markRemoteAttemptStarted($post)) {
+                return;
+            }
+
             $remote = $this->postToWordPress($post, $title, $content);
 
             // 🔍 DEBUG: Log what WordPress returned
@@ -121,31 +143,33 @@ class PublishCampaignPostJob implements ShouldQueue
             ]);
 
             // ✅ STEP 4: Mark success
-            DB::transaction(function () use ($post, $remote, $title) {
+            $finalizeCampaign = DB::transaction(function () use ($post, $remote, $title) {
 
                 // Lock campaign post
                 $fresh = CampaignPost::lockForUpdate()->find($post->id);
-                if (!$fresh || $fresh->lock_token !== $post->lock_token) {
-                    return;
+                if (! $this->stillOwns($fresh, $post)) {
+                    return false;
                 }
 
                 // Update post status (title matches published payload; safe if article row is later removed)
                 $fresh->update([
-                    'status'        => 'success',
-                    'remote_id'     => $remote['post_id'] ?? null,
-                    'remote_title'  => $title,
-                    'remote_url'    => $remote['remote_url'] ?? null,
-                    'published_at'  => now(),
-                    'last_error'    => null,
+                    'status' => 'success',
+                    'remote_id' => $remote['post_id'] ?? null,
+                    'remote_title' => $title,
+                    'remote_url' => $remote['remote_url'] ?? null,
+                    'published_at' => now(),
+                    'last_error' => null,
+                    'delivery_state' => CampaignPost::DELIVERY_REMOTE_CREATED,
+                    'last_failure_code' => null,
                     'next_retry_at' => null,
-                    'locked_at'     => null,
-                    'lock_token'    => null,
+                    'locked_at' => null,
+                    'lock_token' => null,
                 ]);
 
                 // 🔒 LOCK campaign row FIRST
                 $campaign = Campaign::lockForUpdate()->find($fresh->campaign_id);
-                if (!$campaign) {
-                    return;
+                if (! $campaign) {
+                    return false;
                 }
 
                 // ➕ Increment locally
@@ -170,22 +194,39 @@ class PublishCampaignPostJob implements ShouldQueue
                     if ($art) {
                         $ca->update([
                             'article_title_snapshot' => $art->name,
-                            'article_body_snapshot'  => $art->description,
+                            'article_body_snapshot' => $art->description,
                         ]);
                         $art->delete();
                     }
                 }
+
+                return true;
             });
         } catch (Throwable $e) {
+            [$failureCode, $deliveryState] = $this->classifyFailure($e);
 
             // ❌ STEP 5: Retry or fail
-            DB::transaction(function () use ($post, $e, $maxAttempts, $baseBackoff) {
+            $finalizeCampaign = DB::transaction(function () use (
+                $post,
+                $e,
+                $failureCode,
+                $deliveryState,
+                $maxAttempts,
+                $baseBackoff
+            ) {
 
                 $fresh = CampaignPost::lockForUpdate()->find($post->id);
-                if (!$fresh || $fresh->lock_token !== $post->lock_token) return;
+                if (! $this->stillOwns($fresh, $post)) {
+                    return false;
+                }
 
                 $fresh->attempt_count++;
                 $fresh->last_error = $e->getMessage();
+                $fresh->last_failure_code = $failureCode;
+
+                if ($deliveryState !== null) {
+                    $fresh->delivery_state = $deliveryState;
+                }
 
                 if ($fresh->attempt_count < $maxAttempts) {
 
@@ -195,25 +236,28 @@ class PublishCampaignPostJob implements ShouldQueue
                     $delay = min($delay, 3600);
 
                     $fresh->next_retry_at = now()->addSeconds($delay);
-                    $fresh->locked_at  = null;
+                    $fresh->locked_at = null;
                     $fresh->lock_token = null;
                     $fresh->save();
 
                     // ✅ IMPORTANT: re-dispatch job with delay
-                    PublishCampaignPostJob::dispatch($fresh->id)
+                    PublishCampaignPostJob::dispatch($fresh->id, $fresh->dispatch_generation)
                         ->onQueue('campaigns')
                         ->delay(now()->addSeconds($delay));
-                } else {
 
+                    return false;
+                } else {
                     $fresh->status = 'failed';
                     $fresh->next_retry_at = null;
-                    $fresh->locked_at  = null;
+                    $fresh->locked_at = null;
                     $fresh->lock_token = null;
                     $fresh->save();
                     // first mark post as failed, then increment failed_targets in campaign
                     $campaign = Campaign::lockForUpdate()->find($fresh->campaign_id);
 
-                    if (!$campaign) return;
+                    if (! $campaign) {
+                        return false;
+                    }
 
                     $currentTotal = $campaign->completed_targets + $campaign->failed_targets; //
 
@@ -231,13 +275,16 @@ class PublishCampaignPostJob implements ShouldQueue
 
                         $campaign->save();
                     }
+
+                    return true;
                 }
             });
         } finally {
-            $this->finalizeCampaignIfDone($post->campaign_id);
+            if ($finalizeCampaign) {
+                $this->finalizeCampaignIfDone($post->campaign_id);
+            }
         }
     }
-
 
     // /**
     //  * 🔗 Build title & content with STRICT sequential keyword+url
@@ -382,20 +429,19 @@ class PublishCampaignPostJob implements ShouldQueue
     //     return $res->json();
     // }
 
-
     private function buildContent(CampaignPost $post): array
     {
         $article = $post->campaignArticle->article;
 
-        if (!$article) {
+        if (! $article) {
             throw new \Exception("Article not found. campaign_post_id={$post->id}");
         }
 
         $title = trim((string) $article->name);
-        $html  = trim((string) $article->description);
+        $html = trim((string) $article->description);
 
         if ($title === '' || $html === '') {
-            throw new \Exception("Article missing content");
+            throw new \Exception('Article missing content');
         }
 
         // --------------------------------------------------
@@ -411,8 +457,8 @@ class PublishCampaignPostJob implements ShouldQueue
             ? json_decode($ca->url, true)
             : [$ca->url];
 
-        if (!is_array($keywords) || !is_array($urls)) {
-            throw new \Exception("Invalid keyword/url format");
+        if (! is_array($keywords) || ! is_array($urls)) {
+            throw new \Exception('Invalid keyword/url format');
         }
 
         // normalize + pair sequentially
@@ -420,7 +466,7 @@ class PublishCampaignPostJob implements ShouldQueue
         $max = min(count($keywords), count($urls));
 
         for ($i = 0; $i < $max; $i++) {
-            $kw  = trim((string) ($keywords[$i] ?? ''));
+            $kw = trim((string) ($keywords[$i] ?? ''));
             $url = trim((string) ($urls[$i] ?? ''));
 
             if ($kw !== '' && $url !== '') {
@@ -429,7 +475,7 @@ class PublishCampaignPostJob implements ShouldQueue
         }
 
         if (count($pairs) === 0) {
-            throw new \Exception("No valid keyword/url pairs");
+            throw new \Exception('No valid keyword/url pairs');
         }
 
         // --------------------------------------------------
@@ -449,7 +495,7 @@ class PublishCampaignPostJob implements ShouldQueue
         }
 
         // Fallback: no <p> tags OR only empty <p> tags → split by <br> tags
-        if (count($paragraphs) === 0 || !$hasMeaningfulContent) {
+        if (count($paragraphs) === 0 || ! $hasMeaningfulContent) {
             // Split by <br> tags (br, BR, br/, etc.)
             $parts = preg_split('/<br\s*\/?>/i', $html);
             $paragraphs = [];
@@ -459,28 +505,28 @@ class PublishCampaignPostJob implements ShouldQueue
                 $part = preg_replace('/<p\b[^>]*>\s*<\/p>/i', '', $part);
                 $part = trim($part);
                 if ($part !== '') {
-                    $paragraphs[] = '<p>' . $part . '</p>';
+                    $paragraphs[] = '<p>'.$part.'</p>';
                 }
             }
 
             // Still no content? Wrap entire HTML as single paragraph
             if (count($paragraphs) === 0) {
-                $paragraphs = ['<p>' . $html . '</p>'];
+                $paragraphs = ['<p>'.$html.'</p>'];
             }
         }
 
-        $paraCount   = count($paragraphs);
+        $paraCount = count($paragraphs);
         $anchorCount = count($pairs);
 
         // --------------------------------------------------
         // 3) Distribute anchors across paragraphs
         // Example: 5 anchors, 3 paras → 2 | 2 | 1
         // --------------------------------------------------
-        $base      = intdiv($anchorCount, $paraCount);
+        $base = intdiv($anchorCount, $paraCount);
         $remainder = $anchorCount % $paraCount;
 
         $pairIndex = 0;
-        $nofollow  = (bool) ($ca->nofollow ?? false);
+        $nofollow = (bool) ($ca->nofollow ?? false);
         $sponsored = (bool) ($ca->sponsored ?? false);
         $relTokens = [];
         if ($nofollow) {
@@ -489,12 +535,14 @@ class PublishCampaignPostJob implements ShouldQueue
         if ($sponsored) {
             $relTokens[] = 'sponsored';
         }
-        $relPart = count($relTokens) > 0 ? ' rel="' . implode(' ', $relTokens) . '"' : '';
+        $relPart = count($relTokens) > 0 ? ' rel="'.implode(' ', $relTokens).'"' : '';
 
         for ($p = 0; $p < $paraCount && $pairIndex < $anchorCount; $p++) {
 
             $insertCount = $base + ($p < $remainder ? 1 : 0);
-            if ($insertCount <= 0) continue;
+            if ($insertCount <= 0) {
+                continue;
+            }
 
             $paraHtml = $paragraphs[$p];
 
@@ -520,23 +568,22 @@ class PublishCampaignPostJob implements ShouldQueue
 
                 [$kw, $url] = $pairs[$pairIndex++];
 
-                $anchor = '<a href="' . e($url) . '" target="_blank"' . $relPart . '>' . e($kw) . '</a>';
+                $anchor = '<a href="'.e($url).'" target="_blank"'.$relPart.'>'.e($kw).'</a>';
 
                 // 🔥 Find a SAFE insertion point in HTML (not inside tag, not inside word)
                 $safePos = $this->findSafeHtmlInsertPos($inner, $target);
 
                 // ✅ Use mb_substr to avoid splitting multi-byte UTF-8 characters (Chinese, Thai, Arabic)
                 $inner = mb_substr($inner, 0, $safePos)
-                    . ' ' . $anchor . ' '
-                    . mb_substr($inner, $safePos);
+                    .' '.$anchor.' '
+                    .mb_substr($inner, $safePos);
 
                 // Move forward for next insertion in the same paragraph
                 $target = $safePos + mb_strlen($anchor) + 40;
             }
 
-            $paragraphs[$p] = $openTag . $inner . '</p>';
+            $paragraphs[$p] = $openTag.$inner.'</p>';
         }
-
 
         // --------------------------------------------------
         // code for Handling short paragraph and Anchor skipping thing
@@ -560,17 +607,13 @@ class PublishCampaignPostJob implements ShouldQueue
             while ($pairIndex < $anchorCount) {
                 [$kw, $url] = $pairs[$pairIndex++];
 
-                $anchor = '<a href="' . e($url) . '" target="_blank"' . $relPart . '>' . e($kw) . '</a>';
+                $anchor = '<a href="'.e($url).'" target="_blank"'.$relPart.'>'.e($kw).'</a>';
 
-                $inner .= ' ' . $anchor;
+                $inner .= ' '.$anchor;
             }
 
-            $paragraphs[0] = $openTag . $inner . '</p>';
+            $paragraphs[0] = $openTag.$inner.'</p>';
         }
-
-
-
-
 
         // --------------------------------------------------
         // 4) Rebuild HTML
@@ -642,7 +685,9 @@ class PublishCampaignPostJob implements ShouldQueue
     {
         // ✅ Use mb_strlen for character-based length (critical for Chinese/Thai/Arabic)
         $len = mb_strlen($html);
-        if ($len === 0) return 0;
+        if ($len === 0) {
+            return 0;
+        }
 
         $start = max(0, min($start, $len));
 
@@ -657,9 +702,12 @@ class PublishCampaignPostJob implements ShouldQueue
         $insideTagAt = function (int $pos) use ($html) {
             $before = mb_substr($html, 0, $pos);
             $lastLt = mb_strrpos($before, '<');
-            if ($lastLt === false) return false;
+            if ($lastLt === false) {
+                return false;
+            }
 
             $lastGt = mb_strrpos($before, '>');
+
             return $lastGt === false || $lastLt > $lastGt;
         };
 
@@ -667,7 +715,7 @@ class PublishCampaignPostJob implements ShouldQueue
         for ($d = 0; $d < 200; $d++) {
 
             $right = $start + $d;
-            if ($right < $len && !$insideTagAt($right)) {
+            if ($right < $len && ! $insideTagAt($right)) {
                 $ch = mb_substr($html, $right, 1); // ✅ UTF-8 SAFE
                 if ($ch !== '' && $isBoundary($ch)) {
                     return min($right + 1, $len);
@@ -675,7 +723,7 @@ class PublishCampaignPostJob implements ShouldQueue
             }
 
             $left = $start - $d;
-            if ($left > 0 && !$insideTagAt($left)) {
+            if ($left > 0 && ! $insideTagAt($left)) {
                 $ch = mb_substr($html, $left, 1); // ✅ UTF-8 SAFE
                 if ($ch !== '' && $isBoundary($ch)) {
                     return min($left + 1, $len);
@@ -692,25 +740,96 @@ class PublishCampaignPostJob implements ShouldQueue
         return min($pos, $len);
     }
 
+    private function markRemoteAttemptStarted(CampaignPost $post): bool
+    {
+        return DB::transaction(function () use ($post) {
+            $fresh = CampaignPost::lockForUpdate()->find($post->id);
+
+            if (! $this->stillOwns($fresh, $post)) {
+                return false;
+            }
+
+            $fresh->update([
+                'delivery_state' => CampaignPost::DELIVERY_REMOTE_UNKNOWN,
+                'last_failure_code' => null,
+            ]);
+
+            return true;
+        });
+    }
+
+    private function stillOwns(?CampaignPost $fresh, CampaignPost $claimed): bool
+    {
+        return $fresh !== null
+            && $fresh->lock_token === $claimed->lock_token
+            && $fresh->dispatch_generation === $this->dispatchGeneration;
+    }
+
+    /**
+     * @return array{0: string, 1: string|null}
+     */
+    public static function classifyDeliveryFailure(Throwable $exception): array
+    {
+        $message = mb_strtolower($exception->getMessage());
+
+        if (preg_match('/curl error\s*6\b/', $message)
+            || str_contains($message, 'could not resolve host')
+            || str_contains($message, 'getaddrinfo failed')
+            || str_contains($message, 'name or service not known')) {
+            return ['dns_resolution_failed', CampaignPost::DELIVERY_REMOTE_ABSENT];
+        }
+
+        if (preg_match('/curl error\s*7\b/', $message)
+            || ($exception instanceof ConnectionException && (
+                str_contains($message, "couldn't connect")
+                || str_contains($message, 'could not connect')
+                || str_contains($message, 'failed to connect')
+                || str_contains($message, 'connection refused')
+            ))) {
+            return ['connection_failed', CampaignPost::DELIVERY_REMOTE_ABSENT];
+        }
+
+        if (preg_match('/curl error\s*28\b/', $message)
+            || str_contains($message, 'timed out')
+            || str_contains($message, 'timeout')) {
+            return ['connection_timeout', CampaignPost::DELIVERY_REMOTE_UNKNOWN];
+        }
+
+        if (preg_match('/wp api failed \((\d{3})\)/', $message, $matches)) {
+            return [(int) $matches[1] >= 500 ? 'http_server_error' : 'http_client_error', CampaignPost::DELIVERY_REMOTE_UNKNOWN];
+        }
+
+        if (str_contains($message, 'non-json response')
+            || (str_contains($message, 'malformed') && str_contains($message, 'response'))) {
+            return ['malformed_response', CampaignPost::DELIVERY_REMOTE_UNKNOWN];
+        }
+
+        return ['publish_failed', null];
+    }
+
+    private function classifyFailure(Throwable $exception): array
+    {
+        return self::classifyDeliveryFailure($exception);
+    }
 
     private function postToWordPress(CampaignPost $post, string $title, string $content): array
     {
         $domain = trim((string) $post->campaignDomain->domain->name);
 
         // ✅ Ensure scheme
-        if (!preg_match('~^https?://~i', $domain)) {
-            $domain = 'https://' . $domain;
+        if (! preg_match('~^https?://~i', $domain)) {
+            $domain = 'https://'.$domain;
         }
 
-        $endpoint = rtrim($domain, '/') . '/wp-json/external/v1/posts/create';
+        $endpoint = rtrim($domain, '/').'/wp-json/external/v1/posts/create';
 
         $payload = [
-            'title'     => $title,
-            'content'   => $content,
-            'status'    => 'publish',
+            'title' => $title,
+            'content' => $content,
+            'status' => 'publish',
             'post_type' => 'post',
             'is_sticky' => $post->is_sticky,
-            'api_key'   => (string) $post->campaignDomain->domain->api_key,
+            'api_key' => (string) $post->campaignDomain->domain->api_key,
         ];
 
         // ✅ UTF-8 Safe: Use proper headers and ensure payload is clean
@@ -721,18 +840,21 @@ class PublishCampaignPostJob implements ShouldQueue
             ->withBody(safeJsonEncode($payload), 'application/json; charset=utf-8')
             ->post($endpoint);
 
-        if (!$res->successful()) {
-            throw new \Exception("WP API failed ({$res->status()}): " . $res->body());
+        if (! $res->successful()) {
+            throw new \Exception("WP API failed ({$res->status()}): ".$res->body());
         }
 
         $json = $res->json();
-        if (!is_array($json)) {
-            throw new \Exception("WP API returned non-JSON response: " . $res->body());
+        if (! is_array($json)) {
+            throw new \Exception('WP API returned non-JSON response: '.$res->body());
+        }
+
+        if (! isset($json['post_id']) || (array_key_exists('success', $json) && $json['success'] !== true)) {
+            throw new \Exception('WP API returned malformed response');
         }
 
         return $json;
     }
-
 
     /**
      * 🏁 Finalize campaign if all posts processed
@@ -740,11 +862,15 @@ class PublishCampaignPostJob implements ShouldQueue
     private function finalizeCampaignIfDone(int $campaignId): void
     {
         $campaign = Campaign::find($campaignId);
-        if (!$campaign) return;
+        if (! $campaign) {
+            return;
+        }
 
         $totalDone = $campaign->completed_targets + $campaign->failed_targets;
 
-        if ($totalDone < $campaign->total_targets) return;
+        if ($totalDone < $campaign->total_targets) {
+            return;
+        }
 
         $campaign->finished_at = now();
 

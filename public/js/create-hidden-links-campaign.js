@@ -1460,6 +1460,14 @@ window.addEventListener("DOMContentLoaded", () => {
             e.preventDefault();
             hideManualDomainAlert();
 
+            const qtyInput = document.getElementById('hidden-quantity');
+            const submitSidebarCount = parseInt((qtyInput?.value || '').trim(), 10);
+            if (!Number.isFinite(submitSidebarCount) || submitSidebarCount <= 0) {
+                alert('Enter a valid hidden links quantity on step 1.');
+                return;
+            }
+            sidebarCount = submitSidebarCount;
+
             const selectedRadio = document.querySelector('input[name="sel_domains"]:checked'); // 
             const campaignDomainHolder = document.getElementById('campaigns_domains_holder');
 
@@ -1481,8 +1489,8 @@ window.addEventListener("DOMContentLoaded", () => {
                     return;
                 }
                 let domainsLength = JSON.parse(domains).length;
-                if (domainsLength != sidebarCount) {
-                    alert('domains should be selected equal to sidebar count');
+                if (domainsLength !== submitSidebarCount) {
+                    alert(`You must select exactly ${submitSidebarCount} domains (currently ${domainsLength} selected).`);
                     return;
                 }
                 campaignDomainHolder.value = domains;
@@ -1496,8 +1504,8 @@ window.addEventListener("DOMContentLoaded", () => {
                     return;
                 }
                 let domainsLength = JSON.parse(domains).length;
-                if (domainsLength != sidebarCount) {
-                    alert('domains should be selected equal to sidebar count');
+                if (domainsLength !== submitSidebarCount) {
+                    alert(`You must select exactly ${submitSidebarCount} domains (currently ${domainsLength} selected).`);
                     return;
                 }
                 campaignDomainHolder.value = domains;
@@ -1516,13 +1524,14 @@ window.addEventListener("DOMContentLoaded", () => {
                     .split('\n')
                     .map(d => d.trim())
                     .filter(Boolean);
-                if (domains.length !== sidebarCount) {
-                    showManualDomainAlert(`Manual domains must be equal to sidebar count (${sidebarCount}).`);
+                if (domains.length !== submitSidebarCount) {
+                    showManualDomainAlert(`Manual domains must be equal to hidden links quantity (${submitSidebarCount}).`);
                     return;
                 }
 
                 const icon = step__03?.querySelector('.check-icon');
                 const loader = step__03?.querySelector('.loader');
+                let manualReady = false;
 
                 try {
                     icon?.classList.add('hidden');
@@ -1544,10 +1553,15 @@ window.addEventListener("DOMContentLoaded", () => {
                             res.message || 'Domain validation failed.',
                             Array.isArray(res?.data?.missing) ? res.data.missing : []
                         );
-                        return;
+                    } else if (!Array.isArray(res.data?.domain_ids) || res.data.domain_ids.length !== submitSidebarCount) {
+                        const resolved = Array.isArray(res.data?.domain_ids) ? res.data.domain_ids.length : 0;
+                        showManualDomainAlert(
+                            `Expected ${submitSidebarCount} unique valid domains, but validation resolved ${resolved}. Remove duplicate lines or fix missing domains.`
+                        );
+                    } else {
+                        campaignDomainHolder.value = JSON.stringify(res.data.domain_ids);
+                        manualReady = true;
                     }
-
-                    campaignDomainHolder.value = JSON.stringify(res.data.domain_ids);
 
                 } catch (error) {
                     console.error('Domain validation error:', error);
@@ -1557,7 +1571,19 @@ window.addEventListener("DOMContentLoaded", () => {
                     icon?.classList.remove('hidden');
                     loader?.classList.add('hidden');
                 }
+
+                if (!manualReady) {
+                    return;
+                }
             }
+
+            if (typeof window.validateLocalClientBillingBeforeSubmit === 'function') {
+                const billingReady = await window.validateLocalClientBillingBeforeSubmit();
+                if (!billingReady) {
+                    return;
+                }
+            }
+
             e.target.submit();
         })
 

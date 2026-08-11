@@ -137,6 +137,7 @@
 
         <div class="w-full flex flex-wrap justify-between items-start content-card">
             @csrf
+            @include('admin.campaigns.partials.local-client-billing')
             <div class="flex items-center gap-2 !mb-4 flex-wrap">
                 <h2 class="text-lg capitalize bg-[var(--primary-color)] text-white w-fit !p-3 rounded">
                     {{ $campaign->campaign_no }} Posts
@@ -148,6 +149,34 @@
                 @endif
             </div>
             {{-- xxxxxxxxxxxxxxxxxx campaigns button xxxxxxxxxxxxxxxxxxxxxxxxxxxx --}}
+
+            @if (isset($recentReplacements) && $recentReplacements->isNotEmpty())
+                <div class="w-full rounded border border-blue-100 bg-blue-50 !p-4 !mb-3">
+                    <h3 class="font-semibold text-blue-900 !mb-2">Recent domain replacements</h3>
+                    <div class="flex flex-col gap-1 text-sm text-blue-800">
+                        @foreach ($recentReplacements as $replacement)
+                            <div>
+                                {{ $replacement->old_hostname }} → {{ $replacement->new_hostname }}
+                                <span class="text-blue-600">
+                                    · post #{{ $replacement->campaign_post_id ?? 'deleted' }}
+                                    · {{ $replacement->created_at->format('d M Y H:i') }}
+                                    @if ($replacement->state !== 'completed')
+                                        · queue dispatch {{ $replacement->state === 'dispatch_failed' ? 'failed' : 'pending' }}
+                                    @endif
+                                </span>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
+
+            @include('admin.campaigns.partials.post-status-filters', [
+                'routeName' => 'admin.campaign.show',
+                'routeParameter' => 'campaign',
+                'campaign' => $campaign,
+                'statusFilter' => $statusFilter,
+                'statusCounts' => $statusCounts,
+            ])
 
             {{-- table code here --}}
 
@@ -174,7 +203,7 @@
                                 ];
                             @endphp
                             @foreach ($tHead as $t)
-                                <th class="border border-gray-200 font-sans !font-normal !px-2 !py-3 capitilize text-left">
+                                <th class="border border-gray-200 font-sans !font-normal !px-2 !py-3 capitilize text-left {{ $t === 'Actions' ? 'min-w-[120px]' : '' }}">
                                     {{ $t }}
                                 </th>
                             @endforeach
@@ -274,39 +303,58 @@
                                 </td>
 
                                 {{-- Actions --}}
-                                <td class="border border-gray-200 font-sans !px-2 !py-3">
-                                    <div class="flex gap-2 justify-center">
-
-                                        {{-- View --}}
+                                <td class="border border-gray-200 font-sans !px-2 !py-3 align-top whitespace-normal">
+                                    @php
+                                        $replacementReason = \App\Services\CampaignDomainReplacementService::ineligibleReason($post);
+                                        $canActOnPost = in_array($post->status, ['queued', 'failed'], true);
+                                        $canRetry = $canActOnPost && $replacementReason === null;
+                                        $showReplaceDomain = $canActOnPost && $replacementReason === null;
+                                    @endphp
+                                    <div class="flex flex-wrap gap-2 justify-center items-center">
                                         @if ($post->remote_url)
                                             <a href="{{ $post->remote_url }}" target="_blank"
-                                                class="bg-green-500 rounded w-7 h-7 flex items-center justify-center">
-                                                <span
-                                                    class="material-symbols-outlined !text-[16px] text-white text-sm">visibility</span>
+                                                class="bg-green-500 rounded w-7 h-7 flex items-center justify-center shrink-0"
+                                                title="View remote post">
+                                                <span class="material-symbols-outlined !text-[16px] text-white text-sm">visibility</span>
                                             </a>
-                                            <a href="{{ route('admin.campaign.edit.post', $post->id) }}" 
-                                                class="bg-yellow-500 rounded w-7 h-7 flex items-center justify-center">
-                                                <span
-                                                    class="material-symbols-outlined !text-[16px] text-white text-sm">Edit</span>
+                                            <a href="{{ route('admin.campaign.edit.post', $post->id) }}"
+                                                class="bg-yellow-500 rounded w-7 h-7 flex items-center justify-center shrink-0"
+                                                title="Edit post">
+                                                <span class="material-symbols-outlined !text-[16px] text-white text-sm">edit</span>
                                             </a>
-                                            {{-- {{ route('admin.campaign.edit.post', $post->id) }} --}}
-                                            <a href="{{ route('admin.campaign.delete.post',$post->id) }}" 
-                                                class="bg-red-500 rounded w-7 h-7 flex items-center justify-center">
-                                                <span
-                                                    class="material-symbols-outlined !text-[16px] text-white text-sm">delete</span>
-                                            </a>
-
-                                        @endif
-
-                                        {{-- Manual retry: allow for queued, publishing, or failed (e.g. jobs killed) --}}
-                                        @if ($post->status !== 'success')
-                                            <a href="{{ route('admin.campaign.retry', $post->id) }}"
-                                                class="bg-orange-500 rounded w-7 h-7 flex items-center justify-center"
-                                                title="Manual retry from first">
-                                                <span class="material-symbols-outlined text-white text-sm">refresh</span>
+                                            <a href="{{ route('admin.campaign.delete.post', $post->id) }}"
+                                                class="bg-red-500 rounded w-7 h-7 flex items-center justify-center shrink-0"
+                                                title="Delete post">
+                                                <span class="material-symbols-outlined !text-[16px] text-white text-sm">delete</span>
                                             </a>
                                         @endif
 
+                                        @if ($canRetry)
+                                            <form action="{{ route('admin.campaign.retry', $post->id) }}" method="POST" class="inline">
+                                                @csrf
+                                                <button type="submit"
+                                                    class="bg-orange-500 border-0 cursor-pointer rounded w-7 h-7 flex items-center justify-center shrink-0 hover:bg-orange-600"
+                                                    title="Safely retry post">
+                                                    <span class="material-symbols-outlined text-white text-sm">refresh</span>
+                                                </button>
+                                            </form>
+                                        @endif
+
+                                        @if ($showReplaceDomain)
+                                            <a href="{{ route('admin.campaign.domain-replacement.create', $post->id) }}"
+                                                class="bg-blue-600 rounded w-7 h-7 flex items-center justify-center shrink-0 hover:bg-blue-700"
+                                                title="Replace domain">
+                                                <span class="material-symbols-outlined text-white text-sm">swap_horiz</span>
+                                            </a>
+                                        @endif
+
+                                        @if ($replacementReason && $canActOnPost)
+                                            <span
+                                                class="bg-gray-200 rounded w-7 h-7 flex items-center justify-center shrink-0 cursor-help"
+                                                title="{{ $replacementReason }}">
+                                                <span class="material-symbols-outlined text-gray-600 text-sm">info</span>
+                                            </span>
+                                        @endif
                                     </div>
                                 </td>
 
@@ -315,7 +363,13 @@
                         @empty
                             <tr>
                                 <td colspan="13" class="text-center !py-4 text-gray-500 bg-gray-100 font-sans align-top">
-                                    <p class="font-medium text-gray-700 mb-2">No campaign posts found.</p>
+                                    <p class="font-medium text-gray-700 mb-2">
+                                        @if (! empty($statusFilter))
+                                            No {{ ucfirst($statusFilter) }} posts found for this campaign.
+                                        @else
+                                            No campaign posts found.
+                                        @endif
+                                    </p>
                                     @if (($campaign->total_targets ?? 0) > 0 || ($campaign->completed_targets ?? 0) > 0)
                                         <p class="text-sm text-gray-600 max-w-3xl mx-auto leading-relaxed">
                                             The campaign row still shows targets, but there are no matching rows in the database for this campaign’s posts (or articles).

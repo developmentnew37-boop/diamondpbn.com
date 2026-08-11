@@ -160,6 +160,21 @@
                 <span class="font-medium">{{ session('warning') }}</span>
             </div>
         @endif
+
+        @if (session('one_time_webhook_secret'))
+            <div class="!p-4 text-sm rounded bg-blue-50 border border-blue-200 text-blue-900 w-full" role="alert">
+                <strong class="block !mb-2">Copy this secret now (also available anytime via Reveal / Copy in the table).</strong>
+                <div class="flex flex-wrap items-center gap-2">
+                    <code id="oneTimeWebhookSecret" class="break-all">{{ session('one_time_webhook_secret') }}</code>
+                    <button type="button"
+                        class="copy-icon-btn inline-flex items-center justify-center rounded bg-blue-600 text-white w-8 h-8 border-0 cursor-pointer"
+                        title="Copy secret"
+                        onclick="copyToClipboard(@js(session('one_time_webhook_secret')), this)">
+                        <span class="material-symbols-outlined !text-base">content_copy</span>
+                    </button>
+                </div>
+            </div>
+        @endif
     </div>
 
     {{-- Auto-rotation settings --}}
@@ -245,21 +260,41 @@
                 </thead>
                 <tbody>
                     @foreach ($secrets as $secret)
+                        @php
+                            $plainSecret = null;
+                            try {
+                                $plainSecret = $secret->secret;
+                            } catch (\Throwable) {
+                                $plainSecret = null;
+                            }
+                        @endphp
                         <tr class="bg-white border-b hover:bg-gray-50">
                             <td class="!px-6 !py-4">{{ $secret->id }}</td>
                             <td class="!px-6 !py-4 font-medium text-gray-900">{{ $secret->name }}</td>
                             <td class="!px-6 !py-4">
-                                <div class="flex items-center gap-2">
-                                    <code class="secret-display">
-                                        {{ substr($secret->secret, 0, 20) }}...
-                                    </code>
-                                    <button type="button"
-                                        title="Copy secret"
-                                        class="copy-icon-btn bg-gray-100 hover:bg-[var(--primary-color)] flex items-center justify-center rounded w-7 h-7 duration-300 border border-gray-200 group"
-                                        onclick="copyToClipboard('{{ $secret->secret }}', this)">
-                                        <span class="material-symbols-outlined !text-sm text-gray-600 group-hover:text-white">content_copy</span>
-                                    </button>
-                                </div>
+                                @if ($plainSecret)
+                                    <div class="flex items-center gap-2 min-w-[220px]">
+                                        <code
+                                            id="webhook-secret-{{ $secret->id }}"
+                                            class="secret-display secret-masked"
+                                            data-secret="{{ $plainSecret }}"
+                                            data-masked="••••••••••••">••••••••••••</code>
+                                        <button type="button"
+                                            class="copy-icon-btn inline-flex items-center justify-center rounded bg-gray-700 text-white w-8 h-8 border-0 cursor-pointer shrink-0"
+                                            title="Reveal / hide secret"
+                                            onclick="toggleWebhookSecret({{ $secret->id }}, this)">
+                                            <span class="material-symbols-outlined !text-base">visibility</span>
+                                        </button>
+                                        <button type="button"
+                                            class="copy-icon-btn inline-flex items-center justify-center rounded bg-blue-600 text-white w-8 h-8 border-0 cursor-pointer shrink-0"
+                                            title="Copy secret"
+                                            onclick="copyToClipboard(@js($plainSecret), this)">
+                                            <span class="material-symbols-outlined !text-base">content_copy</span>
+                                        </button>
+                                    </div>
+                                @else
+                                    <code class="secret-display text-red-600">Unable to decrypt</code>
+                                @endif
                             </td>
                             <td class="!px-6 !py-4">
                                 @if ($secret->is_active)
@@ -347,10 +382,61 @@
             }
         });
 
+        function toggleWebhookSecret(id, button) {
+            const el = document.getElementById('webhook-secret-' + id);
+            if (!el) return;
+
+            const icon = button.querySelector('.material-symbols-outlined');
+            const revealed = el.classList.toggle('secret-revealed');
+
+            if (revealed) {
+                el.textContent = el.dataset.secret || '';
+                el.classList.remove('secret-masked');
+                if (icon) icon.textContent = 'visibility_off';
+                button.title = 'Hide secret';
+            } else {
+                el.textContent = el.dataset.masked || '••••••••••••';
+                el.classList.add('secret-masked');
+                if (icon) icon.textContent = 'visibility';
+                button.title = 'Reveal / hide secret';
+            }
+        }
+
         function copyToClipboard(text, button) {
             const icon = button.querySelector('.material-symbols-outlined');
-            const originalIcon = icon.textContent;
+            const originalIcon = icon ? icon.textContent : '';
 
+            const done = function(success) {
+                if (!icon) {
+                    if (!success) alert('Failed to copy. Please copy manually.');
+                    return;
+                }
+
+                if (success) {
+                    icon.textContent = 'check';
+                    button.classList.add('copy-success');
+                    setTimeout(function() {
+                        icon.textContent = originalIcon;
+                        button.classList.remove('copy-success');
+                    }, 2000);
+                } else {
+                    alert('Failed to copy. Please copy manually.');
+                }
+            };
+
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).then(function() {
+                    done(true);
+                }).catch(function() {
+                    done(fallbackCopy(text));
+                });
+                return;
+            }
+
+            done(fallbackCopy(text));
+        }
+
+        function fallbackCopy(text) {
             const textarea = document.createElement('textarea');
             textarea.value = text;
             textarea.style.position = 'fixed';
@@ -368,18 +454,7 @@
             }
 
             document.body.removeChild(textarea);
-
-            if (success) {
-                icon.textContent = 'check';
-                button.classList.add('copy-success');
-
-                setTimeout(function() {
-                    icon.textContent = originalIcon;
-                    button.classList.remove('copy-success');
-                }, 2000);
-            } else {
-                alert('Failed to copy. Please copy manually.');
-            }
+            return success;
         }
     </script>
 @endpush

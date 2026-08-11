@@ -23,6 +23,7 @@ class DomainStatusCheck extends Model
         'in_inventory_count',
         'inventory_updated_count',
         'update_inventory',
+        'use_authenticated_check',
         'domain_category_id',
         'status_message',
         'started_at',
@@ -31,6 +32,7 @@ class DomainStatusCheck extends Model
 
     protected $casts = [
         'update_inventory' => 'boolean',
+        'use_authenticated_check' => 'boolean',
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
     ];

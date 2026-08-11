@@ -14,6 +14,11 @@
     .pm-btn:disabled { opacity: 0.7; cursor: not-allowed; }
     .pm-btn-muted { background: #fff; color: var(--primary-color); border: 1px solid var(--primary-color); }
     .pm-btn-muted:hover { background: var(--primary-color); color: #fff; }
+    .pm-btn-danger {
+        background: #fff; color: #dc2626; border: 1px solid #fca5a5;
+    }
+    .pm-btn-danger:hover:not(:disabled) { background: #dc2626; color: #fff; border-color: #dc2626; }
+    .pm-btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
     .source-tab {
         display: inline-flex; align-items: center; gap: 0.5rem; min-height: 42px;
         padding: 0.5rem 1rem; font-size: 0.875rem; border-radius: 0.25rem;
@@ -63,14 +68,15 @@
         font-size: 0.8125rem;
     }
 
-    .pm-col-started { width: 9%; }
-    .pm-col-package { width: 24%; }
-    .pm-col-operation { width: 9%; }
-    .pm-col-scope { width: 11%; }
-    .pm-col-progress { width: 12%; }
-    .pm-col-results { width: 11%; }
-    .pm-col-status { width: 12%; }
-    .pm-col-actions { width: 12%; }
+    .pm-col-select { width: 3%; }
+    .pm-col-started { width: 8%; }
+    .pm-col-package { width: 22%; }
+    .pm-col-operation { width: 8%; }
+    .pm-col-scope { width: 10%; }
+    .pm-col-progress { width: 11%; }
+    .pm-col-results { width: 10%; }
+    .pm-col-status { width: 11%; }
+    .pm-col-actions { width: 11%; }
 
     .pm-history-table thead tr { background: #1f2937; color: #fff; }
     .pm-history-table thead th {
@@ -83,6 +89,34 @@
         white-space: nowrap;
     }
     .pm-history-table thead th.pm-th-actions { text-align: right; }
+    .pm-history-table thead th.pm-th-select { text-align: center; width: 2.75rem; }
+
+    .pm-cell-select {
+        align-items: center;
+        justify-content: center;
+        min-height: 4.25rem;
+        padding: 0.75rem 0.5rem;
+    }
+
+    .pm-history-checkbox {
+        width: 1rem;
+        height: 1rem;
+        accent-color: var(--primary-color);
+        cursor: pointer;
+    }
+
+    .pm-history-pagination {
+        margin-top: 1.25rem;
+        padding-top: 1rem;
+        border-top: 1px solid #f3f4f6;
+        width: 100%;
+        overflow-x: auto;
+    }
+
+    .pm-history-pagination nav[role="navigation"] {
+        width: 100%;
+        min-width: min(100%, 36rem);
+    }
 
     .pm-history-table tbody td {
         padding: 0;

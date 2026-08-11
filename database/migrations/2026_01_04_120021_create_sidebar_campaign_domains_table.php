@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('sidebar_campaign_domains')) {
+            return;
+        }
+
         Schema::create('sidebar_campaign_domains', function (Blueprint $table) {
             $table->id();
 

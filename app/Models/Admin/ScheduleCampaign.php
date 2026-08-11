@@ -2,8 +2,8 @@
 
 namespace App\Models\Admin;
 
-use Illuminate\Database\Eloquent\Model;
 use App\Models\Admin;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
 /**
@@ -47,18 +47,33 @@ class ScheduleCampaign extends Model
         'status',
         'completed_targets',
         'failed_targets',
+        'converted_from_campaign_id',
+        'conversion_run_date',
+        'conversion_mode',
+        'conversion_pipeline_status',
         'started_at',
         'finished_at',
+        'local_client_id',
+        'billing_total',
+        'billing_currency',
+        'billing_snapshot',
+        'billing_payment_status',
+        'billing_paid_at',
+        'billing_paid_by_admin_id',
+        'billing_payment_note',
     ];
 
     protected $casts = [
         'is_sticky_campaign' => 'boolean',
         'schedule_from_date' => 'date',
-        'schedule_to_date'   => 'date',
-        'started_at'         => 'datetime',
-        'finished_at'        => 'datetime',
+        'schedule_to_date' => 'date',
+        'conversion_run_date' => 'date',
+        'started_at' => 'datetime',
+        'finished_at' => 'datetime',
+        'billing_snapshot' => 'array',
+        'billing_total' => 'decimal:2',
+        'billing_paid_at' => 'datetime',
     ];
-
 
     /* =======================
        RELATIONSHIPS
@@ -72,7 +87,6 @@ class ScheduleCampaign extends Model
             }
         });
     }
-
 
     public function articles()
     {
@@ -117,5 +131,15 @@ class ScheduleCampaign extends Model
     public function admin()
     {
         return $this->belongsTo(Admin::class);
+    }
+
+    public function sourceCampaign()
+    {
+        return $this->belongsTo(Campaign::class, 'converted_from_campaign_id');
+    }
+
+    public function localClient()
+    {
+        return $this->belongsTo(LocalClient::class, 'local_client_id');
     }
 }

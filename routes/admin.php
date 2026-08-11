@@ -8,7 +8,11 @@ use App\Http\Controllers\Admin\ArticleCategoryController;
 use App\Http\Controllers\Admin\ArticleController;
 use App\Http\Controllers\Admin\ArticleLanguageController;
 use App\Http\Controllers\Admin\ArticleSetController;
+use App\Http\Controllers\Admin\CampaignBulkDomainReplacementController;
 use App\Http\Controllers\Admin\CampaignController;
+use App\Http\Controllers\Admin\CampaignDomainReplacementController;
+use App\Http\Controllers\Admin\CampaignPostConversionController;
+use App\Http\Controllers\Admin\CampaignReportLookupController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DomainCategoryController;
 use App\Http\Controllers\Admin\DomainController;
@@ -16,6 +20,11 @@ use App\Http\Controllers\Admin\DomainSetController;
 use App\Http\Controllers\Admin\DomainStatusCheckerController;
 use App\Http\Controllers\Admin\HiddenLinkCampaignController;
 use App\Http\Controllers\Admin\InvoiceController;
+use App\Http\Controllers\Admin\LiveTaskBulkDomainReplacementController;
+use App\Http\Controllers\Admin\LiveTaskDomainReplacementController;
+use App\Http\Controllers\Admin\LocalClientBillingReportController;
+use App\Http\Controllers\Admin\LocalClientController;
+use App\Http\Controllers\Admin\LocalClientPaymentController;
 use App\Http\Controllers\Admin\PendingDomainController;
 use App\Http\Controllers\Admin\PluginDeploymentController;
 use App\Http\Controllers\Admin\PluginPackageController;
@@ -23,6 +32,7 @@ use App\Http\Controllers\Admin\ProfileController;
 use App\Http\Controllers\Admin\ScheduleCampaignController;
 use App\Http\Controllers\Admin\ScheduleSidebarCampaignController;
 use App\Http\Controllers\Admin\SidebarCampaignController;
+use App\Http\Controllers\Admin\SidebarCampaignConversionController;
 use App\Http\Controllers\Admin\StickyPostCampaignController;
 use App\Http\Controllers\Admin\TransferDomainController;
 use App\Http\Controllers\Admin\WebhookSecretController;
@@ -122,6 +132,16 @@ Route::get(
     [WpScheduledCampaignController::class, 'exportReport']
 )->name('admin.wp.schedule.campaign.report.export')->withoutMiddleware($noCampaignAuth);
 
+Route::get(
+    '/client/billing/{id}/{token}',
+    [LocalClientBillingReportController::class, 'show']
+)->name('admin.local-client.billing.report')->withoutMiddleware($noCampaignAuth);
+
+Route::get(
+    '/client/billing/{id}/{token}/export',
+    [LocalClientBillingReportController::class, 'export']
+)->name('admin.local-client.billing.report.export')->withoutMiddleware($noCampaignAuth);
+
 // export csv
 // Route::get(
 //     '/campaign/report/{campaign_no}/{token}/export-csv',
@@ -138,6 +158,15 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/dashboard/campaigns', [DashboardController::class, 'getCampaignsByType'])->name('dashboard.campaigns');
     // Dashboard Route Ends Here
+
+    Route::middleware(\App\Http\Middleware\Admin\CanCreateCampaigns::class)->group(function () {
+        Route::get('/reports/find-campaign', [CampaignReportLookupController::class, 'index'])
+            ->name('reports.find-campaign');
+        Route::post('/reports/find-campaign', [CampaignReportLookupController::class, 'find'])
+            ->name('reports.find-campaign.lookup');
+        Route::post('/reports/find-campaign/by-keyword-url', [CampaignReportLookupController::class, 'findByKeywordUrl'])
+            ->name('reports.find-campaign.by-keyword-url');
+    });
 
     // Profile Routes
     Route::get('/profile', [ProfileController::class, 'index'])->name('profile');
@@ -179,10 +208,10 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
 
     Route::get('/domain/status-checker', [DomainStatusCheckerController::class, 'index'])->name('domain.status-checker');
     Route::post('/domain/status-checker/start', [DomainStatusCheckerController::class, 'start'])
-        ->middleware('throttle:10,1')
+        ->middleware('throttle:30,1')
         ->name('domain.status-checker.start');
     Route::get('/domain/status-checker/{uuid}/progress', [DomainStatusCheckerController::class, 'progress'])
-        ->middleware('throttle:120,1')
+        ->middleware('throttle:180,1')
         ->name('domain.status-checker.progress');
 
     /** ends here **/
@@ -206,6 +235,8 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
                 ->name('deploy.start');
 
             Route::get('/deployments', [PluginDeploymentController::class, 'index'])->name('deployments.index');
+            Route::delete('/deployments/bulk', [PluginDeploymentController::class, 'bulkDestroy'])->name('deployments.bulk-destroy');
+            Route::delete('/deployments/clear', [PluginDeploymentController::class, 'clearHistory'])->name('deployments.clear');
             Route::get('/deployments/{uuid}', [PluginDeploymentController::class, 'show'])->name('deployments.show');
             Route::get('/deployments/{uuid}/progress', [PluginDeploymentController::class, 'progress'])
                 ->middleware('throttle:120,1')
@@ -282,6 +313,13 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     Route::post('/article/trashed/queue-purge-all-used', [ArticleController::class, 'queuePurgeAllTrashedUsed'])->name('article.trashed.queue-purge-all-used');
     Route::post('/article/trashed/queue-purge-by-quantity', [ArticleController::class, 'queuePurgeTrashedUsedByQuantity'])->name('article.trashed.queue-purge-by-quantity');
 
+    /* Restore soft-deleted used articles back to the normal library */
+    Route::get('/article/restore-used', [ArticleController::class, 'restoreUsedIndex'])->name('article.restore-used.index');
+    Route::post('/article/restore-used/{id}/restore', [ArticleController::class, 'restoreTrashedUsed'])->name('article.restore-used.restore');
+    Route::post('/article/restore-used/restore-bulk', [ArticleController::class, 'restoreTrashedUsedBulk'])->name('article.restore-used.restore-bulk');
+    Route::post('/article/restore-used/queue-restore-all', [ArticleController::class, 'queueRestoreAllTrashedUsed'])->name('article.restore-used.queue-restore-all');
+    Route::post('/article/restore-used/queue-restore-by-quantity', [ArticleController::class, 'queueRestoreTrashedUsedByQuantity'])->name('article.restore-used.queue-restore-by-quantity');
+
     Route::resource('/article', ArticleController::class);
 
     /* article set thing */ /* adding s in it we will optimized it further */
@@ -302,13 +340,65 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
 
     /* campaigns route starts here */
 
+    Route::middleware(\App\Http\Middleware\Admin\CanCreateCampaigns::class)->group(function () {
+        Route::get('/campaign/posts/{post}/replace-domain', [CampaignDomainReplacementController::class, 'create'])
+            ->name('campaign.domain-replacement.create');
+        Route::post('/campaign/posts/{post}/replace-domain', [CampaignDomainReplacementController::class, 'store'])
+            ->name('campaign.domain-replacement.store');
+
+        Route::get('/campaign/{campaign}/bulk-replace-domains', [CampaignBulkDomainReplacementController::class, 'create'])
+            ->name('campaign.bulk-domain-replacement.create');
+        Route::post('/campaign/{campaign}/bulk-replace-domains', [CampaignBulkDomainReplacementController::class, 'store'])
+            ->name('campaign.bulk-domain-replacement.store');
+
+        Route::get('/campaign/sidebar/tasks/{task}/replace-domain', [LiveTaskDomainReplacementController::class, 'createSidebar'])
+            ->name('sidebar.campaign.domain-replacement.create');
+        Route::post('/campaign/sidebar/tasks/{task}/replace-domain', [LiveTaskDomainReplacementController::class, 'storeSidebar'])
+            ->name('sidebar.campaign.domain-replacement.store');
+
+        Route::get('/hidden/link/campaign/tasks/{task}/replace-domain', [LiveTaskDomainReplacementController::class, 'createHiddenLinks'])
+            ->name('hidden.link.campaign.domain-replacement.create');
+        Route::post('/hidden/link/campaign/tasks/{task}/replace-domain', [LiveTaskDomainReplacementController::class, 'storeHiddenLinks'])
+            ->name('hidden.link.campaign.domain-replacement.store');
+
+        Route::get('/sidebar/campaign/{campaign}/bulk-replace-domains', [LiveTaskBulkDomainReplacementController::class, 'createSidebar'])
+            ->name('sidebar.campaign.bulk-domain-replacement.create');
+        Route::post('/sidebar/campaign/{campaign}/bulk-replace-domains', [LiveTaskBulkDomainReplacementController::class, 'storeSidebar'])
+            ->name('sidebar.campaign.bulk-domain-replacement.store');
+
+        Route::get('/hidden/link/campaign/{campaign}/bulk-replace-domains', [LiveTaskBulkDomainReplacementController::class, 'createHiddenLinks'])
+            ->name('hidden.link.campaign.bulk-domain-replacement.create');
+        Route::post('/hidden/link/campaign/{campaign}/bulk-replace-domains', [LiveTaskBulkDomainReplacementController::class, 'storeHiddenLinks'])
+            ->name('hidden.link.campaign.bulk-domain-replacement.store');
+
+        Route::get('/campaign/post/schedule/posts/{post}/replace-domain', [LiveTaskDomainReplacementController::class, 'createSchedulePost'])
+            ->name('schedule.campaign.domain-replacement.create');
+        Route::post('/campaign/post/schedule/posts/{post}/replace-domain', [LiveTaskDomainReplacementController::class, 'storeSchedulePost'])
+            ->name('schedule.campaign.domain-replacement.store');
+
+        Route::get('/campaign/sidebar/schedule/tasks/{task}/replace-domain', [LiveTaskDomainReplacementController::class, 'createScheduleSidebar'])
+            ->name('schedule.sidebar.campaign.domain-replacement.create');
+        Route::post('/campaign/sidebar/schedule/tasks/{task}/replace-domain', [LiveTaskDomainReplacementController::class, 'storeScheduleSidebar'])
+            ->name('schedule.sidebar.campaign.domain-replacement.store');
+
+        Route::get('/campaign/post/schedule/{schedule}/bulk-replace-domains', [LiveTaskBulkDomainReplacementController::class, 'createSchedulePost'])
+            ->name('schedule.campaign.bulk-domain-replacement.create');
+        Route::post('/campaign/post/schedule/{schedule}/bulk-replace-domains', [LiveTaskBulkDomainReplacementController::class, 'storeSchedulePost'])
+            ->name('schedule.campaign.bulk-domain-replacement.store');
+
+        Route::get('/campaign/sidebar/schedule/{schedule}/bulk-replace-domains', [LiveTaskBulkDomainReplacementController::class, 'createScheduleSidebar'])
+            ->name('schedule.sidebar.campaign.bulk-domain-replacement.create');
+        Route::post('/campaign/sidebar/schedule/{schedule}/bulk-replace-domains', [LiveTaskBulkDomainReplacementController::class, 'storeScheduleSidebar'])
+            ->name('schedule.sidebar.campaign.bulk-domain-replacement.store');
+    });
+
     // Route::get('/post/campaign', function () {
     //     return view('admin.campaigns.pbn-post.create-campaign');
     // })->name('post.campaign');
 
     /* campaign report route ends here */
 
-    Route::get('/campaign/retry/{id}', [CampaignController::class, 'retry'])->name('campaign.retry');
+    Route::post('/campaign/retry/{id}', [CampaignController::class, 'retry'])->name('campaign.retry');
 
     Route::get('/campaign/editpost/{id}', [CampaignController::class, 'editcampaignpost'])->name('campaign.edit.post'); // admin.campaign.blogpost
 
@@ -359,6 +449,51 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     Route::post('/hidden/link/campaign/{id}/purge-local', [HiddenLinkCampaignController::class, 'purgeLocalOnly'])->name('hidden.link.campaign.purge.local');
 
     Route::resource('/hidden/link/campaign', HiddenLinkCampaignController::class)->names('hidden.link.campaign');
+
+    /* Live → dripfeed conversion */
+    Route::middleware(\App\Http\Middleware\Admin\CanCreateCampaigns::class)
+        ->prefix('convert/post')
+        ->name('convert.post.')
+        ->group(function () {
+            Route::get('/', [CampaignPostConversionController::class, 'wizardStep1'])->name('step1');
+            Route::get('/step/1', [CampaignPostConversionController::class, 'wizardStep1'])->name('step1.alias');
+            Route::get('/step/2/{campaign}', [CampaignPostConversionController::class, 'wizardStep2'])->name('step2')->whereNumber('campaign');
+            Route::get('/step/3/{campaign}', [CampaignPostConversionController::class, 'wizardStep3'])->name('step3')->whereNumber('campaign');
+            Route::match(['get', 'post'], '/step/4/{campaign}', [CampaignPostConversionController::class, 'wizardStep4'])->name('step4')->whereNumber('campaign');
+            Route::post('/store', [CampaignPostConversionController::class, 'store'])->name('store');
+            Route::get('/campaigns/search', [CampaignPostConversionController::class, 'searchCampaigns'])->name('search');
+            Route::post('/campaigns/lookup-report-url', [CampaignPostConversionController::class, 'lookupByReportUrl'])->name('lookup-report-url');
+            Route::get('/campaigns/{campaign}/eligibility', [CampaignPostConversionController::class, 'eligibility'])->name('eligibility')->whereNumber('campaign');
+            Route::post('/campaigns/{campaign}/retry-failed', [CampaignPostConversionController::class, 'retryFailed'])->name('retry-failed')->whereNumber('campaign');
+            Route::post('/preflight', [CampaignPostConversionController::class, 'preflight'])->name('preflight');
+            Route::get('/campaigns/{campaign}/preflight', [CampaignPostConversionController::class, 'preflightForCampaign'])->name('preflight.campaign')->whereNumber('campaign');
+            Route::get('/converted', [CampaignPostConversionController::class, 'convertedIndex'])->name('converted.index');
+            Route::get('/schedule/{schedule}/status', [CampaignPostConversionController::class, 'conversionStatus'])->name('status')->whereNumber('schedule');
+            Route::post('/schedule-post/{post}/retry', [CampaignPostConversionController::class, 'retryConversionPost'])->name('retry-post')->whereNumber('post');
+            Route::post('/schedule/{schedule}/bulk-retry-failed', [CampaignPostConversionController::class, 'bulkRetryConversionFailed'])->name('bulk-retry')->whereNumber('schedule');
+        });
+
+    /* Live sidebar → scheduled sidebar conversion */
+    Route::middleware(\App\Http\Middleware\Admin\CanCreateCampaigns::class)
+        ->prefix('convert/sidebar')
+        ->name('convert.sidebar.')
+        ->group(function () {
+            Route::get('/', [SidebarCampaignConversionController::class, 'wizardStep1'])->name('step1');
+            Route::get('/step/1', [SidebarCampaignConversionController::class, 'wizardStep1'])->name('step1.alias');
+            Route::get('/step/2/{campaign}', [SidebarCampaignConversionController::class, 'wizardStep2'])->name('step2')->whereNumber('campaign');
+            Route::get('/step/3/{campaign}', [SidebarCampaignConversionController::class, 'wizardStep3'])->name('step3')->whereNumber('campaign');
+            Route::match(['get', 'post'], '/step/4/{campaign}', [SidebarCampaignConversionController::class, 'wizardStep4'])->name('step4')->whereNumber('campaign');
+            Route::post('/store', [SidebarCampaignConversionController::class, 'store'])->name('store');
+            Route::get('/campaigns/search', [SidebarCampaignConversionController::class, 'searchCampaigns'])->name('search');
+            Route::post('/campaigns/lookup-report-url', [SidebarCampaignConversionController::class, 'lookupByReportUrl'])->name('lookup-report-url');
+            Route::get('/campaigns/{campaign}/eligibility', [SidebarCampaignConversionController::class, 'eligibility'])->name('eligibility')->whereNumber('campaign');
+            Route::post('/campaigns/{campaign}/retry-failed', [SidebarCampaignConversionController::class, 'retryFailed'])->name('retry-failed')->whereNumber('campaign');
+            Route::get('/campaigns/{campaign}/preflight', [SidebarCampaignConversionController::class, 'preflightForCampaign'])->name('preflight.campaign')->whereNumber('campaign');
+            Route::get('/converted', [SidebarCampaignConversionController::class, 'convertedIndex'])->name('converted.index');
+            Route::get('/schedule/{schedule}/status', [SidebarCampaignConversionController::class, 'conversionStatus'])->name('status')->whereNumber('schedule');
+            Route::post('/schedule-task/{task}/retry', [SidebarCampaignConversionController::class, 'retryConversionTask'])->name('retry-task')->whereNumber('task');
+            Route::post('/schedule/{schedule}/bulk-retry-failed', [SidebarCampaignConversionController::class, 'bulkRetryConversionFailed'])->name('bulk-retry')->whereNumber('schedule');
+        });
 
     /* Schedule sticky post (same as schedule post + is_sticky on API; stored on schedule_campaigns.is_sticky_campaign) */
     Route::get('/campaign/post/schedule-sticky', [ScheduleCampaignController::class, 'indexSticky'])->name('schedule.sticky.campaign.index');
@@ -417,8 +552,29 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     Route::get('/sticky/campaign/create', [StickyPostCampaignController::class, 'create'])->name('sticky.campaign.create');
 
     Route::get('/sticky/campaign/', [StickyPostCampaignController::class, 'index'])->name('sticky.campaign.index');
-    // Route::view('/article','admin.article.articles')->name('articles
-    // Route::view('/article/category','admin.article.category.category')->name('articles.category');
+
+    Route::middleware('can.create.campaigns')->group(function () {
+        Route::get('/local-clients/{localClient}/estimate', [LocalClientController::class, 'estimate'])
+            ->name('local-clients.estimate');
+        Route::patch('/local-clients/payment/{billableType}/{id}', [LocalClientPaymentController::class, 'update'])
+            ->name('local-clients.payment.update');
+        Route::get('/local-clients/campaign-invoice/{billableType}/{id}', [LocalClientPaymentController::class, 'invoice'])
+            ->name('local-clients.campaign-invoice');
+    });
+
+    Route::middleware('role:super_admin')->group(function () {
+        Route::post('/local-clients/{localClient}/toggle-active', [LocalClientController::class, 'toggleActive'])
+            ->name('local-clients.toggle-active');
+        Route::post('/local-clients/{localClient}/mark-period-paid', [LocalClientController::class, 'markPeriodPaid'])
+            ->name('local-clients.mark-period-paid');
+        Route::delete('/local-clients/{localClient}/billing-periods/{billingPeriod}', [LocalClientController::class, 'destroyBillingPeriod'])
+            ->name('local-clients.billing-periods.destroy');
+        Route::delete('/local-clients/{localClient}/billing-periods', [LocalClientController::class, 'destroyBillingPeriodByPaidAt'])
+            ->name('local-clients.billing-periods.destroy-by-paid-at');
+        Route::post('/local-clients/{localClient}/regenerate-token', [LocalClientController::class, 'regenerateToken'])
+            ->name('local-clients.regenerate-token');
+        Route::resource('/local-clients', LocalClientController::class)->names('local-clients');
+    });
 
     /* Invoice Generator Routes */
     Route::get('/invoice/generator', [InvoiceController::class, 'create'])->name('invoice.generator');

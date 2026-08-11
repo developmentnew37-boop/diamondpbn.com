@@ -3,13 +3,12 @@
 namespace App\Jobs;
 
 use App\Models\Admin\Domain;
+use App\Services\WordPressAgentStatusService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Http\Client\Pool;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class RefreshTransferredDomainsStatusJob implements ShouldQueue
@@ -25,48 +24,56 @@ class RefreshTransferredDomainsStatusJob implements ShouldQueue
      */
     public function __construct(
         public array $domainIds
-    ) {}
+    ) {
+        $this->onQueue((string) config('domain_status_checker.health_sync_queue', 'domainHealthSync'));
+    }
 
-    public function handle(): void
+    public function handle(WordPressAgentStatusService $statusService): void
     {
         $domains = Domain::query()
             ->whereIn('id', $this->domainIds)
-            ->get(['id', 'name']);
+            ->get();
 
         if ($domains->isEmpty()) {
             return;
         }
 
+        $requestTimeout = max(5, (int) config('domain_status_checker.request_timeout', 60));
+        $connectTimeout = max(2, (int) config('domain_status_checker.connect_timeout', 20));
+
         $connected = 0;
         $disconnected = 0;
 
         foreach ($domains->chunk(30) as $chunk) {
-            $responses = Http::pool(function (Pool $pool) use ($chunk) {
-                foreach ($chunk as $domain) {
-                    $pool->as((string) $domain->id)
-                        ->withoutVerifying()
-                        ->timeout(8)
-                        ->connectTimeout(5)
-                        ->get("https://{$domain->name}/wp-json/external/v1/status");
+            $targets = $chunk->mapWithKeys(function (Domain $domain) {
+                try {
+                    $apiKey = trim((string) ($domain->api_key ?? ''));
+                } catch (\Throwable) {
+                    $apiKey = '';
                 }
-            });
+
+                return [
+                    $domain->id => [
+                        'domain' => $domain->name,
+                        'api_key' => $apiKey,
+                    ],
+                ];
+            })->all();
+
+            $responses = $statusService->probeManyWithAuthFallback($targets, $requestTimeout, $connectTimeout);
 
             foreach ($chunk as $domain) {
-                $response = $responses[(string) $domain->id] ?? null;
-                $status = 0;
+                $result = $responses[$domain->id] ?? null;
 
-                try {
-                    if ($response && $response->successful() && $response->json('status') == true) {
-                        $status = 1;
-                        $connected++;
-                    } else {
-                        $disconnected++;
-                    }
-                } catch (\Throwable) {
+                if ($result?->ok) {
+                    $connected++;
+                } else {
                     $disconnected++;
                 }
 
-                Domain::where('id', $domain->id)->update(['status' => $status]);
+                if ($result !== null) {
+                    $domain->persistAgentHealth($result);
+                }
             }
         }
 

@@ -2,13 +2,16 @@
 
 namespace App\Models\Admin;
 
+use App\Casts\EncryptedCredential;
+use App\Models\Concerns\HasProtectedCredentials;
+use App\Services\CredentialBlindIndex;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class WebhookSecret extends Model
 {
-    use HasFactory;
+    use HasFactory, HasProtectedCredentials;
 
     protected $fillable = [
         'name',
@@ -18,11 +21,24 @@ class WebhookSecret extends Model
         'secret_rotated_at',
     ];
 
+    protected $hidden = [
+        'secret',
+        'secret_lookup_hash',
+    ];
+
     protected $casts = [
+        'secret' => EncryptedCredential::class,
         'is_active' => 'boolean',
         'last_used_at' => 'datetime',
         'secret_rotated_at' => 'datetime',
     ];
+
+    protected function credentialBlindIndexes(): array
+    {
+        return [
+            'secret' => ['secret_lookup_hash', CredentialBlindIndex::WEBHOOK_SECRET],
+        ];
+    }
 
     /**
      * Generate a new secure webhook secret token and persist it.

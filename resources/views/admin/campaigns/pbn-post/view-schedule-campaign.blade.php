@@ -67,6 +67,26 @@
     </div>
 @endif
 
+@if ($campaign->converted_from_campaign_id)
+    <div class="content-card !mt-4 !p-4 bg-orange-50 border border-orange-200 text-sm">
+        <strong>Converted from live campaign</strong>
+        @if ($campaign->sourceCampaign)
+            ({{ $campaign->sourceCampaign->campaign_no }})
+        @endif
+        · Pipeline: {{ $campaign->conversion_pipeline_status ?? '—' }}
+        @if ($campaign->conversion_run_date)
+            · Conversion day: {{ $campaign->conversion_run_date->format('d M Y') }}
+        @endif
+        <form action="{{ route('admin.convert.post.bulk-retry', $campaign->id) }}" method="post" class="inline !ml-3">
+            @csrf
+            <button type="submit" class="text-[var(--primary-color)] underline bg-transparent border-0 cursor-pointer">Retry failed conversion posts</button>
+        </form>
+        <span class="text-gray-600">· WordPress status is refreshed automatically when you open this page (and every few minutes in the background).</span>
+    </div>
+@endif
+
+@include('admin.campaigns.partials.local-client-billing')
+
 {{-- ===================== CAMPAIGN SUMMARY ===================== --}}
 <div class="content-card !mt-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
 
@@ -110,6 +130,15 @@
     <h2 class="text-lg !mb-4 bg-[var(--primary-color)] text-white w-fit !px-4 !py-2 rounded">
         Scheduled Posts
     </h2>
+
+    @include('admin.campaigns.partials.post-status-filters', [
+        'routeName' => 'admin.schedule.campaign.show',
+        'routeParameter' => 'schedule',
+        'campaign' => $campaign,
+        'statusFilter' => $statusFilter,
+        'statusCounts' => $statusCounts,
+        'isConvertedLiveCampaign' => $isConvertedLiveCampaign ?? false,
+    ])
 
     <div class="overflow-x-auto">
         <table class="display w-full border border-gray-200 text-sm whitespace-nowrap searchable-table">
@@ -191,15 +220,22 @@
 
                     <td class="!px-2 !py-2 border border-gray-300 text-center">
                         @php
-                            $map = [
-                                'queued' => 'bg-gray-100 text-gray-700',
-                                'publishing' => 'bg-yellow-100 text-yellow-700',
-                                'success' => 'bg-green-100 text-green-700',
-                                'failed' => 'bg-red-100 text-red-700',
-                            ];
+                            if ($post->is_converted_live) {
+                                $reportStatus = \App\Support\SchedulePostReportStatus::forReport($post);
+                                $statusLabel = $reportStatus['label'];
+                                $statusClass = $reportStatus['class'];
+                            } else {
+                                $map = [
+                                    'queued' => ['Queued', 'bg-gray-100 text-gray-700'],
+                                    'publishing' => ['Publishing', 'bg-yellow-100 text-yellow-700'],
+                                    'success' => ['Success', 'bg-green-100 text-green-700'],
+                                    'failed' => ['Failed', 'bg-red-100 text-red-700'],
+                                ];
+                                [$statusLabel, $statusClass] = $map[$post->status] ?? [ucfirst($post->status), 'bg-gray-100'];
+                            }
                         @endphp
-                        <span class="!px-2 !py-1 rounded text-xs font-semibold {{ $map[$post->status] ?? 'bg-gray-100' }}">
-                            {{ ucfirst($post->status) }}
+                        <span class="!px-2 !py-1 rounded text-xs font-semibold {{ $statusClass }}">
+                            {{ $statusLabel }}
                         </span>
                     </td>
 
@@ -223,8 +259,26 @@
                                     <span class="material-symbols-outlined text-white !text-sm">edit</span>
                                 </a>
                             @endif
-                            @if (in_array($post->status, ['queued', 'failed', 'publishing']))
+                            @php
+                                $replaceProfile = $post->is_converted_live
+                                    ? \App\Services\LiveTaskDomainReplacement\LiveTaskReplacementProfile::convertedSchedulePost()
+                                    : \App\Services\LiveTaskDomainReplacement\LiveTaskReplacementProfile::schedulePost();
+                                $canReplaceDomain = app(\App\Services\LiveTaskDomainReplacement\LiveTaskDomainReplacementService::class)
+                                    ->ineligibleReason($replaceProfile, $post) === null;
+                            @endphp
+                            @if ($canReplaceDomain)
+                                <a href="{{ route('admin.schedule.campaign.domain-replacement.create', $post->id) }}"
+                                    class="bg-blue-600 w-7 h-7 inline-flex items-center justify-center rounded hover:bg-blue-700"
+                                    title="Replace domain">
+                                    <span class="material-symbols-outlined text-white !text-sm">swap_horiz</span>
+                                </a>
+                            @endif
+                            @if (in_array($post->status, ['queued', 'failed', 'publishing']) || ($post->is_converted_live && in_array($post->conversion_phase, ['failed', 'pending_draft', 'drafted'], true)))
+                                @if ($post->is_converted_live)
+                                <form action="{{ route('admin.convert.post.retry-post', $post->id) }}" method="post" class="inline">
+                                @else
                                 <form action="{{ route('admin.schedule.campaign.retry.post', $post->id) }}" method="post" class="inline">
+                                @endif
                                     @csrf
                                     <button type="submit" class="bg-blue-500 w-7 h-7 inline-flex items-center justify-center rounded hover:bg-blue-600 border-0 cursor-pointer"
                                         title="Retry post">

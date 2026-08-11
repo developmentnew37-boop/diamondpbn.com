@@ -2,8 +2,8 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
@@ -14,12 +14,17 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('schedule_sidebar_campaign_tasks', function (Blueprint $table) {
-            $table->timestamp('original_schedule_at')->nullable()->after('schedule_at');
-        });
-        Schema::table('schedule_campaigns_posts', function (Blueprint $table) {
-            $table->timestamp('original_schedule_at')->nullable()->after('schedule_at');
-        });
+        if (! Schema::hasColumn('schedule_sidebar_campaign_tasks', 'original_schedule_at')) {
+            Schema::table('schedule_sidebar_campaign_tasks', function (Blueprint $table) {
+                $table->timestamp('original_schedule_at')->nullable()->after('schedule_at');
+            });
+        }
+
+        if (! Schema::hasColumn('schedule_campaigns_posts', 'original_schedule_at')) {
+            Schema::table('schedule_campaigns_posts', function (Blueprint $table) {
+                $table->timestamp('original_schedule_at')->nullable()->after('schedule_at');
+            });
+        }
 
         // Backfill so existing rows show current schedule_at as their "original" (best we can do)
         DB::table('schedule_sidebar_campaign_tasks')->whereNull('original_schedule_at')->update([

@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Http\Request;
 
 class InvoiceController extends Controller
 {
@@ -87,7 +87,7 @@ class InvoiceController extends Controller
         $total = $subtotalAfterDiscount + $taxAmount;
 
         // Use custom total if provided (as-is with user's formatting), otherwise use calculated total
-        $finalTotal = !empty($validated['custom_total']) ? $validated['custom_total'] : null;
+        $finalTotal = ! empty($validated['custom_total']) ? $validated['custom_total'] : null;
         $calculatedTotal = $total;
 
         // Get currency symbol
@@ -119,13 +119,13 @@ class InvoiceController extends Controller
         // Return PDF as base64 for AJAX download
         $pdfContent = $pdf->output();
         $pdfBase64 = base64_encode($pdfContent);
-        $filename = 'invoice-' . $validated['invoice_number'] . '.pdf';
+        $filename = 'invoice-'.$validated['invoice_number'].'.pdf';
 
         return response()->json([
             'success' => true,
             'pdf' => $pdfBase64,
             'filename' => $filename,
-            'message' => 'Invoice generated successfully!'
+            'message' => 'Invoice generated successfully!',
         ]);
     }
 
@@ -134,57 +134,6 @@ class InvoiceController extends Controller
      */
     private function getCurrencySymbol($currencyCode)
     {
-        $symbols = [
-            'USD' => '$',
-            'EUR' => '€',
-            'GBP' => '£',
-            'JPY' => '¥',
-            'CNY' => '¥',
-            'AUD' => 'A$',
-            'CAD' => 'C$',
-            'CHF' => 'CHF',
-            'SEK' => 'kr',
-            'NOK' => 'kr',
-            'DKK' => 'kr',
-            'NZD' => 'NZ$',
-            'INR' => '₹',
-            'IDR' => 'Rp',
-            'MYR' => 'RM',
-            'SGD' => 'S$',
-            'PHP' => '₱',
-            'THB' => '฿',
-            'VND' => '₫',
-            'KRW' => '₩',
-            'HKD' => 'HK$',
-            'TWD' => 'NT$',
-            'AED' => 'د.إ',
-            'SAR' => '﷼',
-            'QAR' => '﷼',
-            'KWD' => 'د.ك',
-            'BHD' => 'د.ب',
-            'OMR' => '﷼',
-            'ILS' => '₪',
-            'TRY' => '₺',
-            'ZAR' => 'R',
-            'NGN' => '₦',
-            'EGP' => '£',
-            'KES' => 'KSh',
-            'BRL' => 'R$',
-            'MXN' => '$',
-            'ARS' => '$',
-            'CLP' => '$',
-            'COP' => '$',
-            'PEN' => 'S/',
-            'RUB' => '₽',
-            'PLN' => 'zł',
-            'CZK' => 'Kč',
-            'HUF' => 'Ft',
-            'RON' => 'lei',
-            'PKR' => '₨',
-            'BDT' => '৳',
-            'LKR' => 'Rs',
-        ];
-
-        return $symbols[$currencyCode] ?? '$';
+        return \App\Support\CurrencyFormatter::symbol($currencyCode);
     }
 }

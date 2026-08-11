@@ -9,15 +9,19 @@
     $destroyConfirm = $destroyConfirm ?? 'Delete this campaign?';
     $purgeConfirm = $purgeConfirm ?? 'Remove this campaign from the dashboard only? Remote content will stay.';
     $openReportInNewTab = $openReportInNewTab ?? false;
+    $bulkReplaceUrl = $bulkReplaceUrl ?? null;
+    $showView = $showView ?? true;
     $hasReport = ! empty($reportUrl) && $reportUrl !== '#';
 @endphp
 
-<div class="flex flex-nowrap items-center justify-center gap-2">
-    <a href="{{ $viewUrl }}"
-        class="bg-green-500 flex shrink-0 items-center justify-center rounded w-7 h-7 hover:bg-green-600"
-        title="View campaign">
-        <span class="material-symbols-outlined !text-sm text-white">visibility</span>
-    </a>
+<div class="campaign-list-actions-wrap flex flex-nowrap items-center justify-center gap-2">
+    @if ($showView)
+        <a href="{{ $viewUrl }}"
+            class="bg-green-500 flex shrink-0 items-center justify-center rounded w-7 h-7 hover:bg-green-600"
+            title="View campaign">
+            <span class="material-symbols-outlined !text-sm text-white">visibility</span>
+        </a>
+    @endif
 
     @if ($hasReport)
         <a href="javascript:void(0)"
@@ -32,6 +36,14 @@
             class="bg-blue-700 flex shrink-0 items-center justify-center rounded w-7 h-7 hover:bg-blue-800"
             title="View report">
             <span class="material-symbols-outlined !text-sm text-white">assignment</span>
+        </a>
+    @endif
+
+    @if ($bulkReplaceUrl)
+        <a href="{{ $bulkReplaceUrl }}"
+            class="bg-blue-600 flex shrink-0 items-center justify-center rounded w-7 h-7 hover:bg-blue-700"
+            title="Bulk replace domains">
+            <span class="material-symbols-outlined !text-sm text-white">swap_horiz</span>
         </a>
     @endif
 

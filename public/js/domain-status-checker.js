@@ -84,6 +84,13 @@
 
             const data = await parseJsonResponse(response);
 
+            if (response.status === 429) {
+                throw new Error(
+                    data.message
+                    || 'Too many status-check starts. Wait about 1 minute, then try again.'
+                );
+            }
+
             if (!response.ok || !data.success) {
                 throw new Error(data.message || `Server error (${response.status}). Run: php artisan migrate --path=database/migrations/2026_06_19_100000_create_domain_status_checks_tables.php`);
             }
@@ -113,11 +120,11 @@
             queuedWarningTimer = window.setTimeout(() => {
                 if (activeCheckUuid) {
                     showAlert(
-                        'Check is queued but not processing. Start the queue worker: php artisan queue:work --queue=domainCheck',
+                        'Check is still queued. Ensure a worker is listening on domainCheck: php artisan queue:work --queue=domainCheck,domainHealthSync. If domainHealthSync has a large backlog, the UI check should still run on domainCheck.',
                         'warning'
                     );
                 }
-            }, 10000);
+            }, 15000);
         } catch (error) {
             showAlert(error.message || 'Unable to start status check.', 'error');
             hideProgressPanel();
@@ -281,6 +288,7 @@
                 <td class="!px-4 !py-3">${row.index}</td>
                 <td class="!px-4 !py-3 font-medium break-all">${escapeHtml(row.domain)}</td>
                 <td class="!px-4 !py-3">${connectionBadge(row)}</td>
+                <td class="!px-4 !py-3 text-xs">${classificationDetails(row)}</td>
                 <td class="!px-4 !py-3">${inventoryBadge(row.in_inventory)}</td>
                 <td class="!px-4 !py-3 text-gray-600">${escapeHtml(row.category || '—')}</td>
                 <td class="!px-4 !py-3 text-gray-600">${escapeHtml(row.message || '—')}</td>
@@ -313,6 +321,19 @@
         return inInventory
             ? '<span class="!px-2 !py-1 text-xs font-semibold rounded-full bg-orange-100 text-orange-800">Yes</span>'
             : '<span class="!px-2 !py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-600">No</span>';
+    }
+
+    function classificationDetails(row) {
+        if (!row.status_code) return '—';
+
+        const code = escapeHtml(row.status_code.replace(/_/g, ' '));
+        const details = [
+            row.agent_version ? `v${escapeHtml(row.agent_version)}` : null,
+            row.probe_method ? escapeHtml(row.probe_method) : null,
+            row.http_status ? `HTTP ${escapeHtml(row.http_status)}` : null,
+        ].filter(Boolean).join(' · ');
+
+        return `<span class="font-semibold">${code}</span>${details ? `<br><span class="text-gray-500">${details}</span>` : ''}`;
     }
 
     function formatResponseTime(row) {

@@ -198,6 +198,10 @@ class PluginDeploymentController extends Controller
                 'message' => $item->message,
                 'category' => $item->category,
                 'response_time_ms' => $item->response_time_ms,
+                'http_status' => $item->http_status,
+                'probe_method' => $item->probe_method,
+                'retry_count' => $item->retry_count,
+                'audit_attempts' => is_array($item->audit_trail) ? count($item->audit_trail) : 0,
                 'processed_at' => $item->processed_at?->toIso8601String(),
             ])->values(),
         ]);
@@ -261,6 +265,67 @@ class PluginDeploymentController extends Controller
         ]);
     }
 
+    public function bulkDestroy(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'uuids' => 'required|array|min:1|max:100',
+            'uuids.*' => 'required|string|uuid',
+        ]);
+
+        $adminId = (int) Auth::guard('admin')->id();
+
+        try {
+            $result = $this->deploymentService->bulkDeleteDeployments($validated['uuids'], $adminId);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json(['success' => false, 'message' => 'Could not delete selected deployments.'], 500);
+        }
+
+        if ($result['deleted'] === 0) {
+            return response()->json(['success' => false, 'message' => 'No matching deployments found.'], 422);
+        }
+
+        $message = $result['deleted'].' deployment(s) removed from history.';
+        if ($result['cancelled'] > 0) {
+            $message .= ' '.$result['cancelled'].' active run(s) were cancelled first.';
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'deleted' => $result['deleted'],
+        ]);
+    }
+
+    public function clearHistory(): JsonResponse
+    {
+        $adminId = (int) Auth::guard('admin')->id();
+
+        try {
+            $result = $this->deploymentService->clearAllDeployments($adminId);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json(['success' => false, 'message' => 'Could not clear deployment history.'], 500);
+        }
+
+        if ($result['deleted'] === 0) {
+            return response()->json(['success' => true, 'message' => 'History is already empty.', 'deleted' => 0]);
+        }
+
+        $message = 'Cleared '.$result['deleted'].' deployment record(s) from history.';
+        if ($result['cancelled'] > 0) {
+            $message .= ' '.$result['cancelled'].' active run(s) were cancelled first.';
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'deleted' => $result['deleted'],
+        ]);
+    }
+
     public function exportFailures(string $uuid): StreamedResponse
     {
         $deployment = PluginDeployment::query()
@@ -272,7 +337,17 @@ class PluginDeploymentController extends Controller
 
         return response()->streamDownload(function () use ($deployment) {
             $handle = fopen('php://output', 'w');
-            fputcsv($handle, ['domain', 'category', 'error_code', 'message', 'version_before']);
+            fputcsv($handle, [
+                'domain',
+                'category',
+                'error_code',
+                'message',
+                'version_before',
+                'http_status',
+                'probe_method',
+                'retry_count',
+                'request_url',
+            ]);
 
             $deployment->items()
                 ->where('item_status', 'failed')
@@ -284,6 +359,10 @@ class PluginDeploymentController extends Controller
                         $item->error_code,
                         $item->message,
                         $item->version_before,
+                        $item->http_status,
+                        $item->probe_method,
+                        $item->retry_count,
+                        $item->request_url,
                     ]);
                 });
 

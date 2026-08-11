@@ -14,8 +14,10 @@ class ScheduleSidebarCampaignTask extends Model
         'schedule_sidebar_campaign_link_id',
         'schedule_sidebar_campaign_date_id',
         'schedule_at',
+        'original_schedule_at',
         'status',
         'attempt_count',
+        'dispatch_generation',
         'next_retry_at',
         'last_error',
         'locked_at',
@@ -25,13 +27,24 @@ class ScheduleSidebarCampaignTask extends Model
         'http_status',
         'remote_response',
         'published_at',
+        'source_sidebar_campaign_task_id',
+        'is_converted_live',
+        'conversion_phase',
+        'conversion_publish_date',
+        'last_conversion_error',
+        'last_conversion_attempt_at',
+        'remote_status',
     ];
 
     protected $casts = [
-        'schedule_at'   => 'datetime',
-        'published_at'  => 'datetime',
+        'schedule_at' => 'datetime',
+        'original_schedule_at' => 'datetime',
+        'published_at' => 'datetime',
         'next_retry_at' => 'datetime',
-        'locked_at'     => 'datetime',
+        'locked_at' => 'datetime',
+        'is_converted_live' => 'boolean',
+        'conversion_publish_date' => 'date',
+        'last_conversion_attempt_at' => 'datetime',
     ];
 
     /* =========================

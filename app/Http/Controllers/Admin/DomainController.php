@@ -5,14 +5,20 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Admin\Domain;
 use App\Models\Admin\DomainCategory;
+use App\Rules\UniqueCredential;
+use App\Services\CredentialBlindIndex;
+use App\Services\WordPressAgentStatusService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Spatie\SimpleExcel\SimpleExcelWriter;
 
 class DomainController extends Controller
 {
+    public function __construct(
+        private readonly WordPressAgentStatusService $agentStatusService
+    ) {}
+
     /**
      * Display a listing of the resource.
      */
@@ -96,31 +102,22 @@ class DomainController extends Controller
             'tf' => 'nullable|numeric|min:0|max:100',
             'ss' => 'nullable|numeric|min:0|max:100',
             'ip' => 'nullable|string',
-            'api_key' => 'nullable|unique:domains',
+            'api_key' => [
+                'nullable',
+                'string',
+                new UniqueCredential('domains', 'api_key_lookup_hash', CredentialBlindIndex::DOMAIN_API_KEY, credentialColumn: 'api_key'),
+            ],
         ]);
 
         // Normalize hostname (lowercase, strip scheme/path) for consistent storage
         $domain = normalizeDomainName($validate['name']);
 
-        $url = "https://{$domain}/wp-json/external/v1/status";
+        $statusResult = $this->agentStatusService->probeWithAuthFallback(
+            $domain,
+            $validate['api_key'] ?? null
+        );
 
-        $status = 0;  // Default: Not connected
-        $message = 'Plugin Missing / API Route Not Found';
-
-        try {
-            $response = Http::withoutVerifying()->timeout(40)->get($url);
-
-            if ($response->successful() && $response->json('status') == true) {
-                $status = 1;
-                $message = 'Plugin Connected';
-            } else {
-                $status = 0;
-            }
-        } catch (\Exception $e) {
-            return back()->with('cus__error', 'Domain Added but API unreachable: '.$e->getMessage());
-        }
-
-        Domain::create([
+        Domain::create($statusResult->healthAttributes() + [
             'name' => $domain,
             'domain_category_id' => $validate['domain_category_id'],
             'da' => $validate['da'],
@@ -129,7 +126,6 @@ class DomainController extends Controller
             'ss' => $validate['ss'],
             'ip' => $validate['ip'],
             'api_key' => $validate['api_key'],
-            'status' => $status,
             'admin_id' => Auth::guard('admin')->id(),
         ]);
 
@@ -181,30 +177,28 @@ class DomainController extends Controller
             'tf' => 'nullable|numeric|min:1|max:100',
             'ss' => 'nullable|numeric|min:1|max:100',
             'ip' => 'nullable|string',
-            'api_key' => 'nullable|unique:domains,api_key,'.$id, // API key also unique but ignore current row
+            'api_key' => [
+                'nullable',
+                'string',
+                new UniqueCredential('domains', 'api_key_lookup_hash', CredentialBlindIndex::DOMAIN_API_KEY, (int) $id, 'api_key'),
+            ],
         ]);
 
         // domain.com format
         $domainName = normalizeDomainName($validate['name']);
-        $url = "https://{$domainName}/wp-json/external/v1/status";
-
-        $status = 0;
-        $message = 'Plugin Missing / API Route Not Found';
-
+        $existingApiKey = '';
         try {
-            $response = Http::withoutVerifying()->timeout(40)->get($url);
-
-            if ($response->successful() && $response->json('status') == true) {
-                $status = 1;
-                $message = 'Plugin Connected';
-            }
-        } catch (\Exception $e) {
-            // does not block update — just notify
-            return back()->with('cus__error', 'Domain Updated but API unreachable: '.$e->getMessage());
+            $existingApiKey = trim((string) ($domain->api_key ?? ''));
+        } catch (\Throwable) {
+            $existingApiKey = '';
         }
+        $statusResult = $this->agentStatusService->probeWithAuthFallback(
+            $domainName,
+            ! empty($validate['api_key']) ? $validate['api_key'] : $existingApiKey
+        );
 
         // Update DB
-        $domain->update([
+        $attributes = $statusResult->healthAttributes($domain->last_seen_at) + [
             'name' => $domainName,
             'domain_category_id' => $validate['domain_category_id'],
             'da' => $validate['da'],
@@ -212,10 +206,14 @@ class DomainController extends Controller
             'tf' => $validate['tf'],
             'ss' => $validate['ss'],
             'ip' => $validate['ip'],
-            'api_key' => $validate['api_key'],
-            'status' => $status,
             'admin_id' => Auth::guard('admin')->id(), // optional if admin change only
-        ]);
+        ];
+
+        if (! empty($validate['api_key'])) {
+            $attributes['api_key'] = $validate['api_key'];
+        }
+
+        $domain->update($attributes);
 
         return back()->with('cus__success', 'Domain updated successfully');
     }
@@ -314,13 +312,12 @@ class DomainController extends Controller
             'DR',
             'SS',
             'IP',
-            'API Key',
             'Status',
             'Created At',
         ]);
 
         Domain::query()
-            ->select(['id', 'name', 'da', 'tf', 'dr', 'ss', 'ip', 'api_key', 'status', 'created_at'])
+            ->select(['id', 'name', 'da', 'tf', 'dr', 'ss', 'ip', 'status', 'created_at'])
             ->where('domain_category_id', $categoryId)
             ->orderBy('id')
             ->chunkById(500, function ($domains) use ($writer, $category) {
@@ -333,7 +330,6 @@ class DomainController extends Controller
                         'DR' => (int) ($domain->dr ?? 0),
                         'SS' => (int) ($domain->ss ?? 0),
                         'IP' => (string) ($domain->ip ?? '-'),
-                        'API Key' => (string) ($domain->api_key ?? '-'),
                         'Status' => ((int) ($domain->status ?? 0) === 1) ? 'Connected' : 'Disconnected',
                         'Created At' => optional($domain->created_at)->format('d M Y H:i'),
                     ]);

@@ -2,6 +2,10 @@
 
 namespace App\Models\Admin;
 
+use App\Casts\EncryptedCredential;
+use App\Data\AgentStatusResult;
+use App\Models\Concerns\HasProtectedCredentials;
+use App\Services\CredentialBlindIndex;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -9,11 +13,22 @@ use Illuminate\Support\Facades\DB;
 
 class Domain extends Model
 {
+    use HasProtectedCredentials;
+
     protected $table = 'domains';
 
     protected $guarded = [];
 
-    protected $hidden = [];
+    protected $hidden = [
+        'api_key',
+        'api_key_lookup_hash',
+    ];
+
+    protected $casts = [
+        'status' => 'integer',
+        'last_seen_at' => 'datetime',
+        'api_key' => EncryptedCredential::class,
+    ];
 
     protected static function booted(): void
     {
@@ -24,9 +39,23 @@ class Domain extends Model
         });
     }
 
+    protected function credentialBlindIndexes(): array
+    {
+        return [
+            'api_key' => ['api_key_lookup_hash', CredentialBlindIndex::DOMAIN_API_KEY],
+        ];
+    }
+
     public function domainCategory(): BelongsTo
     {
         return $this->belongsTo(DomainCategory::class, 'domain_category_id');
+    }
+
+    public function persistAgentHealth(AgentStatusResult $result): bool
+    {
+        return $this->forceFill(
+            $result->healthAttributes($this->last_seen_at)
+        )->save();
     }
 
     /**

@@ -4,12 +4,14 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
 use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
+use App\Http\Controllers\Admin\Concerns\ProvidesLocalClientsForForms;
 use App\Http\Controllers\Admin\Concerns\ValidatesBulkCampaignIds;
 use App\Http\Controllers\Controller;
 use App\Jobs\BulkRetryScheduleSidebarCampaignTasksJob;
 use App\Jobs\BulkUpdateScheduleSidebarBlogrollJob;
 use App\Jobs\DeleteScheduleSidebarCampaignJob;
 use App\Jobs\PublishScheduledSidebarBlogrollJob;
+use App\Jobs\SyncConvertedSidebarCampaignRemoteStatusJob;
 use App\Models\Admin\Domain;
 use App\Models\Admin\DomainCategory;
 use App\Models\Admin\DomainSet;
@@ -19,7 +21,13 @@ use App\Models\Admin\ScheduleSidebarCampaignDomain;
 use App\Models\Admin\ScheduleSidebarCampaignLink;
 use App\Models\Admin\ScheduleSidebarCampaignTask;
 use App\Services\BlogrollApiService;
+use App\Services\ConvertedSidebarRemoteSyncService;
+use App\Services\LiveTaskDomainReplacement\LiveTaskBulkDomainReplacementService;
+use App\Services\LiveTaskDomainReplacement\LiveTaskReplacementProfile;
+use App\Services\LocalClientBillingService;
 use App\Services\PurgeLocalCampaignDataService;
+use App\Services\SidebarLiveToDripfeedConversionService;
+use App\Support\CampaignTaskStatusFilter;
 use App\Support\ReportDisplay;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -27,12 +35,15 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Spatie\SimpleExcel\SimpleExcelWriter;
 
 class ScheduleSidebarCampaignController extends Controller
 {
     use AppliesSuperAdminCampaignOwnerFilter;
     use AuthorizesAdminCampaign;
+    use ProvidesLocalClientsForForms;
     use ValidatesBulkCampaignIds;
 
     public function __construct()
@@ -136,9 +147,18 @@ class ScheduleSidebarCampaignController extends Controller
      ============================ */
         $offset = ($campaigns->currentPage() - 1) * $limit;
 
+        $replaceableCampaignIds = [];
+        if ($admin->canCreateCampaigns()) {
+            $replaceableCampaignIds = app(LiveTaskBulkDomainReplacementService::class)
+                ->replaceableCampaignIds(
+                    LiveTaskReplacementProfile::scheduleSidebar(),
+                    $campaigns->pluck('id')->all(),
+                );
+        }
+
         return view(
             'admin.campaigns.pbn-sidebar.schedule-sidebar-campaign',
-            array_merge(compact('campaigns', 'offset'), $ownerData)
+            array_merge(compact('campaigns', 'offset', 'replaceableCampaignIds'), $ownerData)
         );
     }
 
@@ -158,7 +178,8 @@ class ScheduleSidebarCampaignController extends Controller
 
         $sites = Domain::all();
 
-        return view('admin.campaigns.pbn-sidebar.create-schedule-sidebar-campaign', compact('campaignId', 'domainCategory', 'domainSets', 'sites'));
+        return view('admin.campaigns.pbn-sidebar.create-schedule-sidebar-campaign', compact('campaignId', 'domainCategory', 'domainSets', 'sites'))
+            ->with('localClients', $this->activeLocalClientsForForms());
     }
 
     /**
@@ -237,6 +258,8 @@ class ScheduleSidebarCampaignController extends Controller
             'domain_category_id' => 'nullable|integer|exists:domain_categories,id',
             'keywordsDataHolder' => 'required|string',
             'campaigns_domains' => 'required|string',
+            'local_client_id' => 'nullable|integer|exists:local_clients,id',
+            'billing_currency' => ['nullable', 'string', Rule::in(\App\Support\CurrencyFormatter::supportedCodes())],
         ]);
 
         $links = json_decode($request->keywordsDataHolder, true);
@@ -287,15 +310,23 @@ class ScheduleSidebarCampaignController extends Controller
 
         $campaignNo = $this->generateUniqueCampaignNo($request->campaign_no);
 
-        if ($useDateTable) {
-            $this->storeWithDateTable($request, $campaignNo, $qty, $scheduleFrom, $scheduleTo, $links, $domainIds, $dateRows);
-        } else {
-            $from = Carbon::parse($scheduleFrom)->startOfDay();
-            $to = Carbon::parse($scheduleTo)->startOfDay();
-            $totalDays = $from->diffInDays($to) + 1;
-            $perDay = intdiv($qty, $totalDays);
-            $remainder = $qty % $totalDays;
-            $this->storeWithDateRange($request, $campaignNo, $qty, $links, $domainIds, $from, $totalDays, $perDay, $remainder);
+        try {
+            if ($useDateTable) {
+                $this->storeWithDateTable($request, $campaignNo, $qty, $scheduleFrom, $scheduleTo, $links, $domainIds, $dateRows);
+            } else {
+                $from = Carbon::parse($scheduleFrom)->startOfDay();
+                $to = Carbon::parse($scheduleTo)->startOfDay();
+                $totalDays = $from->diffInDays($to) + 1;
+                $perDay = intdiv($qty, $totalDays);
+                $remainder = $qty % $totalDays;
+                $this->storeWithDateRange($request, $campaignNo, $qty, $links, $domainIds, $from, $totalDays, $perDay, $remainder);
+            }
+        } catch (ValidationException $e) {
+            return back()->withErrors($e->errors())->withInput();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return back()->with('cus__error', 'Could not create scheduled sidebar campaign: '.$e->getMessage())->withInput();
         }
 
         return redirect()
@@ -440,6 +471,13 @@ class ScheduleSidebarCampaignController extends Controller
             foreach (array_chunk($postRows, 200) as $chunk) {
                 ScheduleSidebarCampaignTask::insert($chunk);
             }
+
+            app(LocalClientBillingService::class)->applyFromRequest(
+                $request,
+                $schedule,
+                $domainIds,
+                'schedule_sidebar',
+            );
         });
     }
 
@@ -555,6 +593,13 @@ class ScheduleSidebarCampaignController extends Controller
             if (! empty($rows)) {
                 ScheduleSidebarCampaignTask::insert($rows);
             }
+
+            app(LocalClientBillingService::class)->applyFromRequest(
+                $request,
+                $schedule,
+                $domainIds,
+                'schedule_sidebar',
+            );
         });
     }
 
@@ -712,43 +757,79 @@ class ScheduleSidebarCampaignController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(string $id)
+    public function show(Request $request, string $id, ConvertedSidebarRemoteSyncService $remoteSync, SidebarLiveToDripfeedConversionService $conversionService)
     {
-        /* ============================
-           | Fetch Scheduled Sidebar Campaign
-           ============================ */
         $campaign = ScheduleSidebarCampaign::with([
-            'domains.domain', // schedule_sidebar_campaign_domains → domains
-            'links',          // schedule_sidebar_campaign_links
+            'domains.domain',
+            'links',
+            'sourceSidebarCampaign',
+            'localClient',
         ])->findOrFail($id);
 
-        /* ============================
-           | Pagination
-           ============================ */
+        if (filled($campaign->converted_from_sidebar_campaign_id)) {
+            if ($conversionService->realignConvertedTaskSlots($campaign) > 0) {
+                $campaign->refresh();
+            }
+
+            $remoteSync->syncCampaignTasks($campaign);
+            $campaign->refresh();
+
+            $stillNeedsSync = ScheduleSidebarCampaignTask::query()
+                ->with(['domain.domain'])
+                ->where('schedule_sidebar_campaign_id', $campaign->id)
+                ->where('is_converted_live', true)
+                ->get()
+                ->contains(fn (ScheduleSidebarCampaignTask $task) => $remoteSync->needsRemoteSync($task));
+
+            if ($stillNeedsSync) {
+                SyncConvertedSidebarCampaignRemoteStatusJob::dispatch((int) $campaign->id)
+                    ->onQueue(SyncConvertedSidebarCampaignRemoteStatusJob::QUEUE);
+            }
+        }
+
         $limit = 100;
+        $statusFilter = $request->string('status')->toString();
+        $tasksQuery = ScheduleSidebarCampaignTask::query()->where('schedule_sidebar_campaign_id', $campaign->id);
+        $isConvertedLiveCampaign = filled($campaign->converted_from_sidebar_campaign_id);
 
-        /* ============================
-           | Fetch Scheduled Sidebar Tasks
-           ============================ */
-        $campaignTasks = ScheduleSidebarCampaignTask::query()
-            ->with([
-                'domain.domain', // ScheduleSidebarCampaignDomain → Domain
-                'link',          // ScheduleSidebarCampaignLink
-            ])
-            ->where('schedule_sidebar_campaign_id', $campaign->id)
-            ->paginate($limit)
-            ->withQueryString();
+        if ($isConvertedLiveCampaign) {
+            $statusCounts = CampaignTaskStatusFilter::countsForConvertedLivePosts($tasksQuery);
+            $campaignTasks = CampaignTaskStatusFilter::applyForConvertedLivePost(
+                ScheduleSidebarCampaignTask::query()
+                    ->with([
+                        'domain.domain',
+                        'link',
+                        'scheduleDate',
+                    ])
+                    ->where('schedule_sidebar_campaign_id', $campaign->id),
+                $statusFilter !== '' ? $statusFilter : null,
+            )
+                ->orderByRaw('COALESCE(original_schedule_at, schedule_at) asc')
+                ->orderBy('id')
+                ->paginate($limit)
+                ->withQueryString();
+        } else {
+            $statusCounts = CampaignTaskStatusFilter::counts($tasksQuery);
+            $campaignTasks = CampaignTaskStatusFilter::apply(
+                ScheduleSidebarCampaignTask::query()
+                    ->with([
+                        'domain.domain',
+                        'link',
+                    ])
+                    ->where('schedule_sidebar_campaign_id', $campaign->id),
+                $statusFilter
+            )
+                ->orderByRaw('COALESCE(original_schedule_at, schedule_at) asc')
+                ->orderBy('id')
+                ->paginate($limit)
+                ->withQueryString();
+        }
 
-        //  ->orderByDesc('id')
-
-        /* ============================
-           | Offset for S.No
-           ============================ */
         $offset = ($campaignTasks->currentPage() - 1) * $limit;
 
         return view(
             'admin.campaigns.pbn-sidebar.view-schedule-campaign',
-            compact('campaign', 'campaignTasks', 'offset')
+            compact('campaign', 'campaignTasks', 'offset', 'statusFilter', 'statusCounts', 'isConvertedLiveCampaign')
         );
     }
 
@@ -1172,7 +1253,7 @@ class ScheduleSidebarCampaignController extends Controller
             'lock_token' => null,
         ]);
 
-        PublishScheduledSidebarBlogrollJob::dispatch($task->id)->onQueue('scheduled_sidebar_campaigns');
+        PublishScheduledSidebarBlogrollJob::dispatch($task->id, (int) ($task->dispatch_generation ?? 0))->onQueue('scheduled_sidebar_campaigns');
 
         return back()->with('cus__success', 'Task queued for retry.');
     }

@@ -8,6 +8,10 @@
 
 @section('main-content')
 
+    @php
+        $isStickyCampaignList = $isStickyCampaignList ?? false;
+    @endphp
+
     {{-- bread-crumbs --}}
     <div class="page-header w-full max-w-full min-w-0">
         <div class="w-full flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -19,14 +23,14 @@
                         <span>›</span>
                     </div>
                     <div class="breadcrumb-item">
-                        <a href="{{ route('admin.campaign.index') }}" class="breadcrumb-link">PBN Post</a>
+                        <a href="{{ route($isStickyCampaignList ? 'admin.sticky.campaign.index' : 'admin.campaign.index') }}" class="breadcrumb-link">{{ $isStickyCampaignList ? 'PBN Sticky Post' : 'PBN Post' }}</a>
                     </div>
 
                 </div>
             </div>
             <div class="w-full md:w-auto flex flex-wrap justify-start md:justify-end items-center md:shrink-0">
                 @if (Auth::guard('admin')->user()->canCreateCampaigns())
-                <a href="{{ route('admin.campaign.create') }}"
+                <a href="{{ route($isStickyCampaignList ? 'admin.sticky.campaign.create' : 'admin.campaign.create') }}"
                     class="flex !p-2 !py-3 text-[16px] font-normal w-full sm:w-fit justify-center duration:300 bg-[var(--primary-color)]
                     whitespace-nowrap hover:bg-[var(--primary-color)]/70 text-white rounded transition-all duration">
                     Create Campaign</a>
@@ -65,29 +69,32 @@
     {{-- ******************* Ends here  ***************** --}}
 
     <div class="w-full flex flex-wrap justify-between items-start content-card">
-        <h2 class="text-xl capitalize !mb-4 bg-[var(--primary-color)] text-white w-fit !p-2 rounded">Post Campaigns
+        <h2 class="text-xl capitalize !mb-4 bg-[var(--primary-color)] text-white w-fit !p-2 rounded">{{ $isStickyCampaignList ? 'Sticky Post Campaigns' : 'Post Campaigns' }}
         </h2>
-        <form id="pbn-bulk-purge-local-form" action="{{ route('admin.campaign.bulk.purge.local') }}" method="POST" class="hidden">@csrf</form>
-        <form id="pbn-bulk-retry-failed-form" action="{{ route('admin.campaign.bulk.retry.failed') }}" method="POST" class="hidden">@csrf</form>
-        <div class="w-full flex flex-col gap-2 !mb-2">
-            <div class="w-full flex flex-wrap items-center gap-2">
-                <button type="button" id="pbn-bulk-purge-local-btn"
-                    class="!px-3 !py-2 rounded bg-orange-600 text-white text-sm hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Remove selected campaigns from this app only; remote posts stay">
-                    Bulk remove locally only
-                </button>
-                <button type="button" id="pbn-bulk-retry-failed-btn"
-                    class="!px-3 !py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Retry all failed posts in selected campaigns">
-                    Bulk Retry Failed Posts
-                </button>
-            </div>
-            <p class="text-sm text-gray-500">Select campaigns with checkboxes, then retry all failed posts or remove local records.</p>
-        </div>
+        @include('admin.campaigns.partials.campaign-list-bulk-bar', [
+            'purgeFormId' => 'pbn-bulk-purge-local-form',
+            'purgeBtnId' => 'pbn-bulk-purge-local-btn',
+            'retryFormId' => 'pbn-bulk-retry-failed-form',
+            'retryBtnId' => 'pbn-bulk-retry-failed-btn',
+            'purgeAction' => route('admin.campaign.bulk.purge.local'),
+            'retryAction' => route('admin.campaign.bulk.retry.failed'),
+            'retryLabel' => 'Posts',
+            'purgeTitle' => 'Remove selected campaigns from this app only; remote posts stay',
+            'retryTitle' => 'Retry all failed posts in selected campaigns',
+            'helpText' => 'Select campaigns with checkboxes, then retry all failed posts or remove local records.',
+        ])
 
         {{-- table code here --}}
 
         <div class="overflow-x-auto !mt-3 w-full max-w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
+            @php
+                $clTh = 'border border-gray-200 font-sans !font-normal !px-2 !py-3 capitilize text-left';
+                $clTd = 'border border-gray-200 font-sans !px-2 !py-3';
+                $clTdCenter = 'border border-gray-200 font-sans !px-2 !py-3 text-center';
+                $clTdProgress = 'border border-gray-200 font-sans !px-2 !py-3 min-w-[140px]';
+                $clTdActions = 'actions-col border border-gray-200 font-sans !px-2 !py-3 min-w-[252px]';
+                $clTdCheckbox = 'border border-gray-200 font-sans !px-2 !py-3 text-center';
+            @endphp
             <table class="campaign-list-table display w-full min-w-[1100px] border border-gray-200 border-collapse text-sm whitespace-nowrap searchable-table">
                 <thead>
                     <tr class="bg-gray-800 text-white">
@@ -109,8 +116,8 @@
                         @endphp
                         @foreach ($tHead as $t)
                             <th @class([
-                                'border border-gray-200 font-sans !font-normal !px-2 !py-3 capitilize text-left',
-                                'actions-col min-w-[252px]' => $t === 'Actions',
+                                $clTh,
+                                'actions-col' => $t === 'Actions',
                             ])>
                                 {{ $t }}
                             </th>
@@ -149,70 +156,54 @@
                         @endphp
 
                         <tr class="hover:bg-gray-50">
-                            {{-- checkbox --}}
-                            <td class="border border-gray-200 font-sans !px-2 !py-3 text-center">
+                            <td class="{{ $clTdCheckbox }}">
                                 <input type="checkbox" class="multi-check campaign-bulk-cb" name="campaign_ids[]" value="{{ $campaign->id }}">
                             </td>
 
-                            {{-- serial no --}}
-                            <td class="border border-gray-200 font-sans !px-2 !py-3 text-center">
+                            <td class="{{ $clTdCenter }}">
                                 {{ $index + 1 + $offset }}
                             </td>
 
-                            {{-- campaign no --}}
-                            <td class="border border-gray-200 font-sans !px-2 !py-3">
+                            <td class="{{ $clTd }}">
                                 {{ $campaign->campaign_no }}
                             </td>
 
-                            {{-- domain category --}}
-                            <td class="border border-gray-200 font-sans !px-2 !py-3">
+                            <td class="{{ $clTd }}">
                                 {{ optional($campaign->domainCategory)->name ?? '-' }}
                             </td>
 
-                            {{-- totals --}}
-                            <td class="border border-gray-200 font-sans !px-2 !py-3 text-center">
+                            <td class="{{ $clTdCenter }}">
                                 {{ $total }}
                             </td>
 
-                            <td class="border border-gray-200 font-sans !px-2 !py-3 text-center">
+                            <td class="{{ $clTdCenter }}">
                                 {{ $completed }}
                             </td>
 
-                            <td class="border border-gray-200 font-sans !px-2 !py-3 text-center">
+                            <td class="{{ $clTdCenter }}">
                                 {{ $failed }}
                             </td>
 
-                            {{-- pending --}}
-                            <td class="border border-gray-200 font-sans !px-2 !py-3 text-center">
+                            <td class="{{ $clTdCenter }}">
                                 {{ $pending }}
                             </td>
 
-                            {{-- progress --}}
-                            <td class="border border-gray-200 font-sans !px-2 !py-3 min-w-[140px]">
-                                <div class="w-full bg-gray-200 rounded h-2">
-                                    <div class="h-2 rounded {{ $progress >= 80 ? 'bg-green-500' : ($progress >= 50 ? 'bg-yellow-500' : 'bg-red-500') }}"
-                                        style="width: {{ $progress }}%">
-                                    </div>
-                                </div>
-                                <div class="text-[11px] text-gray-600 text-center mt-1">
-                                    {{ $progress }}%
-                                </div>
+                            <td class="{{ $clTdProgress }}">
+                                @include('admin.campaigns.partials.campaign-list-progress', ['progress' => $progress])
                             </td>
 
-                            {{-- status --}}
-                            <td class="border border-gray-200 font-sans !px-2 !py-3 text-center">
-                                <span class="!x-2 !p-2 rounded text-xs font-semibold {{ $statusClass }}">
-                                    {{ ucfirst($status) }}
-                                </span>
+                            <td class="{{ $clTdCenter }}">
+                                @include('admin.campaigns.partials.campaign-list-status-badge', [
+                                    'label' => ucfirst($status),
+                                    'statusClass' => $statusClass,
+                                ])
                             </td>
 
-                            {{-- created --}}
-                            <td class="border border-gray-200 font-sans !px-2 !py-3">
+                            <td class="{{ $clTd }}">
                                 {{ $campaign->created_at->format('d-M-Y H:i') }}
                             </td>
 
-                            {{-- actions --}}
-                            <td class="actions-col border border-gray-200 font-sans !px-2 !py-3 min-w-[252px]">
+                            <td class="{{ $clTdActions }}">
                                 @include('admin.campaigns.partials.campaign-list-actions', [
                                     'viewUrl' => route('admin.campaign.show', $campaign->id),
                                     'editUrl' => route('admin.campaign.edit', $campaign->id),
@@ -220,6 +211,9 @@
                                         'campaign_no' => $campaign->campaign_no,
                                         'token' => $campaign->report_token,
                                     ]),
+                                    'bulkReplaceUrl' => in_array((int) $campaign->id, $replaceableCampaignIds ?? [], true)
+                                        ? route('admin.campaign.bulk-domain-replacement.create', $campaign)
+                                        : null,
                                     'destroyAction' => route('admin.campaign.destroy', $campaign->id),
                                     'purgeAction' => route('admin.campaign.purge.local', $campaign->id),
                                     'destroyConfirm' => 'Delete this campaign? All campaign posts will be removed from the database and from remote sites.',

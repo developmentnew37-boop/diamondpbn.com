@@ -12,7 +12,9 @@ class CampaignObserver
      */
     public function created(Campaign $campaign): void
     {
-        $this->clearDashboardCache($campaign->admin_id);
+        if ($campaign->admin_id !== null) {
+            $this->clearDashboardCache((int) $campaign->admin_id);
+        }
     }
 
     /**
@@ -20,7 +22,9 @@ class CampaignObserver
      */
     public function updated(Campaign $campaign): void
     {
-        $this->clearDashboardCache($campaign->admin_id);
+        if ($campaign->admin_id !== null) {
+            $this->clearDashboardCache((int) $campaign->admin_id);
+        }
     }
 
     /**
@@ -28,7 +32,9 @@ class CampaignObserver
      */
     public function deleted(Campaign $campaign): void
     {
-        $this->clearDashboardCache($campaign->admin_id);
+        if ($campaign->admin_id !== null) {
+            $this->clearDashboardCache((int) $campaign->admin_id);
+        }
     }
 
     /**
@@ -36,8 +42,8 @@ class CampaignObserver
      */
     private function clearDashboardCache(int $adminId): void
     {
-        Cache::forget('dashboard_data_' . $adminId . '_user');
-        Cache::forget('dashboard_data_' . $adminId . '_super');
-        Cache::forget('campaign_create_data_' . $adminId);
+        Cache::forget('dashboard_data_'.$adminId.'_user');
+        Cache::forget('dashboard_data_'.$adminId.'_super');
+        Cache::forget('campaign_create_data_'.$adminId);
     }
 }

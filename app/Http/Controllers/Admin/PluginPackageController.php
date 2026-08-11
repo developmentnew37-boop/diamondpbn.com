@@ -26,25 +26,13 @@ class PluginPackageController extends Controller
 
         return view('admin.domains.plugin-manager.index', [
             'packages' => $packages,
-            'uploadLimits' => pluginManagerUploadLimits(),
+            'uploadLimits' => \pluginManagerUploadLimits(),
         ]);
     }
 
     public function store(Request $request): JsonResponse
     {
-        $limits = pluginManagerUploadLimits();
-
-        if (! $limits['server_ready']) {
-            return response()->json([
-                'success' => false,
-                'message' => sprintf(
-                    'Server upload limit is too low (PHP upload: %s MB, post: %s MB). Increase nginx client_max_body_size and PHP upload_max_filesize/post_max_size to at least %s MB, then reload nginx/PHP-FPM.',
-                    $limits['php_upload_mb'],
-                    $limits['php_post_mb'],
-                    $limits['max_zip_mb']
-                ),
-            ], 422);
-        }
+        $limits = \pluginManagerUploadLimits();
 
         $request->validate([
             'plugin_zip' => 'required|file|mimes:zip|max:'.$limits['validation_kb'],
@@ -117,8 +105,14 @@ class PluginPackageController extends Controller
             'signature' => 'required|string',
         ]);
 
-        if (! $this->packageService->verifyDownloadSignature(
-            $uuid,
+        if (app()->environment('production') && ! $request->secure()) {
+            abort(403, 'Plugin downloads require HTTPS.');
+        }
+
+        $package = PluginPackage::query()->where('uuid', $uuid)->firstOrFail();
+
+        if (! $this->packageService->verifySignedDownload(
+            $package,
             $request->input('deployment'),
             (int) $request->input('expires'),
             $request->input('signature')
@@ -126,7 +120,6 @@ class PluginPackageController extends Controller
             abort(403, 'Invalid or expired download link.');
         }
 
-        $package = PluginPackage::query()->where('uuid', $uuid)->firstOrFail();
         $disk = config('plugin_manager.storage_disk', 'local');
 
         if (! Storage::disk($disk)->exists($package->storage_path)) {

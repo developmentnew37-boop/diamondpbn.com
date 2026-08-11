@@ -175,9 +175,10 @@
                                         class="text-sm flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">Api
                                         Key
                                     </label>
-                                    <input type="password" name="api_key" id="api_key" placeholder="Enter api key"
-                                        value="{{ $domain->api_key }}"
+                                    <input type="password" name="api_key" id="api_key" placeholder="Leave blank to keep existing key"
+                                        value=""
                                         class="bg-gray-100 border border-gray-200 !p-3 text-sm w-full rounded outline-none focus:border-orange-600">
+                                    <small class="text-xs text-gray-500">The current key is hidden. Enter a new value only to replace it.</small>
                                     @error('api_key')
                                         <p class="text-sm text-red-500">{{ $message }}</p>
                                     @enderror

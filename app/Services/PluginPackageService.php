@@ -42,7 +42,7 @@ class PluginPackageService
 
     public function storeUploadedPackage(UploadedFile $file, int $adminId, ?string $notes = null): PluginPackage
     {
-        $limits = pluginManagerUploadLimits();
+        $limits = \pluginManagerUploadLimits();
         if ($file->getSize() > $limits['effective_bytes']) {
             throw new \InvalidArgumentException(sprintf(
                 'ZIP exceeds maximum size of %s MB.',
@@ -114,18 +114,28 @@ class PluginPackageService
 
     public function signedDownloadUrl(PluginPackage $package, PluginDeployment $deployment): string
     {
+        if (! $deployment->exists || (int) $deployment->plugin_package_id !== (int) $package->id) {
+            throw new \InvalidArgumentException('Deployment does not belong to this plugin package.');
+        }
+
         $ttlHours = max(1, (int) config('plugin_manager.download_url_ttl_hours', 24));
         $expires = now()->addHours($ttlHours)->timestamp;
 
         $payload = $package->uuid.':'.$deployment->uuid.':'.$expires;
         $signature = hash_hmac('sha256', $payload, $this->signingKey());
 
-        return route('plugin-deployments.download', [
+        $url = route('plugin-deployments.download', [
             'uuid' => $package->uuid,
             'deployment' => $deployment->uuid,
             'expires' => $expires,
             'signature' => $signature,
         ]);
+
+        if (app()->environment('production')) {
+            $url = (string) preg_replace('#^http://#i', 'https://', $url);
+        }
+
+        return $url;
     }
 
     public function verifyDownloadSignature(string $packageUuid, string $deploymentUuid, int $expires, string $signature): bool
@@ -137,6 +147,22 @@ class PluginPackageService
         $expected = hash_hmac('sha256', $packageUuid.':'.$deploymentUuid.':'.$expires, $this->signingKey());
 
         return hash_equals($expected, $signature);
+    }
+
+    public function verifySignedDownload(
+        PluginPackage $package,
+        string $deploymentUuid,
+        int $expires,
+        string $signature
+    ): bool {
+        if (! $this->verifyDownloadSignature($package->uuid, $deploymentUuid, $expires, $signature)) {
+            return false;
+        }
+
+        return PluginDeployment::query()
+            ->where('uuid', $deploymentUuid)
+            ->where('plugin_package_id', $package->id)
+            ->exists();
     }
 
     public function signingKey(): string

@@ -2,6 +2,7 @@
 
 namespace App\Models\Admin;
 
+use App\Casts\EncryptedCredential;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -25,7 +26,12 @@ class PendingDomain extends Model
         'rejected_at',
     ];
 
+    protected $hidden = [
+        'api_key',
+    ];
+
     protected $casts = [
+        'api_key' => EncryptedCredential::class,
         'viewed' => 'boolean',
         'approved_at' => 'datetime',
         'rejected_at' => 'datetime',

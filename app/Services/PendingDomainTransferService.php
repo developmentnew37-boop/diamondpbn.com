@@ -6,12 +6,13 @@ use App\Jobs\RefreshTransferredDomainsStatusJob;
 use App\Models\Admin\Domain;
 use App\Models\Admin\PendingDomain;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class PendingDomainTransferService
 {
-    private const UPSERT_CHUNK_SIZE = 200;
+    public function __construct(
+        private readonly WordPressAgentStatusService $agentStatusService
+    ) {}
 
     /**
      * Transfer many pending domains in a single optimized operation.
@@ -84,12 +85,26 @@ class PendingDomainTransferService
         $transferredDomainIds = [];
 
         DB::transaction(function () use ($domainRows, $approvedPendingIds, $notesText, $now, &$transferredDomainIds) {
-            foreach (array_chunk(array_values($domainRows), self::UPSERT_CHUNK_SIZE) as $chunk) {
-                Domain::upsert(
-                    $chunk,
-                    ['name'],
-                    ['api_key', 'domain_category_id', 'admin_id', 'status', 'updated_at']
-                );
+            foreach ($domainRows as $row) {
+                $domain = Domain::query()->firstOrNew(['name' => $row['name']]);
+                $domain->fill([
+                    'api_key' => $row['api_key'],
+                    'domain_category_id' => $row['domain_category_id'],
+                    'admin_id' => $row['admin_id'],
+                    'status' => $row['status'],
+                ]);
+
+                if (! $domain->exists) {
+                    $domain->fill([
+                        'da' => $row['da'],
+                        'dr' => $row['dr'],
+                        'tf' => $row['tf'],
+                        'ss' => $row['ss'],
+                        'ip' => $row['ip'],
+                    ]);
+                }
+
+                $domain->save();
             }
 
             PendingDomain::query()
@@ -108,7 +123,7 @@ class PendingDomainTransferService
 
         if ($queueStatusCheck && $transferredDomainIds !== []) {
             RefreshTransferredDomainsStatusJob::dispatch($transferredDomainIds)
-                ->onQueue('domainCheck');
+                ->onQueue((string) config('domain_status_checker.health_sync_queue', 'domainHealthSync'));
         }
 
         Log::info('Bulk pending domain transfer completed', [
@@ -229,7 +244,7 @@ class PendingDomainTransferService
 
         if ($queueStatusCheck && $updatedDomainIds !== []) {
             RefreshTransferredDomainsStatusJob::dispatch($updatedDomainIds)
-                ->onQueue('domainCheck');
+                ->onQueue((string) config('domain_status_checker.health_sync_queue', 'domainHealthSync'));
         }
 
         Log::info('Pending domain inventory sync completed', [
@@ -310,22 +325,20 @@ class PendingDomainTransferService
             return 0;
         }
 
-        try {
-            $response = Http::withoutVerifying()
-                ->timeout(8)
-                ->connectTimeout(5)
-                ->get("https://{$domain}/wp-json/external/v1/status");
+        $domainModel = Domain::findByNormalizedName($domain);
+        $apiKey = '';
 
-            if ($response->successful() && $response->json('status') == true) {
-                return 1;
+        if ($domainModel !== null) {
+            try {
+                $apiKey = trim((string) ($domainModel->api_key ?? ''));
+            } catch (\Throwable) {
+                $apiKey = '';
             }
-        } catch (\Exception $e) {
-            Log::info('Plugin status check failed during domain transfer', [
-                'domain' => $domain,
-                'error' => $e->getMessage(),
-            ]);
         }
 
-        return 0;
+        $result = $this->agentStatusService->probeWithAuthFallback($domain, $apiKey);
+        $domainModel?->persistAgentHealth($result);
+
+        return $result->ok ? 1 : 0;
     }
 }

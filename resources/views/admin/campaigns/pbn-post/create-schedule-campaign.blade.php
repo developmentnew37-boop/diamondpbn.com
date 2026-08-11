@@ -267,6 +267,10 @@
         @if (!empty($isStickySchedule))
             <input type="hidden" name="is_sticky_campaign" value="1">
         @endif
+        @include('admin.campaigns.partials.local-client-billing-fields', [
+            'billingCampaignType' => 'schedule_post',
+            'isStickyBilling' => !empty($isStickySchedule),
+        ])
         <h2 class="text-xl capitalize !mb-4 bg-[var(--primary-color)] text-white w-fit !p-2 rounded">
             {{ !empty($isStickySchedule) ? 'Create Schedule Sticky Post Campaign' : 'Create Post Campaigns' }}
         </h2>

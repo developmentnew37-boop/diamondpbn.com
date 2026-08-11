@@ -2,14 +2,14 @@
 
 namespace App\Jobs;
 
+use App\Models\Admin\ScheduleSidebarCampaign;
+use App\Models\Admin\ScheduleSidebarCampaignTask;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
-use App\Models\Admin\ScheduleSidebarCampaign;
-use App\Models\Admin\ScheduleSidebarCampaignTask;
 
 class BulkRetryScheduleSidebarCampaignTasksJob implements ShouldQueue
 {
@@ -18,7 +18,7 @@ class BulkRetryScheduleSidebarCampaignTasksJob implements ShouldQueue
     public int $timeout = 1800;
 
     /**
-     * @param int[] $campaignIds
+     * @param  int[]  $campaignIds
      */
     public function __construct(
         public array $campaignIds,
@@ -34,15 +34,17 @@ class BulkRetryScheduleSidebarCampaignTasksJob implements ShouldQueue
         foreach ($this->campaignIds as $campaignId) {
             $campaign = ScheduleSidebarCampaign::find($campaignId);
 
-            if (!$campaign) {
+            if (! $campaign) {
                 Log::warning('BulkRetryScheduleSidebarCampaignTasksJob: Campaign not found', ['campaign_id' => $campaignId]);
                 $skipped++;
+
                 continue;
             }
 
             if (in_array($campaign->status ?? '', ['paused', 'cancelled'], true)) {
                 Log::info('BulkRetryScheduleSidebarCampaignTasksJob: Skipping paused/cancelled campaign', ['campaign_id' => $campaignId]);
                 $skipped++;
+
                 continue;
             }
 
@@ -52,14 +54,14 @@ class BulkRetryScheduleSidebarCampaignTasksJob implements ShouldQueue
 
             foreach ($failedTasks as $task) {
                 $task->update([
-                    'status'       => 'queued',
-                    'last_error'   => null,
+                    'status' => 'queued',
+                    'last_error' => null,
                     'next_retry_at' => null,
-                    'locked_at'    => null,
-                    'lock_token'   => null,
+                    'locked_at' => null,
+                    'lock_token' => null,
                 ]);
 
-                PublishScheduledSidebarBlogrollJob::dispatch($task->id)->onQueue('scheduled_sidebar_campaigns');
+                PublishScheduledSidebarBlogrollJob::dispatch($task->id, (int) ($task->dispatch_generation ?? 0))->onQueue('scheduled_sidebar_campaigns');
                 $totalRetried++;
             }
         }

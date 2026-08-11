@@ -86,6 +86,24 @@ class ProcessDomainStatusCheckChunkJob implements ShouldQueue
         $checker->recoverOrphanedItems($check);
         $check->refresh();
 
+        // Fatal code errors should stop the loop; restart the queue worker after deploying.
+        if ($exception instanceof \Error) {
+            $check->update([
+                'status' => 'failed',
+                'status_message' => 'Background check failed: '.$exception->getMessage()
+                    .' Restart the domainCheck queue worker and try again.',
+                'completed_at' => now(),
+            ]);
+
+            Log::error('Domain status check job failed with fatal error', [
+                'check_id' => $this->checkId,
+                'phase' => $this->phase,
+                'error' => $exception->getMessage(),
+            ]);
+
+            return;
+        }
+
         $pendingStatus = $check->phase === 'retry' ? 'retry_pending' : 'pending';
         $hasPending = $check->items()->where('check_status', $pendingStatus)->exists();
 
@@ -96,6 +114,7 @@ class ProcessDomainStatusCheckChunkJob implements ShouldQueue
             ]);
 
             self::dispatch($check->id, $check->phase === 'retry' ? 'retry' : 'initial')
+                ->delay(now()->addSeconds(5))
                 ->onQueue('domainCheck');
 
             Log::warning('Domain status check job failed; re-queued pending items', [

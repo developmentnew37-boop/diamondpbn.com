@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Exceptions\InsufficientCampaignArticlesException;
 use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
 use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
+use App\Http\Controllers\Admin\Concerns\ProvidesLocalClientsForForms;
 use App\Http\Controllers\Admin\Concerns\ValidatesBulkCampaignIds;
 use App\Http\Controllers\Controller;
 use App\Jobs\BulkRetryCampaignPostsJob;
@@ -21,8 +22,12 @@ use App\Models\Admin\Domain;
 use App\Models\Admin\DomainCategory;
 use App\Models\Admin\DomainSet;
 use App\Services\CampaignArticleReservationService;
+use App\Services\CampaignBulkDomainReplacementService;
+use App\Services\CampaignDomainReplacementService;
 use App\Services\CampaignKeywordPairValidator;
+use App\Services\LocalClientBillingService;
 use App\Services\PurgeLocalCampaignDataService;
+use App\Support\CampaignTaskStatusFilter;
 use App\Support\WordPressApiFetchedPost;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -30,12 +35,14 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Spatie\SimpleExcel\SimpleExcelWriter;
 
 class CampaignController extends Controller
 {
     use AppliesSuperAdminCampaignOwnerFilter;
     use AuthorizesAdminCampaign;
+    use ProvidesLocalClientsForForms;
     use ValidatesBulkCampaignIds;
 
     public function __construct()
@@ -92,9 +99,15 @@ class CampaignController extends Controller
         // ✅ Offset (for serial numbers in table)
         $offset = ($campaigns->currentPage() - 1) * $limit;
 
+        $replaceableCampaignIds = [];
+        if ($admin->canCreateCampaigns()) {
+            $replaceableCampaignIds = app(CampaignBulkDomainReplacementService::class)
+                ->replaceableCampaignIds($campaigns->pluck('id')->all());
+        }
+
         return view(
             'admin.campaigns.pbn-post.campaign',
-            array_merge(compact('campaigns', 'offset'), $ownerData)
+            array_merge(compact('campaigns', 'offset', 'replaceableCampaignIds'), $ownerData)
         );
     }
 
@@ -159,7 +172,8 @@ class CampaignController extends Controller
 
         return view('admin.campaigns.pbn-post.create-campaign', array_merge(
             compact('campaignId', 'is_sticky'),
-            $data
+            $data,
+            ['localClients' => $this->activeLocalClientsForForms()]
         ));
     }
 
@@ -252,6 +266,8 @@ class CampaignController extends Controller
             'sel_domains' => 'required|integer|in:0,1,2',
             'campaigns_domains' => 'required|string',   // JSON: ["48","49",...]
             'is_sticky' => 'nullable|in:0,1',
+            'local_client_id' => 'nullable|integer|exists:local_clients,id',
+            'billing_currency' => ['nullable', 'string', Rule::in(\App\Support\CurrencyFormatter::supportedCodes())],
         ]);
 
         // ✅ Normalize inputs
@@ -449,19 +465,34 @@ class CampaignController extends Controller
                 }
 
                 // ** dispatching the job **
-                $postIds = CampaignPost::where('campaign_id', $campaign->id)
-                    ->pluck('id')
+                $postsToDispatch = CampaignPost::where('campaign_id', $campaign->id)
+                    ->get(['id', 'dispatch_generation'])
+                    ->map(fn (CampaignPost $post) => [
+                        'id' => $post->id,
+                        'dispatch_generation' => $post->dispatch_generation,
+                    ])
                     ->all();
 
-                DB::afterCommit(function () use ($postIds) {
-                    foreach ($postIds as $id) {
-                        PublishCampaignPostJob::dispatch($id)->onQueue('campaigns');
+                DB::afterCommit(function () use ($postsToDispatch) {
+                    foreach ($postsToDispatch as $post) {
+                        PublishCampaignPostJob::dispatch($post['id'], $post['dispatch_generation'])
+                            ->onQueue('campaigns');
                     }
                 });
                 // ** ends here **
 
+                app(LocalClientBillingService::class)->applyFromRequest(
+                    $request,
+                    $campaign,
+                    $domainIds,
+                    'post',
+                    $isSticky,
+                );
+
                 return $campaign;
             });
+        } catch (ValidationException $e) {
+            return back()->withErrors($e->errors())->withInput();
         } catch (InsufficientCampaignArticlesException $e) {
             return back()->with('cus__error', $e->getMessage())->withInput();
         } catch (\Throwable $e) {
@@ -504,24 +535,44 @@ class CampaignController extends Controller
     public function show(Request $request, string $id)
     {
         // Fetch campaign (fail-safe)
-        $campaign = Campaign::findOrFail($id);
+        $campaign = Campaign::with('localClient')->findOrFail($id);
+        $this->authorizeCampaignAccess($campaign);
 
         // Pagination limit
         $limit = 100;
+        $statusFilter = $request->string('status')->toString();
+        $postsQuery = CampaignPost::query()->where('campaign_id', $id);
+        $statusCounts = CampaignTaskStatusFilter::counts($postsQuery);
 
-        // Campaign posts query
-        $campaignPost = CampaignPost::where('campaign_id', $id)
-            ->with(['campaignDomain.domain', 'campaignArticle.article'])
+        $campaignPost = CampaignTaskStatusFilter::apply(
+            CampaignPost::query()
+                ->where('campaign_posts.campaign_id', $id)
+                ->join(
+                    'campaign_domains',
+                    'campaign_posts.campaign_domain_id',
+                    '=',
+                    'campaign_domains.id'
+                )
+                ->select('campaign_posts.*')
+                ->with(['campaignDomain.domain', 'campaignArticle.article']),
+            $statusFilter
+        )
+            ->orderBy('campaign_domains.sort_order')
+            ->orderBy('campaign_posts.id')
             ->paginate($limit)
             ->withQueryString();
-        // ->orderByDesc('id')
 
         // Offset for S.No
         $offset = ($campaignPost->currentPage() - 1) * $limit;
+        $recentReplacements = $campaign->domainReplacements()
+            ->whereIn('state', ['dispatch_pending', 'dispatching', 'dispatch_failed', 'completed'])
+            ->latest()
+            ->limit(10)
+            ->get();
 
         return view(
             'admin.campaigns.pbn-post.view-campaign',
-            compact('campaign', 'campaignPost', 'offset')
+            compact('campaign', 'campaignPost', 'offset', 'recentReplacements', 'statusFilter', 'statusCounts')
         );
     }
 
@@ -1603,12 +1654,14 @@ class CampaignController extends Controller
             return back()->with('cus__error', 'The post is invalid or not present in the database');
         }
 
-        if ($retryPost->status === 'success') {
-            return back()->with('cus__error', 'Successful posts do not need retry');
-        }
+        $this->authorizeCampaignAccess($retryPost->campaign);
 
         if (in_array($retryPost->campaign->status ?? '', ['paused', 'cancelled'], true)) {
             return back()->with('cus__error', 'Cannot retry: campaign is paused or cancelled');
+        }
+
+        if ($reason = CampaignDomainReplacementService::ineligibleReason($retryPost)) {
+            return back()->with('cus__error', 'Cannot safely retry: '.$reason);
         }
 
         $retryPost->update([
@@ -1620,7 +1673,17 @@ class CampaignController extends Controller
             'last_error' => null,
         ]);
 
-        PublishCampaignPostJob::dispatch($retryPost->id)->onQueue('campaigns');
+        try {
+            PublishCampaignPostJob::dispatch($retryPost->id, $retryPost->dispatch_generation)
+                ->onQueue('campaigns');
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return back()->with(
+                'cus__error',
+                'The post remains queued, but queue dispatch failed. Retry again when the queue connection is available.'
+            );
+        }
 
         return back()->with(
             'cus__success',

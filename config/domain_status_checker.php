@@ -59,4 +59,16 @@ return [
 
     'lock_seconds' => (int) env('DOMAIN_STATUS_CHECK_LOCK_SECONDS', 240),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Scheduled inventory health sync queue
+    |--------------------------------------------------------------------------
+    |
+    | Separated from domainCheck so the Status Checker UI is not blocked behind
+    | hundreds of scheduled RefreshTransferredDomainsStatusJob jobs.
+    |
+    */
+
+    'health_sync_queue' => env('DOMAIN_HEALTH_SYNC_QUEUE', 'domainHealthSync'),
+
 ];
