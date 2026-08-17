@@ -288,18 +288,20 @@ class PluginDeploymentService
         }
 
         /** @var array<int, array<string, mixed>> $inventory */
+        $installedMatch = $this->preflight->findInstalledMatch($inventory, $package);
         $folderMatch = $this->preflight->findFolderMatch($inventory, $package);
         $exactMatch = $this->preflight->findExactVersionMatch($inventory, $package);
-        $versionBefore = $exactMatch['version'] ?? $folderMatch['version'] ?? null;
-        $pluginFileHint = $exactMatch['plugin_file'] ?? $folderMatch['plugin_file'] ?? null;
+        $versionBefore = $exactMatch['version'] ?? $installedMatch['version'] ?? $folderMatch['version'] ?? null;
+        $pluginFileHint = $exactMatch['plugin_file'] ?? $installedMatch['plugin_file'] ?? $folderMatch['plugin_file'] ?? null;
 
         $intent = $deployment->operation;
         $operation = $this->preflight->resolveOperation($intent, $inventory, $package);
 
         if ($operation === 'skip') {
             $message = match ($intent) {
-                'delete' => 'Plugin not on site — already removed',
-                'activate', 'deactivate' => 'Plugin not installed on site',
+                'delete' => 'Plugin not on site for folder "'.$package->expectedSlug()
+                    .'" — already removed, or the installed folder name differs from this package',
+                'activate', 'deactivate' => 'Plugin not installed on site for folder "'.$package->expectedSlug().'"',
                 default => $exactMatch !== null
                     ? 'Already at target version '.$package->version
                     : 'Nothing to do for this package on site',
@@ -368,7 +370,8 @@ class PluginDeploymentService
             $operation,
             $downloadUrl,
             $deployment->activate_after,
-            $pluginFileHint
+            $pluginFileHint,
+            $versionBefore
         );
         $auditTrail = array_merge($auditTrail, $result['audit'] ?? []);
         $correctedOperation = false;
@@ -380,7 +383,8 @@ class PluginDeploymentService
                 'update',
                 $downloadUrl,
                 $deployment->activate_after,
-                $pluginFileHint
+                $pluginFileHint,
+                $versionBefore
             );
             $operation = 'update';
             $correctedOperation = true;
@@ -390,14 +394,15 @@ class PluginDeploymentService
         if (! $correctedOperation
             && ! $result['success']
             && $operation === 'update'
-            && $result['error_code'] === 'plugin_not_found') {
+            && $this->shouldCorrectUpdateToInstall($result)) {
             $result = $this->executeRemoteOperation(
                 $domain,
                 $package,
                 'install',
                 $downloadUrl,
                 $deployment->activate_after,
-                $pluginFileHint
+                $pluginFileHint,
+                $versionBefore
             );
             $operation = 'install';
             $correctedOperation = true;
@@ -412,7 +417,8 @@ class PluginDeploymentService
                 $downloadUrl,
                 in_array($operation, ['install', 'update'], true) && $deployment->activate_after,
                 $result,
-                $pluginFileHint
+                $pluginFileHint,
+                $versionBefore
             );
             if ($ambiguousResult !== $result) {
                 $auditTrail = array_merge($auditTrail, $ambiguousResult['audit'] ?? []);
@@ -484,11 +490,19 @@ class PluginDeploymentService
         string $downloadUrl,
         bool $activateAfter,
         array $result,
-        ?string $pluginFileHint
+        ?string $pluginFileHint,
+        ?string $remoteVersion = null
     ): array {
         $candidates = is_array($result['data']['candidates'] ?? null) ? $result['data']['candidates'] : [];
         $candidate = $this->preflight->pickCandidateForVersion($candidates, $package->version);
+
+        // Delete/activate/deactivate should target the installed copy, not the library package version.
+        if ($candidate === null && in_array($operation, ['delete', 'activate', 'deactivate'], true)) {
+            $candidate = $this->preflight->pickSingleCandidate($candidates);
+        }
+
         $pluginFile = $candidate['plugin_file'] ?? $pluginFileHint;
+        $candidateVersion = isset($candidate['version']) ? (string) $candidate['version'] : $remoteVersion;
 
         if ($candidate !== null && ! empty($pluginFile)) {
             return $this->executeRemoteOperation(
@@ -497,11 +511,30 @@ class PluginDeploymentService
                 $operation,
                 $downloadUrl,
                 $activateAfter,
-                (string) $pluginFile
+                (string) $pluginFile,
+                $candidateVersion
             );
         }
 
         return $result;
+    }
+
+    /**
+     * Remote update often returns not_found / bare 404 / "Plugin is not installed."
+     * Treat those as missing-plugin so we can fall back to install (upgrade path).
+     *
+     * @param  array{error_code?: ?string, message?: string}  $result
+     */
+    private function shouldCorrectUpdateToInstall(array $result): bool
+    {
+        $code = (string) ($result['error_code'] ?? '');
+        if (in_array($code, ['plugin_not_found', 'not_found', 'endpoint_not_found'], true)) {
+            return true;
+        }
+
+        $message = (string) ($result['message'] ?? '');
+
+        return $message !== '' && preg_match('/not\s+installed/i', $message) === 1;
     }
 
     private function humanizeDeployError(?string $errorCode, string $message, PluginPackage $package): string
@@ -528,7 +561,8 @@ class PluginDeploymentService
         string $operation,
         string $downloadUrl,
         bool $activateAfter,
-        ?string $pluginFileHint
+        ?string $pluginFileHint,
+        ?string $remoteVersion = null
     ): array {
         return match ($operation) {
             'install' => $this->remotePluginManager->installOrUpdate(
@@ -547,9 +581,14 @@ class PluginDeploymentService
                 $activateAfter,
                 $pluginFileHint
             ),
-            'activate' => $this->remotePluginManager->activate($domain, $package),
-            'deactivate' => $this->remotePluginManager->deactivate($domain, $package),
-            'delete' => $this->remotePluginManager->deletePlugin($domain, $package, $pluginFileHint),
+            'activate' => $this->remotePluginManager->activate($domain, $package, $remoteVersion),
+            'deactivate' => $this->remotePluginManager->deactivate($domain, $package, $remoteVersion),
+            'delete' => $this->remotePluginManager->deletePlugin(
+                $domain,
+                $package,
+                $pluginFileHint,
+                $remoteVersion
+            ),
             default => [
                 'success' => false,
                 'message' => 'Unknown operation',

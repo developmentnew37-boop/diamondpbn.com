@@ -162,31 +162,50 @@ class RemotePluginManagerService
     /**
      * @return array{success: bool, message: string, error_code: ?string, data: array<string, mixed>, response_time_ms: int, http_status: int}
      */
-    public function activate(Domain $domain, PluginPackage $package): array
+    public function activate(Domain $domain, PluginPackage $package, ?string $targetVersion = null): array
     {
         $url = $this->baseUrl($domain->name).'/wp-json/external/v1/plugins/activate';
 
-        return $this->postPluginAction($domain, $url, $this->payloadBuilder->activateOrDeactivate($package), 'activate');
+        return $this->postPluginAction(
+            $domain,
+            $url,
+            $this->payloadBuilder->activateOrDeactivate($package, $targetVersion),
+            'activate'
+        );
     }
 
     /**
      * @return array{success: bool, message: string, error_code: ?string, data: array<string, mixed>, response_time_ms: int, http_status: int}
      */
-    public function deactivate(Domain $domain, PluginPackage $package): array
+    public function deactivate(Domain $domain, PluginPackage $package, ?string $targetVersion = null): array
     {
         $url = $this->baseUrl($domain->name).'/wp-json/external/v1/plugins/deactivate';
 
-        return $this->postPluginAction($domain, $url, $this->payloadBuilder->activateOrDeactivate($package), 'deactivate');
+        return $this->postPluginAction(
+            $domain,
+            $url,
+            $this->payloadBuilder->activateOrDeactivate($package, $targetVersion),
+            'deactivate'
+        );
     }
 
     /**
      * @return array{success: bool, message: string, error_code: ?string, data: array<string, mixed>, response_time_ms: int, http_status: int}
      */
-    public function deletePlugin(Domain $domain, PluginPackage $package, ?string $pluginFile = null): array
-    {
+    public function deletePlugin(
+        Domain $domain,
+        PluginPackage $package,
+        ?string $pluginFile = null,
+        ?string $targetVersion = null
+    ): array {
         $url = $this->baseUrl($domain->name).'/wp-json/external/v1/plugins/delete';
 
-        return $this->postPluginAction($domain, $url, $this->payloadBuilder->delete($package, $pluginFile), 'delete');
+        return $this->postPluginAction(
+            $domain,
+            $url,
+            $this->payloadBuilder->delete($package, $pluginFile, $targetVersion),
+            'delete'
+        );
     }
 
     /**
@@ -402,12 +421,24 @@ class RemotePluginManagerService
 
     private function errorCode(Response $response, array $body): string
     {
-        if (is_string($body['code'] ?? null) && $body['code'] !== '') {
-            return $body['code'];
+        $code = is_string($body['code'] ?? null) && $body['code'] !== ''
+            ? (string) $body['code']
+            : null;
+        $message = is_string($body['message'] ?? null) ? (string) $body['message'] : '';
+        $looksNotInstalled = $message !== '' && preg_match('/not\s+installed/i', $message) === 1;
+
+        // Prefer a plugin-missing code when remote says the plugin is absent.
+        if ($looksNotInstalled && in_array($code, ['not_found', 'plugin_not_found', null], true)) {
+            return 'plugin_not_found';
+        }
+
+        if ($code !== null) {
+            return $code;
         }
 
         return match (true) {
             $response->status() === 401 || $response->status() === 403 => 'authentication_failed',
+            $response->status() === 404 && $looksNotInstalled => 'plugin_not_found',
             $response->status() === 404 => 'endpoint_not_found',
             $response->status() === 429 => 'rate_limited',
             in_array($response->status(), [502, 503], true) => 'remote_unavailable',

@@ -134,6 +134,84 @@ class PluginDeploymentHardeningTest extends TestCase
         $this->assertCount(4, $item->audit_trail);
     }
 
+    public function test_install_intent_recovers_when_update_returns_not_found_code(): void
+    {
+        config()->set('plugin_manager.require_inventory', true);
+        [, $item, $deployment, $package] = $this->records('install');
+        $remote = $this->remoteWithHealthyAgent();
+        $remote->shouldReceive('fetchPluginsInventory')->once()->andReturn([
+            'ok' => true,
+            'plugins' => [[
+                'slug' => 'sample',
+                'version' => '1.0.0',
+                'plugin_file' => 'sample/sample.php',
+                'active' => true,
+            ]],
+            'message' => 'OK',
+            'http_status' => 200,
+            'request_url' => 'https://site.example/wp-json/external/v1/plugins',
+            'probe_method' => 'inventory',
+            'retry_count' => 0,
+            'audit' => [['probe_method' => 'inventory', 'http_status' => 200]],
+        ]);
+        $remote->shouldReceive('installOrUpdate')
+            ->once()
+            ->withArgs(fn ($domain, $endpoint) => $endpoint === 'update')
+            ->andReturn([
+                ...$this->actionResult(false, 'not_found', 'action:update'),
+                'message' => 'Plugin is not installed.',
+            ]);
+        $remote->shouldReceive('installOrUpdate')
+            ->once()
+            ->withArgs(fn ($domain, $endpoint) => $endpoint === 'install')
+            ->andReturn($this->actionResult(true, null, 'action:install'));
+
+        $this->invokeProcessItem($this->service($remote), $deployment, $package, $item);
+
+        $item->refresh();
+        $this->assertSame('success', $item->item_status);
+        $this->assertSame('installed', $item->operation_result);
+    }
+
+    public function test_install_intent_recovers_when_update_returns_bare_404_endpoint_not_found(): void
+    {
+        config()->set('plugin_manager.require_inventory', true);
+        [, $item, $deployment, $package] = $this->records('install');
+        $remote = $this->remoteWithHealthyAgent();
+        $remote->shouldReceive('fetchPluginsInventory')->once()->andReturn([
+            'ok' => true,
+            'plugins' => [[
+                'slug' => 'sample',
+                'version' => '1.1.5',
+                'plugin_file' => 'sample/sample.php',
+                'active' => true,
+            ]],
+            'message' => 'OK',
+            'http_status' => 200,
+            'request_url' => 'https://site.example/wp-json/external/v1/plugins',
+            'probe_method' => 'inventory',
+            'retry_count' => 0,
+            'audit' => [['probe_method' => 'inventory', 'http_status' => 200]],
+        ]);
+        $remote->shouldReceive('installOrUpdate')
+            ->once()
+            ->withArgs(fn ($domain, $endpoint) => $endpoint === 'update')
+            ->andReturn([
+                ...$this->actionResult(false, 'endpoint_not_found', 'action:update'),
+                'message' => 'Plugin is not installed.',
+            ]);
+        $remote->shouldReceive('installOrUpdate')
+            ->once()
+            ->withArgs(fn ($domain, $endpoint) => $endpoint === 'install')
+            ->andReturn($this->actionResult(true, null, 'action:install'));
+
+        $this->invokeProcessItem($this->service($remote), $deployment, $package, $item);
+
+        $item->refresh();
+        $this->assertSame('success', $item->item_status);
+        $this->assertSame('installed', $item->operation_result);
+    }
+
     public function test_verified_empty_inventory_allows_update_intent_to_install(): void
     {
         config()->set('plugin_manager.require_inventory', true);
@@ -243,6 +321,153 @@ class PluginDeploymentHardeningTest extends TestCase
         $this->assertCount(4, $item->audit_trail);
     }
 
+    public function test_delete_uses_remote_inventory_version_and_plugin_file(): void
+    {
+        config()->set('plugin_manager.require_inventory', true);
+        [, $item, $deployment, $package] = $this->records('delete');
+        $remote = $this->remoteWithHealthyAgent();
+        $remote->shouldReceive('fetchPluginsInventory')->once()->andReturn([
+            'ok' => true,
+            'plugins' => [[
+                'slug' => 'sample',
+                'version' => '1.1.5',
+                'plugin_file' => 'sample/sample.php',
+                'active' => true,
+            ]],
+            'message' => 'OK',
+            'http_status' => 200,
+            'request_url' => 'https://site.example/wp-json/external/v1/plugins',
+            'probe_method' => 'inventory',
+            'retry_count' => 0,
+            'audit' => [['probe_method' => 'inventory', 'http_status' => 200]],
+        ]);
+        $remote->shouldReceive('deletePlugin')
+            ->once()
+            ->withArgs(fn ($domain, $sentPackage, $pluginFile, $targetVersion) => $sentPackage === $package
+                && $pluginFile === 'sample/sample.php'
+                && $targetVersion === '1.1.5')
+            ->andReturn([
+                ...$this->actionResult(true, null, 'action:delete'),
+                'data' => [
+                    'action' => 'deleted',
+                    'plugin_file' => 'sample/sample.php',
+                ],
+            ]);
+
+        $this->invokeProcessItem($this->service($remote), $deployment, $package, $item);
+
+        $item->refresh();
+        $this->assertSame('success', $item->item_status);
+        $this->assertSame('deleted', $item->operation_result);
+        $this->assertSame('1.1.5', $item->version_before);
+        $this->assertNull($item->version_after);
+    }
+
+    public function test_delete_skips_when_inventory_has_no_matching_folder(): void
+    {
+        config()->set('plugin_manager.require_inventory', true);
+        [, $item, $deployment, $package] = $this->records('delete');
+        $remote = $this->remoteWithHealthyAgent();
+        $remote->shouldReceive('fetchPluginsInventory')->once()->andReturn([
+            'ok' => true,
+            'plugins' => [[
+                'slug' => 'other-plugin',
+                'version' => '2.0.0',
+                'plugin_file' => 'other-plugin/plugin.php',
+                'active' => true,
+            ]],
+            'message' => 'OK',
+            'http_status' => 200,
+            'request_url' => 'https://site.example/wp-json/external/v1/plugins',
+            'probe_method' => 'inventory',
+            'retry_count' => 0,
+            'audit' => [['probe_method' => 'inventory', 'http_status' => 200]],
+        ]);
+        $remote->shouldNotReceive('deletePlugin');
+
+        $this->invokeProcessItem($this->service($remote), $deployment, $package, $item);
+
+        $item->refresh();
+        $this->assertSame('skipped', $item->item_status);
+        $this->assertSame('plugin_not_found', $item->error_code);
+        $this->assertStringContainsString('sample', (string) $item->message);
+    }
+
+    public function test_delete_matches_plugin_file_folder_when_inventory_slug_is_text_domain(): void
+    {
+        config()->set('plugin_manager.require_inventory', true);
+        [, $item, $deployment, $package] = $this->records('delete');
+        $remote = $this->remoteWithHealthyAgent();
+        $remote->shouldReceive('fetchPluginsInventory')->once()->andReturn([
+            'ok' => true,
+            'plugins' => [[
+                'slug' => 'sample-text-domain',
+                'name' => 'Sample Plugin',
+                'version' => '1.2.3',
+                'plugin_file' => 'sample/sample.php',
+                'active' => true,
+            ]],
+            'message' => 'OK',
+            'http_status' => 200,
+            'request_url' => 'https://site.example/wp-json/external/v1/plugins',
+            'probe_method' => 'inventory',
+            'retry_count' => 0,
+            'audit' => [['probe_method' => 'inventory', 'http_status' => 200]],
+        ]);
+        $remote->shouldReceive('deletePlugin')
+            ->once()
+            ->withArgs(fn ($domain, $sentPackage, $pluginFile, $targetVersion) => $pluginFile === 'sample/sample.php'
+                && $targetVersion === '1.2.3')
+            ->andReturn([
+                ...$this->actionResult(true, null, 'action:delete'),
+                'data' => ['action' => 'deleted', 'plugin_file' => 'sample/sample.php'],
+            ]);
+
+        $this->invokeProcessItem($this->service($remote), $deployment, $package, $item);
+
+        $item->refresh();
+        $this->assertSame('success', $item->item_status);
+        $this->assertSame('deleted', $item->operation_result);
+    }
+
+    public function test_delete_matches_unique_plugin_name_and_version_when_folder_differs(): void
+    {
+        config()->set('plugin_manager.require_inventory', true);
+        [, $item, $deployment, $package] = $this->records('delete');
+        $remote = $this->remoteWithHealthyAgent();
+        $remote->shouldReceive('fetchPluginsInventory')->once()->andReturn([
+            'ok' => true,
+            'plugins' => [[
+                'slug' => 'old-sample-folder',
+                'name' => 'Sample Plugin',
+                'version' => '1.2.3',
+                'plugin_file' => 'old-sample-folder/plugin.php',
+                'active' => true,
+            ]],
+            'message' => 'OK',
+            'http_status' => 200,
+            'request_url' => 'https://site.example/wp-json/external/v1/plugins',
+            'probe_method' => 'inventory',
+            'retry_count' => 0,
+            'audit' => [['probe_method' => 'inventory', 'http_status' => 200]],
+        ]);
+        $remote->shouldReceive('deletePlugin')
+            ->once()
+            ->withArgs(fn ($domain, $sentPackage, $pluginFile, $targetVersion) => $pluginFile === 'old-sample-folder/plugin.php'
+                && $targetVersion === '1.2.3')
+            ->andReturn([
+                ...$this->actionResult(true, null, 'action:delete'),
+                'data' => ['action' => 'deleted', 'plugin_file' => 'old-sample-folder/plugin.php'],
+            ]);
+
+        $this->invokeProcessItem($this->service($remote), $deployment, $package, $item);
+
+        $item->refresh();
+        $this->assertSame('success', $item->item_status);
+        $this->assertSame('deleted', $item->operation_result);
+        $this->assertSame('old-sample-folder/plugin.php', $item->plugin_file);
+    }
+
     private function records(string $operation): array
     {
         $domain = Domain::query()->create(['name' => 'site.example', 'api_key' => 'secret', 'admin_id' => 1]);
@@ -260,6 +485,7 @@ class PluginDeploymentHardeningTest extends TestCase
         $package = new PluginPackage([
             'slug' => 'sample-version-1.2.3',
             'expected_slug' => 'sample',
+            'name' => 'Sample Plugin',
             'version' => '1.2.3',
             'checksum_sha256' => str_repeat('a', 64),
         ]);
