@@ -562,7 +562,7 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
             ->name('local-clients.campaign-invoice');
     });
 
-    Route::middleware('role:super_admin')->group(function () {
+    Route::middleware('permission:local_clients.manage')->group(function () {
         Route::post('/local-clients/{localClient}/toggle-active', [LocalClientController::class, 'toggleActive'])
             ->name('local-clients.toggle-active');
         Route::post('/local-clients/{localClient}/mark-period-paid', [LocalClientController::class, 'markPeriodPaid'])

@@ -121,6 +121,11 @@
                         placeholder="password">
                 </div>
                 {{-- ---------- --}}
+                @include('admin.users.partials.feature-permissions', [
+                    'featurePermissions' => $featurePermissions ?? [],
+                    'assignedPermissions' => [],
+                ])
+                {{-- ---------- --}}
                 <div class="w-full flex items-center !mt-4">
                     <button type="submit"
                         class="w-full flex !p-3 !py-4 text-sm font-normal justify-center duration:600 transition-all bg-[var(--primary-color)] hover:bg-[var(--primary-color)]/80 text-white rounded cursor-pointer">

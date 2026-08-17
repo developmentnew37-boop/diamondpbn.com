@@ -22,7 +22,7 @@ class LocalClientController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('role:super_admin')->except(['estimate']);
+        $this->middleware('permission:local_clients.manage')->except(['estimate']);
     }
 
     public function index(Request $request)

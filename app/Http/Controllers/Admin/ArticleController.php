@@ -82,7 +82,7 @@ class ArticleController extends Controller
         $query = Article::onlyTrashed()
             ->where('articles.status', Article::STATUS_USED)
             ->when(
-                ! $admin->isSuperAdmin(),
+                ! $admin->canManageAllTrashedArticles(),
                 fn ($q) => $q->where('articles.admin_id', $admin->id)
             )
             ->orderBy('articles.deleted_at', 'desc')
@@ -138,7 +138,7 @@ class ArticleController extends Controller
         $totalTrashedUsedForPurgeAll = Article::onlyTrashed()
             ->where('articles.status', Article::STATUS_USED)
             ->when(
-                ! $admin->isSuperAdmin(),
+                ! $admin->canManageAllTrashedArticles(),
                 fn ($q) => $q->where('articles.admin_id', $admin->id)
             )
             ->count();
@@ -169,7 +169,7 @@ class ArticleController extends Controller
         $query = Article::onlyTrashed()
             ->whereKey($id)
             ->where('status', Article::STATUS_USED);
-        if (! $admin->isSuperAdmin()) {
+        if (! $admin->canManageAllTrashedArticles()) {
             $query->where('admin_id', $admin->id);
         }
 
@@ -184,7 +184,7 @@ class ArticleController extends Controller
         PermanentlyDeleteTrashedUsedArticlesJob::dispatch(
             [(int) $article->id],
             (int) $admin->id,
-            $admin->isSuperAdmin()
+            $admin->canManageAllTrashedArticles()
         );
 
         return back()->with(
@@ -215,7 +215,7 @@ class ArticleController extends Controller
         $query = Article::onlyTrashed()
             ->where('status', Article::STATUS_USED)
             ->whereIn('id', $ids);
-        if (! $admin->isSuperAdmin()) {
+        if (! $admin->canManageAllTrashedArticles()) {
             $query->where('admin_id', $admin->id);
         }
 
@@ -231,7 +231,7 @@ class ArticleController extends Controller
         PermanentlyDeleteTrashedUsedArticlesJob::dispatch(
             $found,
             (int) $admin->id,
-            $admin->isSuperAdmin()
+            $admin->canManageAllTrashedArticles()
         );
 
         $n = count($found);
@@ -255,7 +255,7 @@ class ArticleController extends Controller
         $count = Article::onlyTrashed()
             ->where('status', Article::STATUS_USED)
             ->when(
-                ! $admin->isSuperAdmin(),
+                ! $admin->canManageAllTrashedArticles(),
                 fn ($q) => $q->where('admin_id', $admin->id)
             )
             ->count();
@@ -267,7 +267,7 @@ class ArticleController extends Controller
         PermanentlyDeleteTrashedUsedArticlesJob::dispatch(
             null,
             (int) $admin->id,
-            $admin->isSuperAdmin()
+            $admin->canManageAllTrashedArticles()
         );
 
         return back()->with(
@@ -323,7 +323,7 @@ class ArticleController extends Controller
         PermanentlyDeleteTrashedUsedArticlesJob::dispatch(
             $ids,
             (int) $admin->id,
-            $admin->isSuperAdmin()
+            $admin->canManageAllTrashedArticles()
         );
 
         $msg = "Queued permanent removal of {$take} article(s) (newest deleted first). Ensure the queue worker is running (queue: article_permanent_purge).";
@@ -366,7 +366,7 @@ class ArticleController extends Controller
         $totalTrashedUsedForRestoreAll = Article::onlyTrashed()
             ->where('articles.status', Article::STATUS_USED)
             ->when(
-                ! $admin->isSuperAdmin(),
+                ! $admin->canManageAllTrashedArticles(),
                 fn ($q) => $q->where('articles.admin_id', $admin->id)
             )
             ->count();
@@ -397,7 +397,7 @@ class ArticleController extends Controller
         $query = Article::onlyTrashed()
             ->whereKey($id)
             ->where('status', Article::STATUS_USED);
-        if (! $admin->isSuperAdmin()) {
+        if (! $admin->canManageAllTrashedArticles()) {
             $query->where('admin_id', $admin->id);
         }
 
@@ -412,7 +412,7 @@ class ArticleController extends Controller
         RestoreTrashedUsedArticlesJob::dispatch(
             [(int) $article->id],
             (int) $admin->id,
-            $admin->isSuperAdmin()
+            $admin->canManageAllTrashedArticles()
         );
 
         return back()->with(
@@ -443,7 +443,7 @@ class ArticleController extends Controller
         $query = Article::onlyTrashed()
             ->where('status', Article::STATUS_USED)
             ->whereIn('id', $ids);
-        if (! $admin->isSuperAdmin()) {
+        if (! $admin->canManageAllTrashedArticles()) {
             $query->where('admin_id', $admin->id);
         }
 
@@ -459,7 +459,7 @@ class ArticleController extends Controller
         RestoreTrashedUsedArticlesJob::dispatch(
             $found,
             (int) $admin->id,
-            $admin->isSuperAdmin()
+            $admin->canManageAllTrashedArticles()
         );
 
         $n = count($found);
@@ -483,7 +483,7 @@ class ArticleController extends Controller
         $count = Article::onlyTrashed()
             ->where('status', Article::STATUS_USED)
             ->when(
-                ! $admin->isSuperAdmin(),
+                ! $admin->canManageAllTrashedArticles(),
                 fn ($q) => $q->where('admin_id', $admin->id)
             )
             ->count();
@@ -495,7 +495,7 @@ class ArticleController extends Controller
         RestoreTrashedUsedArticlesJob::dispatch(
             null,
             (int) $admin->id,
-            $admin->isSuperAdmin()
+            $admin->canManageAllTrashedArticles()
         );
 
         return back()->with(
@@ -551,7 +551,7 @@ class ArticleController extends Controller
         RestoreTrashedUsedArticlesJob::dispatch(
             $ids,
             (int) $admin->id,
-            $admin->isSuperAdmin()
+            $admin->canManageAllTrashedArticles()
         );
 
         $msg = "Queued restore of {$take} article(s) (newest deleted first). Ensure the queue worker is running (queue: article_restore).";

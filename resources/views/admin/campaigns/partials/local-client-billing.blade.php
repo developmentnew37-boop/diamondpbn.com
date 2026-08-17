@@ -82,7 +82,7 @@
                 <div class="lcb-stat-card">
                     <span class="lcb-stat-label">Client</span>
                     <span class="lcb-stat-value">
-                        @if ($client && Auth::guard('admin')->user()?->isSuperAdmin())
+                        @if ($client && Auth::guard('admin')->user()?->canManageLocalClients())
                             <a href="{{ route('admin.local-clients.show', $client) }}">{{ $client->name }}</a>
                         @else
                             {{ $client?->name ?? '—' }}

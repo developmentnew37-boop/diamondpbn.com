@@ -58,7 +58,9 @@ class AdminController extends Controller
         }
         
         $roles = Roles::all();
-        return view('admin.users.create-user', compact('roles'));
+        $featurePermissions = config('admin_permissions', []);
+
+        return view('admin.users.create-user', compact('roles', 'featurePermissions'));
     }
 
     /**
@@ -81,18 +83,22 @@ class AdminController extends Controller
                 'required',
                 'integer',
                 Rule::exists('roles', 'role_id')->where(function ($query) {
-                    $query->whereIn('role_id', [1, 2]);
+                    $query->whereIn('role_id', [Admin::ADMIN, Admin::MEMBER]);
                 }),
             ],
             'password' => ['required', 'min:8', 'confirmed'],
+            'permissions' => ['nullable', 'array'],
+            'permissions.*' => ['string', Rule::in(array_keys(config('admin_permissions', [])))],
         ]);
 
-        Admin::create([
+        $user = Admin::create([
             'name' => $validated['name'],
             'email' => $validated['email'],
             'type' => $validated['roles'],
-            'password' => $validated['password']
+            'password' => $validated['password'],
         ]);
+
+        $user->syncFeaturePermissions($validated['permissions'] ?? []);
 
         return redirect()->route('admin.user.index')
             ->with('cus__success', 'User created successfully: ' . $validated['email']);
@@ -128,8 +134,20 @@ class AdminController extends Controller
         $creationSummary = $this->getUserCreationSummary($user, $range);
         
         $roles = Roles::all();
-        
-        return view('admin.users.show-user', compact('user', 'stats', 'roles', 'creationSummary', 'range'));
+        $featurePermissions = config('admin_permissions', []);
+        $assignedPermissions = $user->isSuperAdmin()
+            ? array_keys($featurePermissions)
+            : $user->permissionKeys();
+
+        return view('admin.users.show-user', compact(
+            'user',
+            'stats',
+            'roles',
+            'creationSummary',
+            'range',
+            'featurePermissions',
+            'assignedPermissions'
+        ));
     }
 
     /**
@@ -153,8 +171,10 @@ class AdminController extends Controller
         }
         
         $roles = Roles::all();
-        
-        return view('admin.users.edit-user', compact('user', 'roles'));
+        $featurePermissions = config('admin_permissions', []);
+        $assignedPermissions = $user->permissionKeys();
+
+        return view('admin.users.edit-user', compact('user', 'roles', 'featurePermissions', 'assignedPermissions'));
     }
 
     /**
@@ -182,9 +202,18 @@ class AdminController extends Controller
             'email' => ['required', 'email', Rule::unique('admins')->ignore($user->id)],
         ];
         
-        // Only Super Admin can change roles
+        // Only Super Admin can change roles / feature permissions on other users.
+        // Cannot promote to Super Admin via this form (same as create).
         if ($admin->isSuperAdmin() && $admin->id !== $user->id) {
-            $rules['roles'] = ['required', 'integer', Rule::exists('roles', 'role_id')];
+            $rules['roles'] = [
+                'required',
+                'integer',
+                Rule::exists('roles', 'role_id')->where(function ($query) {
+                    $query->whereIn('role_id', [Admin::ADMIN, Admin::MEMBER]);
+                }),
+            ];
+            $rules['permissions'] = ['nullable', 'array'];
+            $rules['permissions.*'] = ['string', Rule::in(array_keys(config('admin_permissions', [])))];
         }
         
         // Password is optional on update
@@ -206,6 +235,11 @@ class AdminController extends Controller
         }
         
         $user->save();
+
+        if ($admin->isSuperAdmin() && ! $user->isSuperAdmin()) {
+            // syncFeaturePermissions clears grants when role is not Admin.
+            $user->syncFeaturePermissions($validated['permissions'] ?? []);
+        }
 
         return redirect()->route('admin.user.index')
             ->with('cus__success', 'User updated successfully: ' . $user->email);

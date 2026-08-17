@@ -356,7 +356,7 @@
           </div>
           @endif
 
-          @if ($sidebarAdmin->isSuperAdmin())
+          @if ($sidebarAdmin->canManageLocalClients())
           <div class="menu-section">
               <div class="menu-title">Local Clients</div>
               <a href="{{ route('admin.local-clients.index') }}"

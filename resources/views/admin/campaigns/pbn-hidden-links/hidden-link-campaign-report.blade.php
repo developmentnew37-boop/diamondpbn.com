@@ -111,7 +111,7 @@
                         </td>
 
                         <td class="border !px-2 !py-3 whitespace-nowrap">
-                            {{ $task->created_at->format('d-M-Y') }}
+                            {{ $task->created_at?->format('d-M-Y') }}
                         </td>
                     </tr>
 

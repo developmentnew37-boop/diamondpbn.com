@@ -75,6 +75,29 @@
                             {{ $user->getRoleName() }}
                         </span>
                     </div>
+
+                    @php
+                        $featurePermissions = $featurePermissions ?? [];
+                        $assignedPermissions = $assignedPermissions ?? [];
+                    @endphp
+                    @if ($currentAdmin->isSuperAdmin() && ! empty($featurePermissions) && ! $user->isMember())
+                        <div class="!mt-4 w-full text-left border border-gray-200 rounded !p-3 bg-gray-50">
+                            <p class="text-xs font-semibold text-gray-600 !mb-2">Feature permissions</p>
+                            @if ($user->isSuperAdmin())
+                                <p class="text-xs text-gray-500">Super Admin has all feature permissions.</p>
+                            @elseif (empty($assignedPermissions))
+                                <p class="text-xs text-gray-500">No extra feature permissions granted.</p>
+                            @else
+                                <ul class="flex flex-col gap-1">
+                                    @foreach ($assignedPermissions as $key)
+                                        <li class="text-xs text-gray-700">
+                                            {{ $featurePermissions[$key]['label'] ?? $key }}
+                                        </li>
+                                    @endforeach
+                                </ul>
+                            @endif
+                        </div>
+                    @endif
                     
                     {{-- Member Since --}}
                     <div class="!mt-4 text-sm text-gray-500">

@@ -108,10 +108,6 @@ class LiveTaskDomainReplacementService
             return 'This domain is not connected. Reconnect it from the Domains page first.';
         }
 
-        if (! $admin->isSuperAdmin() && (int) $domain->admin_id !== (int) $admin->id) {
-            return 'You do not have access to this domain.';
-        }
-
         $attached = $profile->campaignDomainModel::query()
             ->where($profile->domainRowCampaignIdColumn, $campaign->id)
             ->where('domain_id', $domain->id)

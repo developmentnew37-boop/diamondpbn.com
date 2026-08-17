@@ -410,11 +410,21 @@ class HiddenLinkCampaignController extends Controller
             ? round(($stats->success / $stats->total) * 100)
             : 0;
 
-        // 3️⃣ Fetch all tasks (report style, no pagination)
-        $tasks = HiddenLinksCampaignTasks::with([
-            'domainRow.domain',
-            'linkRow',
-        ])
+        // 3️⃣ Fetch tasks with lean columns only (avoid loading heavy JSON payloads)
+        $tasks = HiddenLinksCampaignTasks::query()
+            ->select([
+                'id',
+                'hidden_links_campaigns_id',
+                'hidden_links_campaigns_domain_id',
+                'hidden_links_campaigns_link_id',
+                'status',
+                'created_at',
+            ])
+            ->with([
+                'domainRow:id,hidden_links_campaigns_id,domain_id',
+                'domainRow.domain:id,name',
+                'linkRow:id,hidden_links_campaigns_id,target_url,anchor_keyword,nofollow',
+            ])
             ->where('hidden_links_campaigns_id', $campaign->id)
             ->orderByDesc('id')
             ->get();
@@ -440,21 +450,15 @@ class HiddenLinkCampaignController extends Controller
             ->where('report_token', $token)
             ->firstOrFail();
 
-        // 📦 2️⃣ Fetch hidden links tasks
-        $tasks = HiddenLinksCampaignTasks::with([
-            'domainRow.domain',
-            'linkRow',
-        ])
-            ->where('hidden_links_campaigns_id', $campaign->id)
-            ->orderBy('id')
-            ->get();
+        $baseTaskQuery = HiddenLinksCampaignTasks::query()
+            ->where('hidden_links_campaigns_id', $campaign->id);
 
         /* =========================================================
        1️⃣ DETECT IF NOFOLLOW EXISTS
        ========================================================= */
-        $hasNofollow = $tasks->contains(function ($task) {
-            return (bool) ($task->linkRow?->nofollow ?? false);
-        });
+        $hasNofollow = (clone $baseTaskQuery)
+            ->whereHas('linkRow', fn ($q) => $q->where('nofollow', true))
+            ->exists();
 
         /* =========================================================
        2️⃣ BUILD HEADERS (DYNAMIC)
@@ -482,34 +486,51 @@ class HiddenLinkCampaignController extends Controller
         )->addHeader($headers);
 
         /* =========================================================
-       4️⃣ FILL ROWS
+       4️⃣ FILL ROWS (chunked to avoid memory exhaustion)
        ========================================================= */
         $sno = 1;
+        (clone $baseTaskQuery)
+            ->select([
+                'id',
+                'hidden_links_campaigns_id',
+                'hidden_links_campaigns_domain_id',
+                'hidden_links_campaigns_link_id',
+                'status',
+                'created_at',
+            ])
+            ->with([
+                'domainRow:id,hidden_links_campaigns_id,domain_id',
+                'domainRow.domain:id,name',
+                'linkRow:id,hidden_links_campaigns_id,target_url,anchor_keyword,nofollow',
+            ])
+            ->orderBy('id')
+            ->chunkById(500, function ($tasks) use (&$sno, $hasNofollow, $writer) {
+                foreach ($tasks as $task) {
+                    $domainName = $task->domainRow?->domain?->name ?? '-';
 
-        foreach ($tasks as $task) {
+                    $row = [
+                        'S.No' => $sno++,
+                        'Live Link' => $domainName,
+                        'Domain' => $domainName,
+                        'Keyword' => $task->linkRow?->anchor_keyword ?? '-',
+                        'URL' => $task->linkRow?->target_url ?? '-',
+                    ];
 
-            $row = [
-                'S.No' => $sno++,
-                'Live Link' => $task->domainRow?->domain?->name ?? '-',
-                'Domain' => $task->domainRow?->domain?->name ?? '-',
-                'Keyword' => $task->linkRow?->anchor_keyword ?? '-',
-                'URL' => $task->linkRow?->target_url ?? '-',
-            ];
+                    if ($hasNofollow) {
+                        $row['Nofollow'] = ($task->linkRow?->nofollow ?? false)
+                            ? 'No Follow'
+                            : 'Follow';
+                    }
 
-            if ($hasNofollow) {
-                $row['Nofollow'] = ($task->linkRow?->nofollow ?? false)
-                    ? 'No Follow'
-                    : 'Follow';
-            }
+                    $row['Status'] = $task->status === 'success'
+                        ? 'Live'
+                        : 'Not Live';
 
-            $row['Status'] = $task->status === 'success'
-                ? 'Live'
-                : 'Not Live';
+                    $row['Date'] = optional($task->created_at)->format('d M Y');
 
-            $row['Date'] = optional($task->created_at)->format('d M Y');
-
-            $writer->addRow($row);
-        }
+                    $writer->addRow($row);
+                }
+            });
 
         return $writer->toBrowser();
     }

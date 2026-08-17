@@ -155,7 +155,15 @@ class CampaignDomainReplacementServiceTest extends TestCase
             $records['admin']
         )->pluck('id')->all();
 
-        $this->assertSame([$eligible, $crossCategory], $candidateIds);
+        // Admins share domain inventory (same as campaign creation); ownership is not required.
+        $this->assertSame([$eligible, $foreign, $crossCategory], $candidateIds);
+
+        $this->assertNull($this->service()->ineligibilityReason(
+            $records['campaign'],
+            $records['post'],
+            $records['admin'],
+            Domain::find($foreign)
+        ));
 
         $super = $this->admin(Admin::SUPER_ADMIN, 'super');
         $superIds = $this->service()->candidates(

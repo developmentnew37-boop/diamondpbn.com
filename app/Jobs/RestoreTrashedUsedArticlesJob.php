@@ -28,7 +28,7 @@ class RestoreTrashedUsedArticlesJob implements ShouldQueue
     public function __construct(
         public ?array $articleIds,
         public int $adminUserId,
-        public bool $isSuperAdmin
+        public bool $canManageAll
     ) {
         $this->onQueue('article_restore');
     }
@@ -38,7 +38,7 @@ class RestoreTrashedUsedArticlesJob implements ShouldQueue
         $query = Article::onlyTrashed()
             ->where('articles.status', Article::STATUS_USED);
 
-        if (! $this->isSuperAdmin) {
+        if (! $this->canManageAll) {
             $query->where('articles.admin_id', $this->adminUserId);
         }
 
@@ -82,7 +82,7 @@ class RestoreTrashedUsedArticlesJob implements ShouldQueue
             'failed' => $failed,
             'scoped_ids' => $this->articleIds !== null,
             'admin_user_id' => $this->adminUserId,
-            'super_admin' => $this->isSuperAdmin,
+            'can_manage_all' => $this->canManageAll,
         ]);
     }
 }

@@ -26,6 +26,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin.guest' => \App\Http\Middleware\Admin\AdminGuest::class,
             'admin.api.auth' => \App\Http\Middleware\Admin\ApiAdminAuth::class,
             'role' => \App\Http\Middleware\Admin\CheckRole::class,
+            'permission' => \App\Http\Middleware\Admin\CheckFeaturePermission::class,
             'can.create.campaigns' => \App\Http\Middleware\Admin\CanCreateCampaigns::class,
         ]);
     })
