@@ -56,6 +56,81 @@
 
     .pm-history-card { padding: 1.25rem 1.5rem; }
 
+    .pm-filter-bar {
+        display: flex;
+        flex-direction: column;
+        gap: 0.875rem;
+        margin-bottom: 1rem;
+        padding: 1rem 1.125rem;
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+    }
+    .pm-filter-grid {
+        display: grid;
+        grid-template-columns: repeat(1, minmax(0, 1fr));
+        gap: 0.875rem;
+    }
+    @media (min-width: 640px) {
+        .pm-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (min-width: 1024px) {
+        .pm-filter-grid { grid-template-columns: 1fr 1fr 1fr 1.6fr; }
+    }
+    .pm-filter-field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.375rem;
+        min-width: 0;
+    }
+    .pm-filter-label {
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: #374151;
+        margin: 0;
+    }
+    .pm-filter-control {
+        width: 100%;
+        min-height: 42px;
+        padding: 0.625rem 0.875rem;
+        font-size: 0.875rem;
+        line-height: 1.25;
+        color: #111827;
+        background: #f3f4f6;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.25rem;
+        outline: none;
+        appearance: none;
+        -webkit-appearance: none;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    select.pm-filter-control {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%236b7280' d='M1.4 0.6L6 5.2 10.6.6 12 2 6 8 0 2z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 0.875rem center;
+        background-size: 12px 8px;
+        padding-right: 2.25rem;
+        cursor: pointer;
+    }
+    .pm-filter-control:focus {
+        border-color: var(--primary-color);
+        background-color: #fff;
+        box-shadow: 0 0 0 3px rgba(255, 74, 23, 0.12);
+    }
+    .pm-filter-control::placeholder { color: #9ca3af; }
+    .pm-filter-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .results-status-filter.is-active {
+        background: var(--primary-color) !important;
+        color: #fff !important;
+        border-color: var(--primary-color) !important;
+    }
+
     .pm-history-table-wrap {
         overflow-x: auto;
         border: 1px solid #e5e7eb;

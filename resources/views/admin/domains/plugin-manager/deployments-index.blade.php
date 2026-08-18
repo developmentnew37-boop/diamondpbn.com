@@ -76,42 +76,42 @@
             @endif
         </div>
 
-        <form method="GET" action="{{ route('admin.plugin-manager.deployments.index') }}" class="flex flex-col gap-3 !mb-4 !pb-4 border-b border-gray-100">
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-                <div>
-                    <label class="block text-xs text-gray-500 !mb-1">Status</label>
-                    <select name="status" class="w-full rounded border-gray-300 text-sm">
+        <form method="GET" action="{{ route('admin.plugin-manager.deployments.index') }}" class="pm-filter-bar">
+            <div class="pm-filter-grid">
+                <div class="pm-filter-field">
+                    <label class="pm-filter-label" for="filter_status">Status</label>
+                    <select name="status" id="filter_status" class="pm-filter-control">
                         <option value="">All statuses</option>
                         @foreach (['queued', 'running', 'completed', 'cancelled', 'failed'] as $statusOption)
                             <option value="{{ $statusOption }}" @selected(($filters['status'] ?? '') === $statusOption)>{{ ucfirst($statusOption) }}</option>
                         @endforeach
                     </select>
                 </div>
-                <div>
-                    <label class="block text-xs text-gray-500 !mb-1">Operation</label>
-                    <select name="operation" class="w-full rounded border-gray-300 text-sm">
+                <div class="pm-filter-field">
+                    <label class="pm-filter-label" for="filter_operation">Operation</label>
+                    <select name="operation" id="filter_operation" class="pm-filter-control">
                         <option value="">All operations</option>
                         @foreach ($operations as $operation)
                             <option value="{{ $operation }}" @selected(($filters['operation'] ?? '') === $operation)>{{ ucwords(str_replace('_', ' ', $operation)) }}</option>
                         @endforeach
                     </select>
                 </div>
-                <div>
-                    <label class="block text-xs text-gray-500 !mb-1">Outcome</label>
-                    <select name="outcome" class="w-full rounded border-gray-300 text-sm">
+                <div class="pm-filter-field">
+                    <label class="pm-filter-label" for="filter_outcome">Outcome</label>
+                    <select name="outcome" id="filter_outcome" class="pm-filter-control">
                         <option value="">Any outcome</option>
                         <option value="has_failed" @selected(($filters['outcome'] ?? '') === 'has_failed')>Has failed</option>
                         <option value="has_skipped" @selected(($filters['outcome'] ?? '') === 'has_skipped')>Has skipped</option>
                         <option value="has_success" @selected(($filters['outcome'] ?? '') === 'has_success')>Has success</option>
                     </select>
                 </div>
-                <div class="sm:col-span-2 lg:col-span-2">
-                    <label class="block text-xs text-gray-500 !mb-1">Search</label>
-                    <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Package name or UUID"
-                        class="w-full rounded border-gray-300 text-sm">
+                <div class="pm-filter-field">
+                    <label class="pm-filter-label" for="filter_q">Search</label>
+                    <input type="text" name="q" id="filter_q" value="{{ $filters['q'] ?? '' }}"
+                        placeholder="Package name or UUID" class="pm-filter-control">
                 </div>
             </div>
-            <div class="flex flex-wrap items-center gap-2">
+            <div class="pm-filter-actions">
                 <button type="submit" class="pm-btn pm-btn-muted !min-h-[38px] !py-2 text-sm">
                     <span class="material-symbols-outlined !text-base">filter_list</span>
                     Apply filters
