@@ -266,15 +266,19 @@
             if (d.is_finished) {
                 if (els.title) els.title.textContent = 'Deployment complete';
                 stopPolling();
+                if (els.cancelBtn) els.cancelBtn.classList.add('hidden');
                 if ((d.failed > 0 || d.skipped > 0) && els.retryBtn) {
                     els.retryBtn.classList.remove('hidden');
+                } else if (els.retryBtn) {
+                    els.retryBtn.classList.add('hidden');
                 }
                 if (els.exportGroup && resultsMap.size > 0) {
                     els.exportGroup.classList.remove('hidden');
                 }
-                if (els.cancelBtn) els.cancelBtn.classList.add('hidden');
-            } else if (els.cancelBtn) {
-                els.cancelBtn.classList.remove('hidden');
+            } else {
+                if (els.cancelBtn) els.cancelBtn.classList.remove('hidden');
+                if (els.retryBtn) els.retryBtn.classList.add('hidden');
+                if (els.exportGroup) els.exportGroup.classList.add('hidden');
             }
         }
 

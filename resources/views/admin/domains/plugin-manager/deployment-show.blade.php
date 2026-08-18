@@ -62,35 +62,52 @@
                 <div class="summary-card"><p class="text-xs text-gray-500">Pending</p><p class="value" id="sumPending">{{ max(0, $deployment->total_count - $deployment->processed_count) }}</p></div>
             </div>
 
-            <div class="flex flex-wrap gap-2 !mb-4">
-                <button type="button" class="pm-btn pm-btn-muted hidden" id="retryFailedBtn">Retry Failed / Skipped</button>
-                <button type="button" class="pm-btn pm-btn-muted hidden" id="cancelDeployBtn">Cancel Queued</button>
-                <div id="exportResultsGroup" class="hidden flex flex-wrap gap-2">
-                    <a href="{{ route('admin.plugin-manager.deployments.export-failures', ['uuid' => $deployment->uuid, 'status' => 'all']) }}"
-                        class="pm-btn pm-btn-muted export-status-link" data-status="all" target="_blank">Export All CSV</a>
-                    <a href="{{ route('admin.plugin-manager.deployments.export-failures', ['uuid' => $deployment->uuid, 'status' => 'failed']) }}"
-                        class="pm-btn pm-btn-muted export-status-link" data-status="failed" target="_blank">Export Failed</a>
-                    <a href="{{ route('admin.plugin-manager.deployments.export-failures', ['uuid' => $deployment->uuid, 'status' => 'skipped']) }}"
-                        class="pm-btn pm-btn-muted export-status-link" data-status="skipped" target="_blank">Export Skipped</a>
-                    <a href="{{ route('admin.plugin-manager.deployments.export-failures', ['uuid' => $deployment->uuid, 'status' => 'success']) }}"
-                        class="pm-btn pm-btn-muted export-status-link" data-status="success" target="_blank">Export Success</a>
+            <div class="pm-progress-toolbar">
+                <div class="pm-progress-actions">
+                    <button type="button" class="pm-btn hidden" id="retryFailedBtn">
+                        <span class="material-symbols-outlined !text-base">replay</span>
+                        Retry Failed / Skipped
+                    </button>
+                    <button type="button" class="pm-btn pm-btn-danger hidden" id="cancelDeployBtn">
+                        <span class="material-symbols-outlined !text-base">cancel</span>
+                        Cancel Queued
+                    </button>
+                </div>
+                <div id="exportResultsGroup" class="pm-export-panel hidden">
+                    <span class="pm-export-label">
+                        <span class="material-symbols-outlined !text-base">download</span>
+                        Export CSV
+                    </span>
+                    <div class="pm-segmented" role="group" aria-label="Export by status">
+                        <a href="{{ route('admin.plugin-manager.deployments.export-failures', ['uuid' => $deployment->uuid, 'status' => 'all']) }}"
+                            class="pm-segment export-status-link" data-status="all" target="_blank">All</a>
+                        <a href="{{ route('admin.plugin-manager.deployments.export-failures', ['uuid' => $deployment->uuid, 'status' => 'failed']) }}"
+                            class="pm-segment export-status-link" data-status="failed" target="_blank">Failed</a>
+                        <a href="{{ route('admin.plugin-manager.deployments.export-failures', ['uuid' => $deployment->uuid, 'status' => 'skipped']) }}"
+                            class="pm-segment export-status-link" data-status="skipped" target="_blank">Skipped</a>
+                        <a href="{{ route('admin.plugin-manager.deployments.export-failures', ['uuid' => $deployment->uuid, 'status' => 'success']) }}"
+                            class="pm-segment export-status-link" data-status="success" target="_blank">Success</a>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
     <div class="w-full content-card !mt-4">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 !mb-4">
-            <h3 class="text-base font-semibold">Results</h3>
-            <div class="flex flex-wrap gap-2" id="resultsStatusFilters" role="group" aria-label="Filter results by status">
+        <div class="pm-results-toolbar">
+            <div>
+                <h3 class="text-base font-semibold text-gray-800 !m-0">Results</h3>
+                <p class="text-xs text-gray-500 !mt-1 !mb-0">Filter rows by status without reloading.</p>
+            </div>
+            <div class="pm-segmented pm-segmented-filters" id="resultsStatusFilters" role="group" aria-label="Filter results by status">
                 @foreach (['all' => 'All', 'success' => 'Success', 'failed' => 'Failed', 'skipped' => 'Skipped', 'pending' => 'Pending'] as $value => $label)
                     <button type="button"
-                        class="pm-btn pm-btn-muted !min-h-[34px] !py-1 text-xs results-status-filter {{ $value === 'all' ? 'is-active' : '' }}"
+                        class="pm-segment results-status-filter {{ $value === 'all' ? 'is-active' : '' }}"
                         data-status="{{ $value }}">{{ $label }}</button>
                 @endforeach
             </div>
         </div>
-        <div class="overflow-x-auto">
+        <div class="pm-results-table-wrap overflow-x-auto">
             <table class="w-full text-sm text-left">
                 <thead class="text-xs uppercase bg-gray-800 text-white">
                     <tr>
