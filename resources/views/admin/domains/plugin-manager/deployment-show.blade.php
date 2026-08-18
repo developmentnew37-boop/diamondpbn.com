@@ -43,7 +43,6 @@
             data-progress-url="{{ route('admin.plugin-manager.deployments.progress', $deployment->uuid) }}"
             data-retry-url="{{ route('admin.plugin-manager.deployments.retry-failed', $deployment->uuid) }}"
             data-cancel-url="{{ route('admin.plugin-manager.deployments.cancel', $deployment->uuid) }}"
-            data-export-url="{{ route('admin.plugin-manager.deployments.export-failures', $deployment->uuid) }}"
             data-initial-finished="{{ $deployment->isFinished() ? '1' : '0' }}">
 
             <div class="flex items-center justify-between gap-3 flex-wrap !mb-3">
@@ -64,15 +63,33 @@
             </div>
 
             <div class="flex flex-wrap gap-2 !mb-4">
-                <button type="button" class="pm-btn pm-btn-muted hidden" id="retryFailedBtn">Retry Failed</button>
+                <button type="button" class="pm-btn pm-btn-muted hidden" id="retryFailedBtn">Retry Failed / Skipped</button>
                 <button type="button" class="pm-btn pm-btn-muted hidden" id="cancelDeployBtn">Cancel Queued</button>
-                <a href="#" class="pm-btn pm-btn-muted hidden" id="exportFailuresBtn" target="_blank">Export Failures CSV</a>
+                <div id="exportResultsGroup" class="hidden flex flex-wrap gap-2">
+                    <a href="{{ route('admin.plugin-manager.deployments.export-failures', ['uuid' => $deployment->uuid, 'status' => 'all']) }}"
+                        class="pm-btn pm-btn-muted export-status-link" data-status="all" target="_blank">Export All CSV</a>
+                    <a href="{{ route('admin.plugin-manager.deployments.export-failures', ['uuid' => $deployment->uuid, 'status' => 'failed']) }}"
+                        class="pm-btn pm-btn-muted export-status-link" data-status="failed" target="_blank">Export Failed</a>
+                    <a href="{{ route('admin.plugin-manager.deployments.export-failures', ['uuid' => $deployment->uuid, 'status' => 'skipped']) }}"
+                        class="pm-btn pm-btn-muted export-status-link" data-status="skipped" target="_blank">Export Skipped</a>
+                    <a href="{{ route('admin.plugin-manager.deployments.export-failures', ['uuid' => $deployment->uuid, 'status' => 'success']) }}"
+                        class="pm-btn pm-btn-muted export-status-link" data-status="success" target="_blank">Export Success</a>
+                </div>
             </div>
         </div>
     </div>
 
     <div class="w-full content-card !mt-4">
-        <h3 class="text-base font-semibold !mb-4">Results</h3>
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 !mb-4">
+            <h3 class="text-base font-semibold">Results</h3>
+            <div class="flex flex-wrap gap-2" id="resultsStatusFilters" role="group" aria-label="Filter results by status">
+                @foreach (['all' => 'All', 'success' => 'Success', 'failed' => 'Failed', 'skipped' => 'Skipped', 'pending' => 'Pending'] as $value => $label)
+                    <button type="button"
+                        class="pm-btn pm-btn-muted !min-h-[34px] !py-1 text-xs results-status-filter {{ $value === 'all' ? 'is-active' : '' }}"
+                        data-status="{{ $value }}">{{ $label }}</button>
+                @endforeach
+            </div>
+        </div>
         <div class="overflow-x-auto">
             <table class="w-full text-sm text-left">
                 <thead class="text-xs uppercase bg-gray-800 text-white">

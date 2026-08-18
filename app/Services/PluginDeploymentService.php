@@ -7,6 +7,7 @@ use App\Models\Admin\Domain;
 use App\Models\Admin\PluginDeployment;
 use App\Models\Admin\PluginDeploymentItem;
 use App\Models\Admin\PluginPackage;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
 class PluginDeploymentService
@@ -937,16 +938,37 @@ class PluginDeploymentService
         ];
     }
 
-    public function retryFailed(PluginDeployment $original, int $adminId): PluginDeployment
+    public function retryFailed(PluginDeployment $original, int $adminId, string $scope = 'both'): PluginDeployment
     {
-        $failedDomains = $original->items()
-            ->where('item_status', 'failed')
+        return $this->retryFailedOrSkipped($original, $adminId, $scope);
+    }
+
+    /**
+     * Create a new deployment for domains that failed and/or were skipped.
+     *
+     * @param  'failed'|'skipped'|'both'  $scope
+     */
+    public function retryFailedOrSkipped(
+        PluginDeployment $original,
+        int $adminId,
+        string $scope = 'both'
+    ): PluginDeployment {
+        $statuses = match ($scope) {
+            'failed' => ['failed'],
+            'skipped' => ['skipped'],
+            default => ['failed', 'skipped'],
+        };
+
+        $domains = $original->items()
+            ->whereIn('item_status', $statuses)
             ->orderBy('sort_order')
             ->pluck('domain')
+            ->unique()
+            ->values()
             ->all();
 
-        if ($failedDomains === []) {
-            throw new \RuntimeException('No failed domains to retry.');
+        if ($domains === []) {
+            throw new \RuntimeException('No failed or skipped domains to retry.');
         }
 
         $package = $original->pluginPackage;
@@ -958,12 +980,54 @@ class PluginDeploymentService
             $adminId,
             $package,
             $original->operation,
-            $failedDomains,
+            $domains,
             'manual',
             null,
             $original->activate_after,
             $original->skip_if_same_version
         );
+    }
+
+    /**
+     * Apply history list filters to a deployments query.
+     *
+     * @param  Builder<PluginDeployment>  $query
+     * @param  array{status?: string, operation?: string, outcome?: string, q?: string}  $filters
+     * @return Builder<PluginDeployment>
+     */
+    public function applyHistoryFilters(Builder $query, array $filters): Builder
+    {
+        $status = (string) ($filters['status'] ?? '');
+        if (in_array($status, ['queued', 'running', 'completed', 'cancelled', 'failed'], true)) {
+            $query->where('status', $status);
+        }
+
+        $operation = (string) ($filters['operation'] ?? '');
+        if (in_array($operation, PluginDeployment::OPERATIONS, true)) {
+            $query->where('operation', $operation);
+        }
+
+        $outcome = (string) ($filters['outcome'] ?? '');
+        match ($outcome) {
+            'has_failed' => $query->where('failed_count', '>', 0),
+            'has_skipped' => $query->where('skipped_count', '>', 0),
+            'has_success' => $query->where('success_count', '>', 0),
+            default => null,
+        };
+
+        $q = trim((string) ($filters['q'] ?? ''));
+        if ($q !== '') {
+            $query->where(function ($inner) use ($q) {
+                $inner->where('uuid', 'like', '%'.$q.'%')
+                    ->orWhereHas('pluginPackage', function ($packageQuery) use ($q) {
+                        $packageQuery->where('name', 'like', '%'.$q.'%')
+                            ->orWhere('slug', 'like', '%'.$q.'%')
+                            ->orWhere('expected_slug', 'like', '%'.$q.'%');
+                    });
+            });
+        }
+
+        return $query;
     }
 
     public function chunkSize(): int

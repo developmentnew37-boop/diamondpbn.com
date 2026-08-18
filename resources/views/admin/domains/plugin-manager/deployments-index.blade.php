@@ -76,15 +76,72 @@
             @endif
         </div>
 
+        <form method="GET" action="{{ route('admin.plugin-manager.deployments.index') }}" class="flex flex-col gap-3 !mb-4 !pb-4 border-b border-gray-100">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                <div>
+                    <label class="block text-xs text-gray-500 !mb-1">Status</label>
+                    <select name="status" class="w-full rounded border-gray-300 text-sm">
+                        <option value="">All statuses</option>
+                        @foreach (['queued', 'running', 'completed', 'cancelled', 'failed'] as $statusOption)
+                            <option value="{{ $statusOption }}" @selected(($filters['status'] ?? '') === $statusOption)>{{ ucfirst($statusOption) }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 !mb-1">Operation</label>
+                    <select name="operation" class="w-full rounded border-gray-300 text-sm">
+                        <option value="">All operations</option>
+                        @foreach ($operations as $operation)
+                            <option value="{{ $operation }}" @selected(($filters['operation'] ?? '') === $operation)>{{ ucwords(str_replace('_', ' ', $operation)) }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 !mb-1">Outcome</label>
+                    <select name="outcome" class="w-full rounded border-gray-300 text-sm">
+                        <option value="">Any outcome</option>
+                        <option value="has_failed" @selected(($filters['outcome'] ?? '') === 'has_failed')>Has failed</option>
+                        <option value="has_skipped" @selected(($filters['outcome'] ?? '') === 'has_skipped')>Has skipped</option>
+                        <option value="has_success" @selected(($filters['outcome'] ?? '') === 'has_success')>Has success</option>
+                    </select>
+                </div>
+                <div class="sm:col-span-2 lg:col-span-2">
+                    <label class="block text-xs text-gray-500 !mb-1">Search</label>
+                    <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Package name or UUID"
+                        class="w-full rounded border-gray-300 text-sm">
+                </div>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+                <button type="submit" class="pm-btn pm-btn-muted !min-h-[38px] !py-2 text-sm">
+                    <span class="material-symbols-outlined !text-base">filter_list</span>
+                    Apply filters
+                </button>
+                @if (! empty($hasFilters))
+                    <a href="{{ route('admin.plugin-manager.deployments.index') }}" class="pm-btn pm-btn-muted !min-h-[38px] !py-2 text-sm">Clear</a>
+                @endif
+                <a href="{{ route('admin.plugin-manager.deployments.export-history', request()->query()) }}"
+                    class="pm-btn pm-btn-muted !min-h-[38px] !py-2 text-sm">
+                    <span class="material-symbols-outlined !text-base">download</span>
+                    Export history CSV
+                </a>
+            </div>
+        </form>
+
         @if ($deployments->isEmpty())
             <div class="pm-empty-state">
                 <span class="material-symbols-outlined pm-empty-icon">rocket_launch</span>
-                <h4 class="text-base font-semibold text-gray-800">No deployments yet</h4>
-                <p class="text-sm text-gray-500 !mt-1 max-w-md">Upload a plugin to the library, then deploy it by category or manual domain list.</p>
-                <a href="{{ route('admin.plugin-manager.deploy.create') }}" class="pm-btn !mt-4">
-                    <span class="material-symbols-outlined !text-base">rocket_launch</span>
-                    Start first deployment
-                </a>
+                @if (! empty($hasFilters))
+                    <h4 class="text-base font-semibold text-gray-800">No matching deployments</h4>
+                    <p class="text-sm text-gray-500 !mt-1 max-w-md">Try clearing filters or adjusting status / operation / outcome.</p>
+                    <a href="{{ route('admin.plugin-manager.deployments.index') }}" class="pm-btn !mt-4">Clear filters</a>
+                @else
+                    <h4 class="text-base font-semibold text-gray-800">No deployments yet</h4>
+                    <p class="text-sm text-gray-500 !mt-1 max-w-md">Upload a plugin to the library, then deploy it by category or manual domain list.</p>
+                    <a href="{{ route('admin.plugin-manager.deploy.create') }}" class="pm-btn !mt-4">
+                        <span class="material-symbols-outlined !text-base">rocket_launch</span>
+                        Start first deployment
+                    </a>
+                @endif
             </div>
         @else
             <div id="deploymentHistoryPanel"

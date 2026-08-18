@@ -235,6 +235,8 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
                 ->name('deploy.start');
 
             Route::get('/deployments', [PluginDeploymentController::class, 'index'])->name('deployments.index');
+            Route::get('/deployments/export-history', [PluginDeploymentController::class, 'exportHistory'])
+                ->name('deployments.export-history');
             Route::delete('/deployments/bulk', [PluginDeploymentController::class, 'bulkDestroy'])->name('deployments.bulk-destroy');
             Route::delete('/deployments/clear', [PluginDeploymentController::class, 'clearHistory'])->name('deployments.clear');
             Route::get('/deployments/{uuid}', [PluginDeploymentController::class, 'show'])->name('deployments.show');

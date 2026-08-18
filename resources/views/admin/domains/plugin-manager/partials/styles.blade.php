@@ -14,6 +14,7 @@
     .pm-btn:disabled { opacity: 0.7; cursor: not-allowed; }
     .pm-btn-muted { background: #fff; color: var(--primary-color); border: 1px solid var(--primary-color); }
     .pm-btn-muted:hover { background: var(--primary-color); color: #fff; }
+    .pm-btn-muted.is-active { background: var(--primary-color); color: #fff; border-color: var(--primary-color); }
     .pm-btn-danger {
         background: #fff; color: #dc2626; border: 1px solid #fca5a5;
     }

@@ -172,10 +172,10 @@
         const progressUrl = progressPanel.dataset.progressUrl;
         const retryUrl = progressPanel.dataset.retryUrl;
         const cancelUrl = progressPanel.dataset.cancelUrl;
-        const exportUrl = progressPanel.dataset.exportUrl;
         let pollTimer = null;
         let lastProgressSince = null;
         const resultsMap = new Map();
+        let resultsStatusFilter = 'all';
 
         const els = {
             bar: document.getElementById('deploymentProgressBar'),
@@ -190,12 +190,20 @@
             sumPending: document.getElementById('sumPending'),
             retryBtn: document.getElementById('retryFailedBtn'),
             cancelBtn: document.getElementById('cancelDeployBtn'),
-            exportBtn: document.getElementById('exportFailuresBtn'),
+            exportGroup: document.getElementById('exportResultsGroup'),
         };
 
         function statusBadge(status) {
             const map = { pending: 'status-pending', processing: 'status-processing', success: 'status-success', failed: 'status-failed', skipped: 'status-skipped' };
             return `<span class="status-badge ${map[status] || 'status-pending'}">${status}</span>`;
+        }
+
+        function matchesResultsFilter(row) {
+            if (resultsStatusFilter === 'all') return true;
+            if (resultsStatusFilter === 'pending') {
+                return row.item_status === 'pending' || row.item_status === 'processing';
+            }
+            return row.item_status === resultsStatusFilter;
         }
 
         function renderResults(results) {
@@ -205,7 +213,14 @@
                 resultsMap.set(row.id, row);
             });
 
-            const sorted = Array.from(resultsMap.values()).sort((a, b) => a.index - b.index);
+            const sorted = Array.from(resultsMap.values())
+                .filter(matchesResultsFilter)
+                .sort((a, b) => a.index - b.index);
+
+            if (sorted.length === 0) {
+                els.body.innerHTML = `<tr><td colspan="11" class="!px-4 !py-6 text-sm text-gray-500 text-center">No rows for this filter.</td></tr>`;
+                return;
+            }
 
             els.body.innerHTML = sorted.map((r) => {
                 const message = r.message || r.error_code || '';
@@ -251,10 +266,13 @@
             if (d.is_finished) {
                 if (els.title) els.title.textContent = 'Deployment complete';
                 stopPolling();
-                if (d.failed > 0 && els.retryBtn) {
+                if ((d.failed > 0 || d.skipped > 0) && els.retryBtn) {
                     els.retryBtn.classList.remove('hidden');
-                    if (els.exportBtn) { els.exportBtn.href = exportUrl; els.exportBtn.classList.remove('hidden'); }
                 }
+                if (els.exportGroup && resultsMap.size > 0) {
+                    els.exportGroup.classList.remove('hidden');
+                }
+                if (els.cancelBtn) els.cancelBtn.classList.add('hidden');
             } else if (els.cancelBtn) {
                 els.cancelBtn.classList.remove('hidden');
             }
@@ -289,11 +307,29 @@
             if (pollTimer) window.clearInterval(pollTimer);
         }
 
+        document.querySelectorAll('.results-status-filter').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                resultsStatusFilter = btn.dataset.status || 'all';
+                document.querySelectorAll('.results-status-filter').forEach((el) => {
+                    el.classList.toggle('is-active', el === btn);
+                });
+                renderResults([]);
+            });
+        });
+
         els.retryBtn?.addEventListener('click', async () => {
             try {
-                const res = await fetch(retryUrl, {
+                const url = new URL(retryUrl, window.location.origin);
+                url.searchParams.set('scope', 'both');
+                const res = await fetch(url.toString(), {
                     method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    headers: {
+                        'X-CSRF-TOKEN': csrfToken,
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ scope: 'both' }),
                 });
                 const data = await parseJsonResponse(res);
                 if (!res.ok || !data.success) throw new Error(data.message);

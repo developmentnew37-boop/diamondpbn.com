@@ -19,9 +19,10 @@ class PluginDeploymentController extends Controller
         private readonly PluginDeploymentService $deploymentService
     ) {}
 
-    public function index(): View
+    public function index(Request $request): View
     {
         $adminId = (int) Auth::guard('admin')->id();
+        $filters = $this->historyFiltersFromRequest($request);
 
         $baseQuery = PluginDeployment::query()->where('admin_id', $adminId);
 
@@ -32,7 +33,9 @@ class PluginDeploymentController extends Controller
             'domains_processed' => (int) (clone $baseQuery)->sum('processed_count'),
         ];
 
-        $deployments = $baseQuery
+        $listQuery = $this->deploymentService->applyHistoryFilters(clone $baseQuery, $filters);
+
+        $deployments = $listQuery
             ->with(['pluginPackage:id,name,slug,expected_slug,version', 'domainCategory:id,name'])
             ->orderByDesc('created_at')
             ->paginate(20)
@@ -41,7 +44,59 @@ class PluginDeploymentController extends Controller
         return view('admin.domains.plugin-manager.deployments-index', [
             'deployments' => $deployments,
             'stats' => $stats,
+            'filters' => $filters,
+            'operations' => PluginDeployment::OPERATIONS,
+            'hasFilters' => $this->historyHasActiveFilters($filters),
         ]);
+    }
+
+    public function exportHistory(Request $request): StreamedResponse
+    {
+        $adminId = (int) Auth::guard('admin')->id();
+        $filters = $this->historyFiltersFromRequest($request);
+
+        $query = $this->deploymentService->applyHistoryFilters(
+            PluginDeployment::query()->where('admin_id', $adminId),
+            $filters
+        )->with(['pluginPackage:id,name,slug,expected_slug,version'])
+            ->orderByDesc('created_at');
+
+        $filename = 'plugin-deployment-history-'.now()->format('Ymd-His').'.csv';
+
+        return response()->streamDownload(function () use ($query) {
+            $handle = fopen('php://output', 'w');
+            fputcsv($handle, [
+                'uuid',
+                'package',
+                'operation',
+                'status',
+                'total',
+                'success',
+                'failed',
+                'skipped',
+                'created_at',
+                'completed_at',
+            ]);
+
+            $query->chunkById(200, function ($deployments) use ($handle) {
+                foreach ($deployments as $deployment) {
+                    fputcsv($handle, [
+                        $deployment->uuid,
+                        $deployment->pluginPackage?->displayLabel() ?? '',
+                        $deployment->operation,
+                        $deployment->status,
+                        $deployment->total_count,
+                        $deployment->success_count,
+                        $deployment->failed_count,
+                        $deployment->skipped_count,
+                        optional($deployment->created_at)?->toDateTimeString(),
+                        optional($deployment->completed_at)?->toDateTimeString(),
+                    ]);
+                }
+            });
+
+            fclose($handle);
+        }, $filename, ['Content-Type' => 'text/csv']);
     }
 
     public function create(Request $request): View
@@ -207,15 +262,24 @@ class PluginDeploymentController extends Controller
         ]);
     }
 
-    public function retryFailed(string $uuid): JsonResponse
+    public function retryFailed(Request $request, string $uuid): JsonResponse
     {
         $deployment = PluginDeployment::query()
             ->where('uuid', $uuid)
             ->where('admin_id', Auth::guard('admin')->id())
             ->firstOrFail();
 
+        $scope = (string) $request->input('scope', $request->query('scope', 'both'));
+        if (! in_array($scope, ['failed', 'skipped', 'both'], true)) {
+            $scope = 'both';
+        }
+
         try {
-            $retry = $this->deploymentService->retryFailed($deployment, (int) Auth::guard('admin')->id());
+            $retry = $this->deploymentService->retryFailedOrSkipped(
+                $deployment,
+                (int) Auth::guard('admin')->id(),
+                $scope
+            );
         } catch (\RuntimeException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         }
@@ -224,7 +288,7 @@ class PluginDeploymentController extends Controller
             'success' => true,
             'deployment_uuid' => $retry->uuid,
             'redirect_url' => route('admin.plugin-manager.deployments.show', $retry->uuid),
-            'message' => 'Retry deployment started for failed domains.',
+            'message' => 'Retry deployment started for failed/skipped domains.',
         ]);
     }
 
@@ -326,47 +390,82 @@ class PluginDeploymentController extends Controller
         ]);
     }
 
-    public function exportFailures(string $uuid): StreamedResponse
+    public function exportFailures(Request $request, string $uuid): StreamedResponse
     {
         $deployment = PluginDeployment::query()
             ->where('uuid', $uuid)
             ->where('admin_id', Auth::guard('admin')->id())
             ->firstOrFail();
 
-        $filename = 'plugin-deployment-failures-'.$deployment->uuid.'.csv';
+        $status = strtolower((string) $request->query('status', 'all'));
+        if (! in_array($status, ['failed', 'skipped', 'success', 'all'], true)) {
+            $status = 'all';
+        }
 
-        return response()->streamDownload(function () use ($deployment) {
+        $filename = 'plugin-deployment-'.$status.'-'.$deployment->uuid.'.csv';
+
+        return response()->streamDownload(function () use ($deployment, $status) {
             $handle = fopen('php://output', 'w');
             fputcsv($handle, [
                 'domain',
                 'category',
+                'item_status',
                 'error_code',
                 'message',
                 'version_before',
+                'version_after',
                 'http_status',
                 'probe_method',
                 'retry_count',
                 'request_url',
             ]);
 
-            $deployment->items()
-                ->where('item_status', 'failed')
-                ->orderBy('sort_order')
-                ->each(function ($item) use ($handle) {
-                    fputcsv($handle, [
-                        $item->domain,
-                        $item->category,
-                        $item->error_code,
-                        $item->message,
-                        $item->version_before,
-                        $item->http_status,
-                        $item->probe_method,
-                        $item->retry_count,
-                        $item->request_url,
-                    ]);
-                });
+            $query = $deployment->items()->orderBy('sort_order');
+            if ($status !== 'all') {
+                $query->where('item_status', $status);
+            }
+
+            $query->each(function ($item) use ($handle) {
+                fputcsv($handle, [
+                    $item->domain,
+                    $item->category,
+                    $item->item_status,
+                    $item->error_code,
+                    $item->message,
+                    $item->version_before,
+                    $item->version_after,
+                    $item->http_status,
+                    $item->probe_method,
+                    $item->retry_count,
+                    $item->request_url,
+                ]);
+            });
 
             fclose($handle);
         }, $filename, ['Content-Type' => 'text/csv']);
+    }
+
+    /**
+     * @return array{status: string, operation: string, outcome: string, q: string}
+     */
+    private function historyFiltersFromRequest(Request $request): array
+    {
+        return [
+            'status' => (string) $request->query('status', ''),
+            'operation' => (string) $request->query('operation', ''),
+            'outcome' => (string) $request->query('outcome', ''),
+            'q' => trim((string) $request->query('q', '')),
+        ];
+    }
+
+    /**
+     * @param  array{status: string, operation: string, outcome: string, q: string}  $filters
+     */
+    private function historyHasActiveFilters(array $filters): bool
+    {
+        return $filters['status'] !== ''
+            || $filters['operation'] !== ''
+            || $filters['outcome'] !== ''
+            || $filters['q'] !== '';
     }
 }
