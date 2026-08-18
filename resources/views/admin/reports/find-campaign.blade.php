@@ -143,6 +143,9 @@
                                 <td class="!p-3">
                                     <div class="flex flex-wrap gap-2">
                                         <a href="{{ $row['manage_url'] }}" class="report-action primary">Manage</a>
+                                        @if (! empty($row['bulk_edit_url']))
+                                            <a href="{{ $row['bulk_edit_url'] }}" class="report-action">Bulk Edit</a>
+                                        @endif
                                         @if (! empty($row['report_url']))
                                             <a href="{{ $row['report_url'] }}" class="report-action" target="_blank" rel="noopener">Report</a>
                                         @endif
@@ -202,6 +205,9 @@
                     <h3 class="text-lg font-semibold">Campaign found</h3>
                     <div class="flex flex-wrap gap-2">
                         <a href="{{ $result['manage_url'] }}" class="report-action primary">Manage Campaign</a>
+                        @if (! empty($result['bulk_edit_url']))
+                            <a href="{{ $result['bulk_edit_url'] }}" class="report-action">Bulk Edit</a>
+                        @endif
                         <a href="{{ $result['report_url'] }}" class="report-action" target="_blank" rel="noopener">Open Report</a>
                         @if (! empty($result['bulk_replace_url']))
                             <a href="{{ $result['bulk_replace_url'] }}" class="report-action">Bulk Replace Domains</a>

@@ -15,7 +15,7 @@ use Illuminate\Http\Request;
 class CampaignReportUrlResolver
 {
     /**
-     * @var array<string, array{model: class-string<Model>, type: string, report_route: string, manage_route: string}>
+     * @var array<string, array{model: class-string<Model>, type: string, report_route: string, manage_route: string, edit_route: string}>
      */
     private const REPORT_TYPES = [
         'campaign/report' => [
@@ -23,36 +23,42 @@ class CampaignReportUrlResolver
             'type' => 'PBN Post',
             'report_route' => 'admin.campaign.report',
             'manage_route' => 'admin.campaign.show',
+            'edit_route' => 'admin.campaign.edit',
         ],
         'sidebar/campaign/report' => [
             'model' => SidebarCampaign::class,
             'type' => 'Sidebar Campaign',
             'report_route' => 'admin.sidebar.campaign.report',
             'manage_route' => 'admin.sidebar.campaign.show',
+            'edit_route' => 'admin.sidebar.campaign.edit',
         ],
         'hidden/link/campaign/report' => [
             'model' => HiddenLinksCampaign::class,
             'type' => 'Hidden Links Campaign',
             'report_route' => 'admin.hidden.link.campaign.report',
             'manage_route' => 'admin.hidden.link.campaign.show',
+            'edit_route' => 'admin.hidden.link.campaign.edit',
         ],
         'schedule/campaign/report' => [
             'model' => ScheduleCampaign::class,
             'type' => 'Scheduled PBN Post',
             'report_route' => 'admin.schedule.campaign.report',
             'manage_route' => 'admin.schedule.campaign.show',
+            'edit_route' => 'admin.schedule.campaign.edit',
         ],
         'schedule/sidebar/campaign/report' => [
             'model' => ScheduleSidebarCampaign::class,
             'type' => 'Scheduled Sidebar Campaign',
             'report_route' => 'admin.schedule.sidebar.campaign.report',
             'manage_route' => 'admin.schedule.sidebar.campaign.show',
+            'edit_route' => 'admin.schedule.sidebar.campaign.edit',
         ],
         'campaign/post/wp-schedule/report' => [
             'model' => WpScheduledCampaign::class,
             'type' => 'WordPress Scheduled Campaign',
             'report_route' => 'admin.wp.schedule.campaign.report',
             'manage_route' => 'admin.wp.schedule.campaign.show',
+            'edit_route' => 'admin.wp.schedule.campaign.edit',
         ],
     ];
 
@@ -113,6 +119,7 @@ class CampaignReportUrlResolver
             'completed_targets' => (int) ($campaign->completed_targets ?? 0),
             'failed_targets' => (int) ($campaign->failed_targets ?? 0),
             'manage_url' => route($configuration['manage_route'], $campaign->getKey()),
+            'bulk_edit_url' => route($configuration['edit_route'], $campaign->getKey()),
             'report_url' => $reportUrl,
             'bulk_replace_url' => $bulkReplaceUrl,
         ];

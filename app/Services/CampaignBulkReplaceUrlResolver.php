@@ -48,22 +48,26 @@ class CampaignBulkReplaceUrlResolver
 
     private function hasReplaceableItems(Model $campaign): bool
     {
-        if ($campaign instanceof Campaign) {
-            return $this->postBulkReplacementService->campaignHasReplaceablePosts($campaign);
-        }
+        try {
+            if ($campaign instanceof Campaign) {
+                return $this->postBulkReplacementService->campaignHasReplaceablePosts($campaign);
+            }
 
-        $profile = match ($campaign::class) {
-            SidebarCampaign::class => LiveTaskReplacementProfile::sidebar(),
-            HiddenLinksCampaign::class => LiveTaskReplacementProfile::hiddenLinks(),
-            ScheduleCampaign::class => LiveTaskReplacementProfile::schedulePost(),
-            ScheduleSidebarCampaign::class => LiveTaskReplacementProfile::scheduleSidebar(),
-            default => null,
-        };
+            $profile = match ($campaign::class) {
+                SidebarCampaign::class => LiveTaskReplacementProfile::sidebar(),
+                HiddenLinksCampaign::class => LiveTaskReplacementProfile::hiddenLinks(),
+                ScheduleCampaign::class => LiveTaskReplacementProfile::schedulePost(),
+                ScheduleSidebarCampaign::class => LiveTaskReplacementProfile::scheduleSidebar(),
+                default => null,
+            };
 
-        if ($profile === null) {
+            if ($profile === null) {
+                return false;
+            }
+
+            return $this->liveTaskBulkReplacementService->campaignHasReplaceableTasks($profile, $campaign);
+        } catch (\Throwable) {
             return false;
         }
-
-        return $this->liveTaskBulkReplacementService->campaignHasReplaceableTasks($profile, $campaign);
     }
 }

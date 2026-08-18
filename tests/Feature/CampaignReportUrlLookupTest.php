@@ -40,6 +40,14 @@ class CampaignReportUrlLookupTest extends TestCase
             $table->timestamps();
         });
 
+        Schema::create('admin_feature_permissions', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('admin_id');
+            $table->string('permission');
+            $table->timestamps();
+            $table->unique(['admin_id', 'permission']);
+        });
+
         foreach ([
             'campaigns',
             'sidebar_campaigns',
@@ -74,6 +82,7 @@ class CampaignReportUrlLookupTest extends TestCase
             'hidden_links_campaigns',
             'sidebar_campaigns',
             'campaigns',
+            'admin_feature_permissions',
             'pending_domains',
             'admins',
         ] as $tableName) {
@@ -118,6 +127,7 @@ class CampaignReportUrlLookupTest extends TestCase
                 ->assertSee('12')
                 ->assertSee('9')
                 ->assertSee('2')
+                ->assertSee('Bulk Edit')
                 ->assertSee(url("/{$path}/{$campaignNo}/".self::TOKEN), false)
                 ->assertDontSee("{$campaignNo}/".self::TOKEN.'/export', false);
         }

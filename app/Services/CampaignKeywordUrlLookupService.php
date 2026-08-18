@@ -24,6 +24,7 @@ class CampaignKeywordUrlLookupService
      *     type: string,
      *     report_route: string,
      *     manage_route: string,
+     *     edit_route: string,
      *     sticky_type?: string
      * }>
      */
@@ -37,6 +38,7 @@ class CampaignKeywordUrlLookupService
             'sticky_type' => 'Sticky PBN Post',
             'report_route' => 'admin.campaign.report',
             'manage_route' => 'admin.campaign.show',
+            'edit_route' => 'admin.campaign.edit',
         ],
         [
             'link_model' => SidebarCampaignLink::class,
@@ -46,6 +48,7 @@ class CampaignKeywordUrlLookupService
             'type' => 'Sidebar Campaign',
             'report_route' => 'admin.sidebar.campaign.report',
             'manage_route' => 'admin.sidebar.campaign.show',
+            'edit_route' => 'admin.sidebar.campaign.edit',
         ],
         [
             'link_model' => HiddenLinksCampaignLinks::class,
@@ -55,6 +58,7 @@ class CampaignKeywordUrlLookupService
             'type' => 'Hidden Links Campaign',
             'report_route' => 'admin.hidden.link.campaign.report',
             'manage_route' => 'admin.hidden.link.campaign.show',
+            'edit_route' => 'admin.hidden.link.campaign.edit',
         ],
         [
             'link_model' => ScheduleCampaignArticle::class,
@@ -65,6 +69,7 @@ class CampaignKeywordUrlLookupService
             'sticky_type' => 'Scheduled Sticky PBN Post',
             'report_route' => 'admin.schedule.campaign.report',
             'manage_route' => 'admin.schedule.campaign.show',
+            'edit_route' => 'admin.schedule.campaign.edit',
         ],
         [
             'link_model' => ScheduleSidebarCampaignLink::class,
@@ -74,6 +79,7 @@ class CampaignKeywordUrlLookupService
             'type' => 'Scheduled Sidebar Campaign',
             'report_route' => 'admin.schedule.sidebar.campaign.report',
             'manage_route' => 'admin.schedule.sidebar.campaign.show',
+            'edit_route' => 'admin.schedule.sidebar.campaign.edit',
         ],
     ];
 
@@ -182,6 +188,7 @@ class CampaignKeywordUrlLookupService
                 'matched_url' => $this->firstMatchingStoredUrl($stored, $input),
                 'keyword' => $this->displayKeyword((string) ($row->{$keywordColumn} ?? '')),
                 'manage_url' => route($source['manage_route'], $campaign->getKey()),
+                'bulk_edit_url' => route($source['edit_route'], $campaign->getKey()),
                 'report_url' => $token !== ''
                     ? route($source['report_route'], [
                         'campaign_no' => $campaign->campaign_no,

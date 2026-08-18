@@ -9,6 +9,7 @@ use App\Models\Admin;
 use App\Models\Admin\Article;
 use App\Models\Admin\ArticleCategory;
 use App\Models\Admin\ArticleLanguage;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
@@ -103,7 +104,48 @@ class ArticleController extends Controller
             $query->where('article_language_id', $request->language);
         }
 
+        [$dateFrom, $dateTo] = $this->parseTrashedUsedDateRange($request);
+
+        if ($dateFrom !== null) {
+            $query->where('articles.deleted_at', '>=', $dateFrom->copy()->startOfDay());
+        }
+
+        if ($dateTo !== null) {
+            $query->where('articles.deleted_at', '<=', $dateTo->copy()->endOfDay());
+        }
+
         return $query;
+    }
+
+    /**
+     * Parse inclusive Used-from / Used-to filters (Y-m-d) against deleted_at.
+     * Invalid values are ignored. If both are valid and from > to, they are swapped.
+     *
+     * @return array{0: ?Carbon, 1: ?Carbon}
+     */
+    private function parseTrashedUsedDateRange(Request $request): array
+    {
+        $dateFrom = $this->parseFilterDate($request->input('date_from'));
+        $dateTo = $this->parseFilterDate($request->input('date_to'));
+
+        if ($dateFrom !== null && $dateTo !== null && $dateFrom->gt($dateTo)) {
+            return [$dateTo, $dateFrom];
+        }
+
+        return [$dateFrom, $dateTo];
+    }
+
+    private function parseFilterDate(mixed $value): ?Carbon
+    {
+        if (! is_string($value) || trim($value) === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::createFromFormat('Y-m-d', trim($value))->startOfDay();
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**
@@ -292,6 +334,8 @@ class ArticleController extends Controller
             'search' => 'nullable|string|max:500',
             'category' => 'nullable|integer|exists:article_categories,id',
             'language' => 'nullable|integer|exists:article_languages,id',
+            'date_from' => 'nullable|date_format:Y-m-d',
+            'date_to' => 'nullable|date_format:Y-m-d',
         ]);
 
         $filterRequest = Request::create(
@@ -302,6 +346,8 @@ class ArticleController extends Controller
                     'search' => $validated['search'] ?? null,
                     'category' => $validated['category'] ?? null,
                     'language' => $validated['language'] ?? null,
+                    'date_from' => $validated['date_from'] ?? null,
+                    'date_to' => $validated['date_to'] ?? null,
                 ],
                 fn ($v) => $v !== null && $v !== ''
             )
@@ -520,6 +566,8 @@ class ArticleController extends Controller
             'search' => 'nullable|string|max:500',
             'category' => 'nullable|integer|exists:article_categories,id',
             'language' => 'nullable|integer|exists:article_languages,id',
+            'date_from' => 'nullable|date_format:Y-m-d',
+            'date_to' => 'nullable|date_format:Y-m-d',
         ]);
 
         $filterRequest = Request::create(
@@ -530,6 +578,8 @@ class ArticleController extends Controller
                     'search' => $validated['search'] ?? null,
                     'category' => $validated['category'] ?? null,
                     'language' => $validated['language'] ?? null,
+                    'date_from' => $validated['date_from'] ?? null,
+                    'date_to' => $validated['date_to'] ?? null,
                 ],
                 fn ($v) => $v !== null && $v !== ''
             )

@@ -45,6 +45,14 @@ class CampaignKeywordUrlLookupTest extends TestCase
             $table->timestamps();
         });
 
+        Schema::create('admin_feature_permissions', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('admin_id');
+            $table->string('permission');
+            $table->timestamps();
+            $table->unique(['admin_id', 'permission']);
+        });
+
         foreach (['campaigns', 'sidebar_campaigns', 'hidden_links_campaigns', 'schedule_campaigns', 'schedule_sidebar_campaigns'] as $tableName) {
             Schema::create($tableName, function (Blueprint $table) use ($tableName) {
                 $table->id();
@@ -118,6 +126,7 @@ class CampaignKeywordUrlLookupTest extends TestCase
             'hidden_links_campaigns',
             'sidebar_campaigns',
             'campaigns',
+            'admin_feature_permissions',
             'pending_domains',
             'admins',
         ] as $tableName) {
@@ -184,7 +193,9 @@ class CampaignKeywordUrlLookupTest extends TestCase
             ->assertSee('schedule-kw')
             ->assertSee('sched-sidebar-kw')
             ->assertSee('Promo')
-            ->assertSee('Hidden KW');
+            ->assertSee('Hidden KW')
+            ->assertSee('Bulk Edit')
+            ->assertSee(route('admin.campaign.edit', $pbn->id), false);
     }
 
     public function test_admin_cannot_see_other_users_campaigns_by_keyword_url(): void
