@@ -70,6 +70,31 @@ class PluginDeployPreflightServiceTest extends TestCase
         $this->assertSame('skip', $service->resolveOperation('delete', $inventory, $package));
     }
 
+    public function test_folder_match_treats_underscore_and_hyphen_as_equivalent(): void
+    {
+        $service = new PluginDeployPreflightService;
+        $package = new PluginPackage([
+            'slug' => 'custom_blog-version-1.6',
+            'expected_slug' => 'custom_blog',
+            'name' => 'Custom Blog roll Manager',
+            'version' => '1.6',
+        ]);
+
+        $match = $service->findFolderMatch([[
+            'slug' => 'custom-blog',
+            'version' => '1.6',
+            'plugin_file' => 'custom-blog/plugin.php',
+            'active' => true,
+        ]], $package);
+
+        $this->assertNotNull($match);
+        $this->assertSame('activate', $service->resolveOperation('activate', [[
+            'slug' => 'custom-blog',
+            'version' => '1.6',
+            'plugin_file' => 'custom-blog/plugin.php',
+        ]], $package));
+    }
+
     private function package(): PluginPackage
     {
         return new PluginPackage([

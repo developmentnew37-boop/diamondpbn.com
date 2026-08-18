@@ -54,14 +54,19 @@ class RemotePluginManagerService
             return $this->readFailure($request, [], $this->errorCode($response, $body));
         }
 
-        $plugins = $body['data'] ?? $body['plugins'] ?? null;
-        if (! is_array($plugins)) {
+        $raw = $body['data'] ?? $body['plugins'] ?? null;
+        if (! is_array($raw)) {
+            return $this->readFailure($request, [], 'invalid_response', 'Invalid plugins inventory response');
+        }
+
+        $plugins = $this->normalizePluginsInventory($raw);
+        if ($plugins === null) {
             return $this->readFailure($request, [], 'invalid_response', 'Invalid plugins inventory response');
         }
 
         return [
             'ok' => true,
-            'plugins' => array_values(array_filter($plugins, 'is_array')),
+            'plugins' => $plugins,
             'message' => $this->boundedMessage($body['message'] ?? 'OK', [(string) $domain->api_key]),
             'error_code' => null,
             'http_status' => $response->status(),
@@ -71,6 +76,119 @@ class RemotePluginManagerService
             'retry_count' => $request['retry_count'],
             'audit' => $request['audit'],
         ];
+    }
+
+    /**
+     * Flatten agent inventory into a list of {slug, name, version, plugin_file, active}.
+     *
+     * @param  array<mixed>  $raw
+     * @return list<array{slug: string, name: ?string, version: ?string, plugin_file: ?string, active: ?bool}>|null
+     */
+    public function normalizePluginsInventory(array $raw): ?array
+    {
+        if (isset($raw['plugins']) && is_array($raw['plugins'])) {
+            $raw = $raw['plugins'];
+        } elseif (isset($raw['items']) && is_array($raw['items'])) {
+            $raw = $raw['items'];
+        }
+
+        $normalized = [];
+
+        foreach ($raw as $key => $plugin) {
+            if (! is_array($plugin)) {
+                continue;
+            }
+
+            // Skip nested wrapper leftovers that are not plugin rows.
+            if ($this->looksLikePluginListWrapper($plugin)) {
+                continue;
+            }
+
+            $pluginFile = $this->stringField($plugin, ['plugin_file', 'file', 'plugin']);
+            if (($pluginFile === null || $pluginFile === '') && is_string($key) && str_contains($key, '/')) {
+                $pluginFile = str_replace('\\', '/', $key);
+            }
+
+            $slug = $this->stringField($plugin, ['slug', 'folder', 'dir']);
+            if (($slug === null || $slug === '') && is_string($pluginFile) && $pluginFile !== '') {
+                $parts = explode('/', str_replace('\\', '/', $pluginFile));
+                $slug = ($parts[0] ?? '') !== '' ? $parts[0] : null;
+            }
+            if (($slug === null || $slug === '') && is_string($key) && $key !== '' && ! str_contains($key, '/')) {
+                $slug = $key;
+            }
+
+            $name = $this->stringField($plugin, ['name', 'Name', 'plugin_name', 'title', 'Title']);
+            $version = $this->stringField($plugin, ['version', 'Version']);
+            $active = $this->boolField($plugin, ['active', 'Active', 'is_active', 'activated']);
+
+            // Require at least one identity field so empty noise rows are dropped.
+            if (($slug === null || $slug === '')
+                && ($pluginFile === null || $pluginFile === '')
+                && ($name === null || $name === '')) {
+                continue;
+            }
+
+            $normalized[] = [
+                'slug' => (string) ($slug ?? ''),
+                'name' => $name,
+                'version' => $version,
+                'plugin_file' => $pluginFile,
+                'active' => $active,
+            ];
+        }
+
+        return array_values($normalized);
+    }
+
+    /** @param  array<string, mixed>  $plugin */
+    private function looksLikePluginListWrapper(array $plugin): bool
+    {
+        return (isset($plugin['plugins']) && is_array($plugin['plugins']))
+            || (isset($plugin['items']) && is_array($plugin['items']));
+    }
+
+    /**
+     * @param  array<string, mixed>  $plugin
+     * @param  list<string>  $keys
+     */
+    private function stringField(array $plugin, array $keys): ?string
+    {
+        foreach ($keys as $key) {
+            if (! array_key_exists($key, $plugin)) {
+                continue;
+            }
+            $value = $plugin[$key];
+            if (is_string($value) || is_numeric($value)) {
+                $text = trim((string) $value);
+
+                return $text !== '' ? $text : null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $plugin
+     * @param  list<string>  $keys
+     */
+    private function boolField(array $plugin, array $keys): ?bool
+    {
+        foreach ($keys as $key) {
+            if (! array_key_exists($key, $plugin)) {
+                continue;
+            }
+            $value = $plugin[$key];
+            if (is_bool($value)) {
+                return $value;
+            }
+            if (is_int($value) || is_string($value)) {
+                return filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            }
+        }
+
+        return null;
     }
 
     /** @return array<string, mixed> */

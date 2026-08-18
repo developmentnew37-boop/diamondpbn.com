@@ -60,6 +60,32 @@ class PluginDeployPreflightService
     }
 
     /**
+     * Short list of remote folder names for skip diagnostics.
+     *
+     * @param  array<int, array<string, mixed>>  $inventory
+     * @return list<string>
+     */
+    public function inventoryFolderLabels(array $inventory, int $limit = 8): array
+    {
+        $labels = [];
+        foreach ($inventory as $plugin) {
+            if (! is_array($plugin)) {
+                continue;
+            }
+            $slug = $this->remoteFolderSlug($plugin);
+            if ($slug === null || $slug === '') {
+                continue;
+            }
+            $labels[$slug] = $slug;
+            if (count($labels) >= $limit) {
+                break;
+            }
+        }
+
+        return array_values($labels);
+    }
+
+    /**
      * @param  array<int, array<string, mixed>>  $inventory
      */
     public function resolveOperation(string $intent, array $inventory, PluginPackage $package): string
@@ -215,7 +241,7 @@ class PluginDeployPreflightService
      */
     private function pluginName(array $plugin): ?string
     {
-        foreach (['name', 'plugin_name', 'title'] as $key) {
+        foreach (['name', 'Name', 'plugin_name', 'title', 'Title'] as $key) {
             if (! empty($plugin[$key]) && is_string($plugin[$key])) {
                 return trim($plugin[$key]);
             }
@@ -226,7 +252,17 @@ class PluginDeployPreflightService
 
     private function foldersMatch(string $expected, string $remote): bool
     {
-        return strcasecmp(trim($expected), trim($remote)) === 0;
+        $left = $this->normalizeFolderToken($expected);
+        $right = $this->normalizeFolderToken($remote);
+
+        return $left !== '' && $left === $right;
+    }
+
+    private function normalizeFolderToken(string $value): string
+    {
+        $value = strtolower(trim($value));
+
+        return str_replace('_', '-', $value);
     }
 
     private function namesMatch(string $a, string $b): bool

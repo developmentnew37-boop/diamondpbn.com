@@ -297,11 +297,42 @@ class PluginDeploymentService
         $intent = $deployment->operation;
         $operation = $this->preflight->resolveOperation($intent, $inventory, $package);
 
+        // Activate/deactivate/delete: inventory miss is often a field/slug shape issue.
+        // Re-check via single-plugin lookup, then still attempt remote so the agent can resolve.
+        if ($operation === 'skip' && in_array($intent, ['activate', 'deactivate', 'delete'], true)) {
+            $resolved = $this->resolveMutateWhenInventoryMisses(
+                $domain,
+                $package,
+                $inventory,
+                $auditTrail
+            );
+            $auditTrail = $resolved['audit'];
+
+            if ($resolved['match'] !== null) {
+                $installedMatch = $resolved['match'];
+                $versionBefore = $installedMatch['version'] ?? $versionBefore;
+                $pluginFileHint = $installedMatch['plugin_file'] ?? $pluginFileHint;
+                $operation = $intent;
+            } elseif ($resolved['verified_missing']) {
+                $this->markSkipped(
+                    $item,
+                    'plugin_not_found',
+                    $this->mutateSkipMessage($intent, $package, $inventory),
+                    $versionBefore,
+                    null,
+                    $this->resultMetadata($inventoryResult, $auditTrail)
+                );
+
+                return;
+            } else {
+                // Inconclusive inventory match — let the agent resolve by expected_slug / library slug.
+                $operation = $intent;
+            }
+        }
+
         if ($operation === 'skip') {
             $message = match ($intent) {
-                'delete' => 'Plugin not on site for folder "'.$package->expectedSlug()
-                    .'" — already removed, or the installed folder name differs from this package',
-                'activate', 'deactivate' => 'Plugin not installed on site for folder "'.$package->expectedSlug().'"',
+                'delete', 'activate', 'deactivate' => $this->mutateSkipMessage($intent, $package, $inventory),
                 default => $exactMatch !== null
                     ? 'Already at target version '.$package->version
                     : 'Nothing to do for this package on site',
@@ -517,6 +548,71 @@ class PluginDeploymentService
         }
 
         return $result;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $inventory
+     * @param  array<int, array<string, mixed>>  $auditTrail
+     * @return array{
+     *     match: array{slug: string, version: ?string, plugin_file: ?string, active: ?bool}|null,
+     *     verified_missing: bool,
+     *     audit: array<int, array<string, mixed>>
+     * }
+     */
+    private function resolveMutateWhenInventoryMisses(
+        Domain $domain,
+        PluginPackage $package,
+        array $inventory,
+        array $auditTrail
+    ): array {
+        $pluginInfo = $this->remotePluginManager->fetchPluginInfo($domain, $package);
+        $auditTrail = array_merge($auditTrail, $pluginInfo['audit'] ?? []);
+
+        if ($pluginInfo['ok'] && $pluginInfo['found'] === true) {
+            return [
+                'match' => [
+                    'slug' => $package->expectedSlug(),
+                    'version' => isset($pluginInfo['version']) ? (string) $pluginInfo['version'] : null,
+                    'plugin_file' => isset($pluginInfo['plugin_file']) ? (string) $pluginInfo['plugin_file'] : null,
+                    'active' => isset($pluginInfo['active']) ? (bool) $pluginInfo['active'] : null,
+                ],
+                'verified_missing' => false,
+                'audit' => $auditTrail,
+            ];
+        }
+
+        if ($pluginInfo['ok'] && $pluginInfo['found'] === false && (int) ($pluginInfo['http_status'] ?? 0) === 404) {
+            return [
+                'match' => null,
+                'verified_missing' => true,
+                'audit' => $auditTrail,
+            ];
+        }
+
+        return [
+            'match' => null,
+            'verified_missing' => false,
+            'audit' => $auditTrail,
+        ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $inventory
+     */
+    private function mutateSkipMessage(string $intent, PluginPackage $package, array $inventory): string
+    {
+        $base = match ($intent) {
+            'delete' => 'Plugin not on site for folder "'.$package->expectedSlug()
+                .'" — already removed, or the installed folder name differs from this package',
+            default => 'Plugin not installed on site for folder "'.$package->expectedSlug().'"',
+        };
+
+        $folders = $this->preflight->inventoryFolderLabels($inventory);
+        if ($folders === []) {
+            return $base.' (inventory listed no plugin folders)';
+        }
+
+        return $base.' (inventory folders: '.implode(', ', $folders).')';
     }
 
     /**
