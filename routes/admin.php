@@ -18,6 +18,7 @@ use App\Http\Controllers\Admin\DomainCategoryController;
 use App\Http\Controllers\Admin\DomainController;
 use App\Http\Controllers\Admin\DomainSetController;
 use App\Http\Controllers\Admin\DomainStatusCheckerController;
+use App\Http\Controllers\Admin\DomainRecheckDisconnectedController;
 use App\Http\Controllers\Admin\HiddenLinkCampaignController;
 use App\Http\Controllers\Admin\InvoiceController;
 use App\Http\Controllers\Admin\LiveTaskBulkDomainReplacementController;
@@ -200,6 +201,8 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     /** redirect to domain list page base on domain category **/
     Route::post('/domain/redirect/list', [DomainController::class, 'redirect__func'])->name('redirect.to.list');
     Route::get('/domain/extract', [DomainController::class, 'extractByCategory'])->name('domain.extract');
+    Route::get('/domain/move-category', [DomainController::class, 'moveCategoryForm'])->name('domain.move-category');
+    Route::post('/domain/move-category', [DomainController::class, 'processMoveCategory'])->name('domain.move-category.process');
 
     /** ends here **/
 
@@ -213,6 +216,20 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     Route::get('/domain/status-checker/{uuid}/progress', [DomainStatusCheckerController::class, 'progress'])
         ->middleware('throttle:180,1')
         ->name('domain.status-checker.progress');
+
+    Route::get('/domain/recheck-disconnected', [DomainRecheckDisconnectedController::class, 'index'])
+        ->name('domain.recheck-disconnected');
+    Route::post('/domain/recheck-disconnected/start', [DomainRecheckDisconnectedController::class, 'start'])
+        ->middleware('throttle:30,1')
+        ->name('domain.recheck-disconnected.start');
+    Route::get('/domain/recheck-disconnected/{uuid}/progress', [DomainRecheckDisconnectedController::class, 'progress'])
+        ->middleware('throttle:180,1')
+        ->name('domain.recheck-disconnected.progress');
+    Route::get('/domain/recheck-disconnected/{uuid}/export', [DomainRecheckDisconnectedController::class, 'export'])
+        ->name('domain.recheck-disconnected.export');
+    Route::post('/domain/recheck-disconnected/{uuid}/cancel', [DomainRecheckDisconnectedController::class, 'cancel'])
+        ->middleware('throttle:30,1')
+        ->name('domain.recheck-disconnected.cancel');
 
     /** ends here **/
     Route::resource('/domain', DomainController::class);

@@ -25,10 +25,16 @@ class ScheduleCampaignDomainReplacement extends Model
         'dispatch_generation',
         'state',
         'error',
+        'previous_remote_id',
+        'previous_remote_url',
+        'old_remote_cleanup_status',
+        'old_remote_cleanup_error',
+        'old_remote_cleaned_at',
     ];
 
     protected $casts = [
         'health_snapshot' => 'array',
         'dispatch_generation' => 'integer',
+        'old_remote_cleaned_at' => 'datetime',
     ];
 }

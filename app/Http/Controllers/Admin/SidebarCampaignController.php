@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Admin\Concerns\AppliesCampaignListStatusFilter;
 use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
 use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
 use App\Http\Controllers\Admin\Concerns\ProvidesLocalClientsForForms;
@@ -35,6 +36,7 @@ use Spatie\SimpleExcel\SimpleExcelWriter;
 
 class SidebarCampaignController extends Controller
 {
+    use AppliesCampaignListStatusFilter;
     use AppliesSuperAdminCampaignOwnerFilter;
     use AuthorizesAdminCampaign;
     use ProvidesLocalClientsForForms;
@@ -54,6 +56,7 @@ class SidebarCampaignController extends Controller
         $request->validate([
             'search' => 'nullable|string|max:150',
             'filter_user' => 'nullable|string|max:20',
+            'status' => $this->campaignListStatusValidationRule(),
         ]);
 
         $domainCategories = DomainCategory::query()
@@ -80,6 +83,7 @@ class SidebarCampaignController extends Controller
                 'campaign_no',
                 'domain_category_id',
                 'admin_id',
+                'status',
                 'total_targets',
                 'completed_targets',
                 'failed_targets',
@@ -101,6 +105,7 @@ class SidebarCampaignController extends Controller
                 '%'.$search.'%'
             );
         }
+        $this->applyCampaignListStatusFilter($query, $request);
         $admin = Auth::guard('admin')->user();
         $ownerData = $this->scopeCampaignQueryForOwner($query, $request, $admin);
         // ✅ Paginate
@@ -539,7 +544,7 @@ class SidebarCampaignController extends Controller
                 ->where('sidebar_campaign_id', $campaign->id),
             $statusFilter
         )
-            ->orderByDesc('id')
+            ->orderBy('id')
             ->paginate($limit)
             ->withQueryString();
 
@@ -597,7 +602,7 @@ class SidebarCampaignController extends Controller
                 'linkRow:id,sidebar_campaign_id,target_url,anchor_keyword,nofollow',
             ])
             ->where('sidebar_campaign_id', $campaign->id)
-            ->orderByDesc('id')
+            ->orderBy('id')
             ->get();
 
         /**

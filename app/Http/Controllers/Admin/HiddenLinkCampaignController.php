@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Admin\Concerns\AppliesCampaignListStatusFilter;
 use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
 use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
 use App\Http\Controllers\Admin\Concerns\ProvidesLocalClientsForForms;
@@ -34,6 +35,7 @@ use Spatie\SimpleExcel\SimpleExcelWriter;
 
 class HiddenLinkCampaignController extends Controller
 {
+    use AppliesCampaignListStatusFilter;
     use AppliesSuperAdminCampaignOwnerFilter;
     use AuthorizesAdminCampaign;
     use ProvidesLocalClientsForForms;
@@ -53,6 +55,7 @@ class HiddenLinkCampaignController extends Controller
         $request->validate([
             'search' => 'nullable|string|max:150',
             'filter_user' => 'nullable|string|max:20',
+            'status' => $this->campaignListStatusValidationRule(),
         ]);
 
         // ✅ Remove empty search from URL
@@ -85,6 +88,8 @@ class HiddenLinkCampaignController extends Controller
                 '%'.trim($request->search).'%'
             );
         }
+
+        $this->applyCampaignListStatusFilter($query, $request);
 
         $admin = Auth::guard('admin')->user();
         $ownerData = $this->scopeCampaignQueryForOwner($query, $request, $admin);
@@ -371,7 +376,7 @@ class HiddenLinkCampaignController extends Controller
                 ]),
             $statusFilter
         )
-            ->orderByDesc('id')
+            ->orderBy('id')
             ->paginate($limit)
             ->withQueryString();
 
@@ -426,7 +431,7 @@ class HiddenLinkCampaignController extends Controller
                 'linkRow:id,hidden_links_campaigns_id,target_url,anchor_keyword,nofollow',
             ])
             ->where('hidden_links_campaigns_id', $campaign->id)
-            ->orderByDesc('id')
+            ->orderBy('id')
             ->get();
 
         return view(

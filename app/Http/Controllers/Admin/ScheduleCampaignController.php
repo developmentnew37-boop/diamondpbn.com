@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Exceptions\InsufficientCampaignArticlesException;
+use App\Http\Controllers\Admin\Concerns\AppliesCampaignListStatusFilter;
 use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
 use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
 use App\Http\Controllers\Admin\Concerns\ProvidesLocalClientsForForms;
@@ -47,6 +48,7 @@ use Spatie\SimpleExcel\SimpleExcelWriter;
 
 class ScheduleCampaignController extends Controller
 {
+    use AppliesCampaignListStatusFilter;
     use AppliesSuperAdminCampaignOwnerFilter;
     use AuthorizesAdminCampaign;
     use ProvidesLocalClientsForForms;
@@ -65,6 +67,7 @@ class ScheduleCampaignController extends Controller
         $request->validate([
             'search' => 'nullable|string|max:150',
             'filter_user' => 'nullable|string|max:20',
+            'status' => $this->campaignListStatusValidationRule(),
         ]);
 
         $limit = config('campaign.pagination.default_limit');
@@ -83,6 +86,9 @@ class ScheduleCampaignController extends Controller
                 '%'.trim($request->search).'%'
             );
         }
+
+        $this->applyCampaignListStatusFilter($query, $request);
+
         $admin = Auth::guard('admin')->user();
         $ownerData = $this->scopeCampaignQueryForOwner($query, $request, $admin);
 
@@ -841,9 +847,19 @@ class ScheduleCampaignController extends Controller
 
         $offset = ($campaignPost->currentPage() - 1) * $limit;
 
+        $recentReplacements = collect();
+        if (\Illuminate\Support\Facades\Schema::hasTable('schedule_campaign_domain_replacements')) {
+            $recentReplacements = \App\Models\Admin\ScheduleCampaignDomainReplacement::query()
+                ->where('schedule_campaign_id', $campaign->id)
+                ->whereIn('state', ['dispatch_pending', 'dispatching', 'dispatch_failed', 'completed'])
+                ->latest()
+                ->limit(10)
+                ->get();
+        }
+
         return view(
             'admin.campaigns.pbn-post.view-schedule-campaign',
-            compact('campaign', 'campaignPost', 'offset', 'statusFilter', 'statusCounts', 'isConvertedLiveCampaign')
+            compact('campaign', 'campaignPost', 'offset', 'statusFilter', 'statusCounts', 'isConvertedLiveCampaign', 'recentReplacements')
         );
     }
 

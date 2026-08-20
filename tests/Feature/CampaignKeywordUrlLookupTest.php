@@ -194,7 +194,7 @@ class CampaignKeywordUrlLookupTest extends TestCase
             ->assertSee('sched-sidebar-kw')
             ->assertSee('Promo')
             ->assertSee('Hidden KW')
-            ->assertSee('Bulk Edit')
+            ->assertSee('Edit campaign', false)
             ->assertSee(route('admin.campaign.edit', $pbn->id), false);
     }
 

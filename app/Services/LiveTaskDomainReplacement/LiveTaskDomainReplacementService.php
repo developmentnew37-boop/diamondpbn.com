@@ -3,6 +3,7 @@
 namespace App\Services\LiveTaskDomainReplacement;
 
 use App\Data\AgentStatusResult;
+use App\Jobs\CleanupReplacedDomainRemoteContentJob;
 use App\Models\Admin;
 use App\Models\Admin\Domain;
 use App\Services\WordPressAgentStatusService;
@@ -199,6 +200,16 @@ class LiveTaskDomainReplacementService
             'state' => 'pending',
         ];
 
+        if ($profile->supportsConvertedLive && $this->replacementHasCleanupColumns($profile)) {
+            $previousRemoteId = filled($task->remote_id) ? (string) $task->remote_id : null;
+            $previousRemoteUrl = filled($task->remote_url) ? (string) $task->remote_url : null;
+            $auditData['previous_remote_id'] = $previousRemoteId;
+            $auditData['previous_remote_url'] = $previousRemoteUrl;
+            $auditData['old_remote_cleanup_status'] = $previousRemoteId ? 'pending' : 'skipped';
+            $auditData['old_remote_cleanup_error'] = null;
+            $auditData['old_remote_cleaned_at'] = null;
+        }
+
         try {
             $audit = $replacementModel::create($auditData);
         } catch (QueryException $exception) {
@@ -281,7 +292,49 @@ class LiveTaskDomainReplacementService
             throw $exception;
         }
 
-        return $this->dispatchCommittedReplacement($profile, $audit->fresh());
+        $replacement = $this->dispatchCommittedReplacement($profile, $audit->fresh());
+        $this->dispatchOldRemoteCleanupIfNeeded($profile, $replacement);
+
+        return $replacement->fresh();
+    }
+
+    private function replacementHasCleanupColumns(LiveTaskReplacementProfile $profile): bool
+    {
+        $table = (new ($profile->replacementModel))->getTable();
+
+        return Schema::hasColumn($table, 'previous_remote_id')
+            && Schema::hasColumn($table, 'old_remote_cleanup_status');
+    }
+
+    private function dispatchOldRemoteCleanupIfNeeded(LiveTaskReplacementProfile $profile, Model $replacement): void
+    {
+        if (! $profile->supportsConvertedLive || ! $this->replacementHasCleanupColumns($profile)) {
+            return;
+        }
+
+        if ((string) ($replacement->old_remote_cleanup_status ?? '') !== 'pending') {
+            return;
+        }
+
+        if (! filled($replacement->previous_remote_id)) {
+            $replacement->forceFill([
+                'old_remote_cleanup_status' => 'skipped',
+                'old_remote_cleaned_at' => now(),
+            ])->save();
+
+            return;
+        }
+
+        try {
+            CleanupReplacedDomainRemoteContentJob::dispatch($profile->label, (int) $replacement->id)
+                ->onQueue(CleanupReplacedDomainRemoteContentJob::QUEUE);
+        } catch (Throwable $exception) {
+            report($exception);
+            $replacement->forceFill([
+                'old_remote_cleanup_status' => 'failed',
+                'old_remote_cleanup_error' => 'Could not queue old remote cleanup.',
+            ])->save();
+        }
     }
 
     /**

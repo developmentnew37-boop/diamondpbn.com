@@ -87,6 +87,8 @@
 
 @include('admin.campaigns.partials.local-client-billing')
 
+@include('admin.campaigns.partials.schedule-domain-replacements')
+
 {{-- ===================== CAMPAIGN SUMMARY ===================== --}}
 <div class="content-card !mt-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
 

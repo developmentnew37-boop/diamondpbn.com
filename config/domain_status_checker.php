@@ -71,4 +71,30 @@ return [
 
     'health_sync_queue' => env('DOMAIN_HEALTH_SYNC_QUEUE', 'domainHealthSync'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Recheck disconnected domains (inventory status = 0)
+    |--------------------------------------------------------------------------
+    */
+
+    'disconnected_max' => (int) env('DOMAIN_STATUS_CHECK_DISCONNECTED_MAX', 10000),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Per-domain probe attempts (campaign-style backoff)
+    |--------------------------------------------------------------------------
+    |
+    | After each failed attempt (except the last), wait the matching delay
+    | before retrying. Example with defaults: attempt 1 immediate, then wait
+    | 1m / 2m / 4m / 5m between failures; 5th failure → disconnected.
+    |
+    */
+
+    'max_attempts' => (int) env('DOMAIN_STATUS_CHECK_MAX_ATTEMPTS', 5),
+
+    'backoff_seconds' => array_values(array_filter(array_map(
+        'intval',
+        explode(',', (string) env('DOMAIN_STATUS_CHECK_BACKOFF_SECONDS', '60,120,240,300'))
+    ), fn ($v) => $v > 0)),
+
 ];

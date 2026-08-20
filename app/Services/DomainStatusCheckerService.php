@@ -4,10 +4,12 @@ namespace App\Services;
 
 use App\Jobs\ProcessDomainStatusCheckChunkJob;
 use App\Models\Admin\Domain;
+use App\Models\Admin\DomainCategory;
 use App\Models\Admin\DomainStatusCheck;
 use App\Models\Admin\DomainStatusCheckItem;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class DomainStatusCheckerService
 {
@@ -145,96 +147,157 @@ class DomainStatusCheckerService
     }
 
     /**
-     * Process the next chunk for an in-progress check (queue worker only).
+     * Process the next ready chunk. Returns seconds to delay before the next
+     * chunk job (0 = dispatch immediately), or null when the check is finished.
      */
-    public function processNextChunk(DomainStatusCheck $check): void
+    public function processNextChunk(DomainStatusCheck $check): ?int
     {
         if ($check->isFinished()) {
-            return;
+            return null;
         }
 
         $this->recoverOrphanedItems($check);
 
-        $phase = $check->phase === 'retry' ? 'retry' : 'initial';
-        $isRetry = $phase === 'retry';
-        $pendingStatus = $isRetry ? 'retry_pending' : 'pending';
-
         if (in_array($check->status, ['queued', 'processing'], true)) {
+            $waiting = $this->countWaitingRetryItems($check);
             $check->update([
                 'status' => 'processing',
-                'phase' => $phase,
+                'phase' => $waiting > 0 ? 'backoff' : 'initial',
                 'started_at' => $check->started_at ?? now(),
-                'status_message' => $isRetry
-                    ? 'Verifying disconnected domains (2nd pass)...'
+                'status_message' => $waiting > 0
+                    ? "Waiting to retry {$waiting} domain(s) (campaign-style backoff)..."
                     : 'Checking domains...',
             ]);
         }
 
-        $items = DomainStatusCheckItem::query()
-            ->where('domain_status_check_id', $check->id)
-            ->where('check_status', $pendingStatus)
+        $items = $this->readyItemsQuery($check)
             ->orderBy('sort_order')
             ->limit($this->chunkSize())
             ->get();
 
         if ($items->isEmpty()) {
-            $this->advancePhase($check, $phase);
+            $delay = $this->secondsUntilNextReadyWork($check);
 
-            return;
+            if ($delay === null) {
+                $this->finalizeCheck($check);
+
+                return null;
+            }
+
+            $check->update([
+                'phase' => 'backoff',
+                'status_message' => 'Next retry in '.$this->formatDelayLabel($delay).'...',
+            ]);
+
+            return $delay;
         }
 
         DomainStatusCheckItem::query()
             ->whereIn('id', $items->pluck('id'))
             ->update(['check_status' => 'checking']);
 
-        $results = $this->probeDomains($items, $isRetry, (bool) $check->use_authenticated_check);
+        $results = $this->probeDomains($items, (bool) $check->use_authenticated_check);
 
         foreach ($items as $item) {
             $this->applyProbeResults($item, $results[$item->id] ?? [
                 'connected' => false,
                 'message' => 'No response received',
                 'response_time_ms' => null,
-            ], $isRetry);
+            ]);
         }
 
         $check = $check->fresh();
         $this->recalculateCheckStats($check);
 
-        // Finalize or advance phase in the same job when this batch was the last
-        // (avoids relying on a follow-up empty-chunk job that may never run).
-        $remainingInPhase = DomainStatusCheckItem::query()
-            ->where('domain_status_check_id', $check->id)
-            ->where('check_status', $pendingStatus)
-            ->exists();
+        if ($this->hasUnfinishedItems($check)) {
+            $delay = $this->secondsUntilNextReadyWork($check) ?? 0;
+            $waiting = $this->countWaitingRetryItems($check);
+            $check->update([
+                'phase' => $waiting > 0 && $delay > 0 ? 'backoff' : 'initial',
+                'status_message' => $delay > 0
+                    ? 'Next retry in '.$this->formatDelayLabel($delay).'...'
+                    : 'Checking domains...',
+            ]);
 
-        if (! $remainingInPhase) {
-            $this->advancePhase($check->fresh(), $phase);
+            return $delay;
         }
+
+        $this->finalizeCheck($check->fresh());
+
+        return null;
     }
 
-    private function advancePhase(DomainStatusCheck $check, string $phase): void
+    /**
+     * @return \Illuminate\Database\Eloquent\Builder<\App\Models\Admin\DomainStatusCheckItem>
+     */
+    private function readyItemsQuery(DomainStatusCheck $check)
     {
-        if ($phase === 'initial') {
-            $retryCount = DomainStatusCheckItem::query()
-                ->where('domain_status_check_id', $check->id)
-                ->where('check_status', 'retry_pending')
-                ->count();
+        return DomainStatusCheckItem::query()
+            ->where('domain_status_check_id', $check->id)
+            ->where(function ($q) {
+                $q->where('check_status', 'pending')
+                    ->orWhere(function ($inner) {
+                        $inner->where('check_status', 'retry_pending')
+                            ->where(function ($ready) {
+                                $ready->whereNull('next_retry_at')
+                                    ->orWhere('next_retry_at', '<=', now());
+                            });
+                    });
+            });
+    }
 
-            if ($retryCount > 0) {
-                $check->update([
-                    'phase' => 'retry',
-                    'status_message' => "Verifying {$retryCount} domain(s) marked disconnected...",
-                ]);
+    private function hasUnfinishedItems(DomainStatusCheck $check): bool
+    {
+        return DomainStatusCheckItem::query()
+            ->where('domain_status_check_id', $check->id)
+            ->whereIn('check_status', ['pending', 'checking', 'retry_pending'])
+            ->exists();
+    }
 
-                return;
-            }
+    private function countWaitingRetryItems(DomainStatusCheck $check): int
+    {
+        return DomainStatusCheckItem::query()
+            ->where('domain_status_check_id', $check->id)
+            ->where('check_status', 'retry_pending')
+            ->whereNotNull('next_retry_at')
+            ->where('next_retry_at', '>', now())
+            ->count();
+    }
 
-            $this->finalizeCheck($check);
-
-            return;
+    /**
+     * Seconds until at least one item is ready. 0 = ready now. null = nothing left unfinished.
+     */
+    public function secondsUntilNextReadyWork(DomainStatusCheck $check): ?int
+    {
+        if ($this->readyItemsQuery($check)->exists()) {
+            return 0;
         }
 
-        $this->finalizeCheck($check);
+        $nextAt = DomainStatusCheckItem::query()
+            ->where('domain_status_check_id', $check->id)
+            ->where('check_status', 'retry_pending')
+            ->whereNotNull('next_retry_at')
+            ->where('next_retry_at', '>', now())
+            ->min('next_retry_at');
+
+        if ($nextAt === null) {
+            return null;
+        }
+
+        $seconds = now()->diffInSeconds(\Illuminate\Support\Carbon::parse($nextAt), false);
+
+        return max(1, (int) $seconds);
+    }
+
+    private function formatDelayLabel(int $seconds): string
+    {
+        if ($seconds < 60) {
+            return $seconds.'s';
+        }
+
+        $minutes = (int) round($seconds / 60);
+
+        return $minutes.'m';
     }
 
     /**
@@ -258,9 +321,18 @@ class DomainStatusCheckerService
         $processed = (int) ($counts->processed_count ?? 0);
         $total = max(1, $check->total_count);
 
-        // First-pass complete + finalized items drive the progress bar.
-        $firstPassDone = $processed + $retryPending;
-        $progressPercent = (int) min(100, round(($firstPassDone / $total) * 100));
+        // Weight finalized items fully; in-flight / waiting items by attempts toward max.
+        $maxAttempts = max(1, $this->maxAttempts());
+        $attemptWeight = DomainStatusCheckItem::query()
+            ->where('domain_status_check_id', $check->id)
+            ->whereIn('check_status', ['pending', 'checking', 'retry_pending'])
+            ->selectRaw(
+                'COALESCE(SUM(CASE WHEN attempts < ? THEN attempts ELSE ? END) / ?, 0) as weighted',
+                [$maxAttempts, $maxAttempts, $maxAttempts]
+            )
+            ->value('weighted');
+
+        $progressPercent = (int) min(100, round((($processed + (float) $attemptWeight) / $total) * 100));
 
         if ($check->isFinished()) {
             $progressPercent = 100;
@@ -279,14 +351,15 @@ class DomainStatusCheckerService
      * @param  Collection<int, DomainStatusCheckItem>  $items
      * @return array<int, array<string, mixed>>
      */
-    public function probeDomains(Collection $items, bool $isRetry, bool $useAuthenticatedCheck = false): array
+    public function probeDomains(Collection $items, bool $useAuthenticatedCheck = false): array
     {
         if ($items->isEmpty()) {
             return [];
         }
 
-        $timeout = $isRetry ? $this->retryRequestTimeout() : $this->requestTimeout();
-        $connectTimeout = $isRetry ? $this->retryConnectTimeout() : $this->connectTimeout();
+        $isLaterAttempt = $items->contains(fn ($item) => (int) $item->attempts >= 1);
+        $timeout = $isLaterAttempt ? $this->retryRequestTimeout() : $this->requestTimeout();
+        $connectTimeout = $isLaterAttempt ? $this->retryConnectTimeout() : $this->connectTimeout();
 
         if ($useAuthenticatedCheck) {
             $apiKeysByDomainId = Domain::query()
@@ -354,11 +427,12 @@ class DomainStatusCheckerService
         return $results;
     }
 
-    public function applyProbeResults(DomainStatusCheckItem $item, array $result, bool $isRetry): void
+    public function applyProbeResults(DomainStatusCheckItem $item, array $result): void
     {
         $connected = (bool) ($result['connected'] ?? false);
-        $message = (string) ($result['message'] ?? 'Unknown response');
-        $attempts = $item->attempts + 1;
+        $message = $this->truncateItemMessage((string) ($result['message'] ?? 'Unknown response'));
+        $attempts = (int) $item->attempts + 1;
+        $maxAttempts = $this->maxAttempts();
         $classification = [
             'status_code' => $result['status_code'] ?? 'domain_offline',
             'probe_method' => $result['probe_method'] ?? 'rest',
@@ -375,23 +449,31 @@ class DomainStatusCheckerService
             $item->update($classification + [
                 'check_status' => 'connected',
                 'connected' => true,
-                'message' => $isRetry ? 'Connected (verified on 2nd check)' : $message,
+                'message' => $this->truncateItemMessage($attempts > 1
+                    ? $message.' (connected on attempt '.$attempts.'/'.$maxAttempts.')'
+                    : $message),
                 'attempts' => $attempts,
                 'response_time_ms' => $result['response_time_ms'] ?? null,
                 'checked_at' => now(),
+                'next_retry_at' => null,
             ]);
 
             return;
         }
 
-        if (! $isRetry) {
+        if ($attempts < $maxAttempts) {
+            $delay = $this->backoffSecondsAfterAttempt($attempts);
             $item->update($classification + [
                 'check_status' => 'retry_pending',
                 'connected' => false,
-                'message' => $message.' — queued for verification',
+                'message' => $this->truncateItemMessage(
+                    $message.' — retry in '.$this->formatDelayLabel($delay)
+                    .' (attempt '.$attempts.'/'.$maxAttempts.')'
+                ),
                 'attempts' => $attempts,
                 'response_time_ms' => $result['response_time_ms'] ?? null,
                 'checked_at' => now(),
+                'next_retry_at' => now()->addSeconds($delay),
             ]);
 
             return;
@@ -400,13 +482,24 @@ class DomainStatusCheckerService
         $item->update($classification + [
             'check_status' => 'disconnected',
             'connected' => false,
-            'message' => $isRetry
-                ? $message.' (still failing after 2nd check)'
-                : $message,
+            'message' => $this->truncateItemMessage(
+                $message.' (still failing after '.$maxAttempts.' attempts)'
+            ),
             'attempts' => $attempts,
             'response_time_ms' => $result['response_time_ms'] ?? null,
             'checked_at' => now(),
+            'next_retry_at' => null,
         ]);
+    }
+
+    private function truncateItemMessage(string $message, int $maxLength = 2000): string
+    {
+        $message = trim($message);
+        if (mb_strlen($message) <= $maxLength) {
+            return $message;
+        }
+
+        return mb_substr($message, 0, $maxLength - 1).'…';
     }
 
     public function recalculateCheckStats(DomainStatusCheck $check): void
@@ -466,9 +559,253 @@ class DomainStatusCheckerService
         return $updated;
     }
 
+    /**
+     * @return array{
+     *     names: array<int, string>,
+     *     total_in_scope: int,
+     *     by_category: array<int, array{category_id: ?int, category: string, count: int}>
+     * }
+     */
+    public function getDisconnectedDomainNames(?int $categoryId = null): array
+    {
+        $base = Domain::query()
+            ->where('domains.status', 0)
+            ->when(
+                $categoryId !== null,
+                fn ($q) => $q->where('domains.domain_category_id', $categoryId)
+            );
+
+        $totalInScope = (clone $base)->count();
+
+        $categoryCounts = (clone $base)
+            ->selectRaw('domains.domain_category_id as category_id, COUNT(*) as aggregate_count')
+            ->groupBy('domains.domain_category_id')
+            ->pluck('aggregate_count', 'category_id');
+
+        $categoryNames = DomainCategory::query()
+            ->whereIn('id', $categoryCounts->keys()->filter()->all())
+            ->pluck('name', 'id');
+
+        $byCategory = $categoryCounts
+            ->map(function ($count, $categoryId) use ($categoryNames) {
+                $id = $categoryId !== null ? (int) $categoryId : null;
+
+                return [
+                    'category_id' => $id,
+                    'category' => $id !== null
+                        ? (string) ($categoryNames[$id] ?? 'Uncategorized')
+                        : 'Uncategorized',
+                    'count' => (int) $count,
+                ];
+            })
+            ->sortBy('category', SORT_NATURAL | SORT_FLAG_CASE)
+            ->values()
+            ->all();
+
+        $names = (clone $base)
+            ->orderBy('domains.domain_category_id')
+            ->orderBy('domains.name')
+            ->limit($this->disconnectedMaxDomains())
+            ->pluck('domains.name')
+            ->all();
+
+        return [
+            'names' => $names,
+            'total_in_scope' => $totalInScope,
+            'by_category' => $byCategory,
+        ];
+    }
+
+    /**
+     * Latest disconnected recheck for an admin: prefer an unfinished run, else one finished within 24 hours.
+     */
+    public function latestDisconnectedCheckForAdmin(int $adminId): ?DomainStatusCheck
+    {
+        $active = DomainStatusCheck::query()
+            ->where('admin_id', $adminId)
+            ->where('source', 'disconnected')
+            ->whereNotIn('status', ['completed', 'failed', 'cancelled'])
+            ->latest('id')
+            ->first();
+
+        if ($active) {
+            return $active;
+        }
+
+        return DomainStatusCheck::query()
+            ->where('admin_id', $adminId)
+            ->where('source', 'disconnected')
+            ->whereIn('status', ['completed', 'failed', 'cancelled'])
+            ->where(function ($query) {
+                $query->where('completed_at', '>=', now()->subDay())
+                    ->orWhere(function ($fallback) {
+                        $fallback->whereNull('completed_at')
+                            ->where('updated_at', '>=', now()->subDay());
+                    });
+            })
+            ->latest('id')
+            ->first();
+    }
+
+    /**
+     * Progress JSON payload for the disconnected recheck UI (poll + page-load resume).
+     *
+     * @return array{check: array<string, mixed>, results: array<int, array<string, mixed>>, server_time: string}
+     */
+    public function disconnectedProgressPayload(DomainStatusCheck $check, ?string $since = null): array
+    {
+        $metrics = $this->progressMetrics($check);
+        $summary = $this->recheckSummary($check);
+        $items = $this->progressItems($check, $since);
+        $pendingCount = $metrics['pending'] + $metrics['checking'] + $metrics['retry_pending'];
+
+        return [
+            'server_time' => now()->toIso8601String(),
+            'check' => [
+                'uuid' => $check->uuid,
+                'status' => $check->status,
+                'phase' => $check->phase,
+                'status_message' => $check->status_message,
+                'total' => $check->total_count,
+                'processed' => $check->processed_count,
+                'pending' => $pendingCount,
+                'checking' => $metrics['checking'],
+                'retry_pending' => $metrics['retry_pending'],
+                'progress_percent' => $metrics['progress_percent'],
+                'connected' => $check->connected_count,
+                'disconnected' => $check->disconnected_count,
+                'inventory_updated' => $check->inventory_updated_count,
+                'update_inventory' => $check->update_inventory,
+                'started_at' => $check->started_at?->toIso8601String(),
+                'completed_at' => $check->completed_at?->toIso8601String(),
+                'is_finished' => $check->isFinished(),
+                'started_disconnected' => $summary['started_disconnected'],
+                'now_connected' => $summary['now_connected'],
+                'still_disconnected' => $summary['still_disconnected'],
+                'errors' => $summary['errors'],
+                'by_category' => $summary['by_category'],
+            ],
+            'results' => $items->map(fn ($item) => [
+                'id' => $item->id,
+                'index' => $item->sort_order,
+                'domain' => $item->domain,
+                'check_status' => $item->check_status,
+                'connected' => $item->connected,
+                'status_code' => $item->status_code,
+                'probe_method' => $item->probe_method,
+                'agent_version' => $item->agent_version,
+                'http_status' => $item->http_status,
+                'message' => $item->message,
+                'attempts' => $item->attempts,
+                'response_time_ms' => $item->response_time_ms,
+                'category' => $item->category,
+                'checked_at' => $item->checked_at?->toIso8601String(),
+            ])->values()->all(),
+        ];
+    }
+
+    /**
+     * Summary for disconnected recheck UI / progress.
+     *
+     * @return array{
+     *     started_disconnected: int,
+     *     now_connected: int,
+     *     still_disconnected: int,
+     *     errors: int,
+     *     by_category: array<int, array{category: string, connected: int, disconnected: int}>
+     * }
+     */
+    public function recheckSummary(DomainStatusCheck $check): array
+    {
+        $errorCodes = [
+            'firewall_blocked',
+            'invalid_api_key',
+            'missing_api_key',
+            'invalid_status_response',
+            'agent_not_found',
+        ];
+
+        $errors = DomainStatusCheckItem::query()
+            ->where('domain_status_check_id', $check->id)
+            ->where('check_status', 'disconnected')
+            ->whereIn('status_code', $errorCodes)
+            ->count();
+
+        $byCategory = DomainStatusCheckItem::query()
+            ->where('domain_status_check_id', $check->id)
+            ->whereIn('check_status', ['connected', 'disconnected'])
+            ->selectRaw("
+                COALESCE(NULLIF(TRIM(category), ''), 'Uncategorized') as category_name,
+                SUM(CASE WHEN check_status = 'connected' THEN 1 ELSE 0 END) as connected_count,
+                SUM(CASE WHEN check_status = 'disconnected' THEN 1 ELSE 0 END) as disconnected_count
+            ")
+            ->groupBy('category_name')
+            ->orderBy('category_name')
+            ->get()
+            ->map(fn ($row) => [
+                'category' => (string) $row->category_name,
+                'connected' => (int) $row->connected_count,
+                'disconnected' => (int) $row->disconnected_count,
+            ])
+            ->values()
+            ->all();
+
+        return [
+            'started_disconnected' => (int) $check->total_count,
+            'now_connected' => (int) $check->connected_count,
+            'still_disconnected' => (int) $check->disconnected_count,
+            'errors' => $errors,
+            'by_category' => $byCategory,
+        ];
+    }
+
+    /**
+     * @return \Generator<int, array<int, string|null>>
+     */
+    public function csvRowsForCheck(DomainStatusCheck $check): \Generator
+    {
+        $query = DomainStatusCheckItem::query()
+            ->where('domain_status_check_id', $check->id)
+            ->orderBy('sort_order');
+
+        foreach ($query->cursor() as $item) {
+            $newStatus = match ($item->check_status) {
+                'connected' => 'Connected',
+                'disconnected' => 'Disconnected',
+                'retry_pending' => 'Verifying',
+                'checking' => 'Checking',
+                default => 'Pending',
+            };
+
+            yield [
+                $item->domain,
+                $item->category ?: 'Uncategorized',
+                'Disconnected',
+                $newStatus,
+                $item->status_code,
+                $item->message,
+                $item->probe_method,
+                $item->response_time_ms !== null ? (string) $item->response_time_ms : '',
+                $item->checked_at?->format('Y-m-d H:i:s'),
+            ];
+        }
+    }
+
     public function maxDomains(): int
     {
         return self::MAX_DOMAINS;
+    }
+
+    public function disconnectedMaxDomains(): int
+    {
+        return max(1, (int) config('domain_status_checker.disconnected_max', 10000));
+    }
+
+    public function maxDomainsForSource(string $source): int
+    {
+        return $source === 'disconnected'
+            ? $this->disconnectedMaxDomains()
+            : $this->maxDomains();
     }
 
     public function chunkSize(): int
@@ -513,13 +850,133 @@ class DomainStatusCheckerService
      */
     public function recoverOrphanedItems(DomainStatusCheck $check): int
     {
-        $isRetry = $check->phase === 'retry';
-        $pendingStatus = $isRetry ? 'retry_pending' : 'pending';
-
-        return DomainStatusCheckItem::query()
+        $orphans = DomainStatusCheckItem::query()
             ->where('domain_status_check_id', $check->id)
             ->where('check_status', 'checking')
-            ->update(['check_status' => $pendingStatus]);
+            ->get();
+
+        $count = 0;
+        foreach ($orphans as $item) {
+            $attempts = (int) $item->attempts;
+            $item->update([
+                'check_status' => $attempts > 0 ? 'retry_pending' : 'pending',
+                'next_retry_at' => $attempts > 0
+                    ? ($item->next_retry_at ?? now())
+                    : null,
+            ]);
+            $count++;
+        }
+
+        return $count;
+    }
+
+    public function maxAttempts(): int
+    {
+        return max(1, (int) config('domain_status_checker.max_attempts', 5));
+    }
+
+    /**
+     * Delay after a failed attempt number (1-based).
+     */
+    public function backoffSecondsAfterAttempt(int $attemptNumber): int
+    {
+        $schedule = config('domain_status_checker.backoff_seconds', [60, 120, 240, 300]);
+        if (! is_array($schedule) || $schedule === []) {
+            $schedule = [60, 120, 240, 300];
+        }
+
+        $index = max(0, $attemptNumber - 1);
+        if ($index >= count($schedule)) {
+            return (int) end($schedule);
+        }
+
+        return max(1, (int) $schedule[$index]);
+    }
+
+    public function cancelCheck(DomainStatusCheck $check, string $reason = 'Cancelled by admin'): DomainStatusCheck
+    {
+        if ($check->isFinished()) {
+            return $check;
+        }
+
+        DomainStatusCheckItem::query()
+            ->where('domain_status_check_id', $check->id)
+            ->whereIn('check_status', ['pending', 'checking', 'retry_pending'])
+            ->update([
+                'check_status' => 'disconnected',
+                'connected' => false,
+                'message' => $reason,
+                'next_retry_at' => null,
+                'checked_at' => now(),
+            ]);
+
+        $this->recalculateCheckStats($check->fresh());
+
+        $check->update([
+            'status' => 'cancelled',
+            'phase' => 'done',
+            'status_message' => $reason,
+            'completed_at' => now(),
+        ]);
+
+        $this->purgeQueuedJobsForCheck((int) $check->id);
+
+        return $check->fresh();
+    }
+
+    /**
+     * @return array{cancelled: int, jobs_purged: int}
+     */
+    public function cancelStuckChecks(?int $olderThanMinutes = null): array
+    {
+        $query = DomainStatusCheck::query()
+            ->whereIn('status', ['queued', 'processing']);
+
+        if ($olderThanMinutes !== null && $olderThanMinutes > 0) {
+            $query->where('updated_at', '<=', now()->subMinutes($olderThanMinutes));
+        }
+
+        $cancelled = 0;
+        $jobsPurged = 0;
+
+        $query->orderBy('id')->chunkById(50, function ($checks) use (&$cancelled, &$jobsPurged) {
+            foreach ($checks as $check) {
+                $jobsPurged += $this->purgeQueuedJobsForCheck((int) $check->id);
+                $this->cancelCheck($check, 'Cancelled (stuck leftover run)');
+                $cancelled++;
+            }
+        });
+
+        return [
+            'cancelled' => $cancelled,
+            'jobs_purged' => $jobsPurged,
+        ];
+    }
+
+    public function purgeQueuedJobsForCheck(int $checkId): int
+    {
+        $deleted = 0;
+        $needle = 's:7:"checkId";i:'.$checkId.';';
+
+        foreach (['jobs', 'failed_jobs'] as $table) {
+            if (! Schema::hasTable($table)) {
+                continue;
+            }
+
+            $rows = DB::table($table)->orderBy('id')->get(['id', 'payload']);
+            foreach ($rows as $row) {
+                $payload = (string) ($row->payload ?? '');
+                if (
+                    str_contains($payload, 'ProcessDomainStatusCheckChunkJob')
+                    && str_contains($payload, $needle)
+                ) {
+                    DB::table($table)->where('id', $row->id)->delete();
+                    $deleted++;
+                }
+            }
+        }
+
+        return $deleted;
     }
 
     /**

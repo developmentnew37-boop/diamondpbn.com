@@ -24,12 +24,14 @@ class DomainStatusCheckItem extends Model
         'domain_id',
         'category',
         'checked_at',
+        'next_retry_at',
     ];
 
     protected $casts = [
         'connected' => 'boolean',
         'in_inventory' => 'boolean',
         'checked_at' => 'datetime',
+        'next_retry_at' => 'datetime',
     ];
 
     public function check(): BelongsTo

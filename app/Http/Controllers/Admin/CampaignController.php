@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Exceptions\InsufficientCampaignArticlesException;
+use App\Http\Controllers\Admin\Concerns\AppliesCampaignListStatusFilter;
 use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
 use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
 use App\Http\Controllers\Admin\Concerns\ProvidesLocalClientsForForms;
@@ -40,6 +41,7 @@ use Spatie\SimpleExcel\SimpleExcelWriter;
 
 class CampaignController extends Controller
 {
+    use AppliesCampaignListStatusFilter;
     use AppliesSuperAdminCampaignOwnerFilter;
     use AuthorizesAdminCampaign;
     use ProvidesLocalClientsForForms;
@@ -64,6 +66,7 @@ class CampaignController extends Controller
         $request->validate([
             'search' => 'nullable|string|max:150',
             'filter_user' => 'nullable|string|max:20',
+            'status' => $this->campaignListStatusValidationRule(),
         ]);
 
         // ✅ Clean empty search from URL
@@ -87,6 +90,8 @@ class CampaignController extends Controller
             $search = '%'.trim($request->search).'%';
             $query->where('campaign_no', 'LIKE', $search);
         }
+
+        $this->applyCampaignListStatusFilter($query, $request);
 
         $ownerData = $this->scopeCampaignQueryForOwner($query, $request, $admin);
 

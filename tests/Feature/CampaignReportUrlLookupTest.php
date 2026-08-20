@@ -127,7 +127,8 @@ class CampaignReportUrlLookupTest extends TestCase
                 ->assertSee('12')
                 ->assertSee('9')
                 ->assertSee('2')
-                ->assertSee('Bulk Edit')
+                ->assertSee('Campaign found')
+                ->assertSee('Edit campaign', false)
                 ->assertSee(url("/{$path}/{$campaignNo}/".self::TOKEN), false)
                 ->assertDontSee("{$campaignNo}/".self::TOKEN.'/export', false);
         }

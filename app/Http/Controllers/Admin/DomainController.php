@@ -338,4 +338,55 @@ class DomainController extends Controller
 
         return $writer->toBrowser();
     }
+
+    /**
+     * Form: move all domains from one category to another.
+     */
+    public function moveCategoryForm()
+    {
+        $domainCategories = DomainCategory::query()
+            ->withCount('domains')
+            ->orderBy('name')
+            ->get();
+
+        return view('admin.domains.move-category', compact('domainCategories'));
+    }
+
+    /**
+     * Move every domain in the source category into the target category.
+     */
+    public function processMoveCategory(Request $request)
+    {
+        $validated = $request->validate([
+            'source_category_id' => 'required|integer|exists:domain_categories,id',
+            'target_category_id' => 'required|integer|exists:domain_categories,id|different:source_category_id',
+        ]);
+
+        $sourceId = (int) $validated['source_category_id'];
+        $targetId = (int) $validated['target_category_id'];
+
+        $source = DomainCategory::query()->findOrFail($sourceId);
+        $target = DomainCategory::query()->findOrFail($targetId);
+
+        $count = Domain::query()
+            ->where('domain_category_id', $sourceId)
+            ->count();
+
+        if ($count === 0) {
+            return back()
+                ->withInput()
+                ->with('cus__error', 'No domains found in "'.$source->name.'".');
+        }
+
+        Domain::query()
+            ->where('domain_category_id', $sourceId)
+            ->update(['domain_category_id' => $targetId]);
+
+        return redirect()
+            ->route('admin.domain.index', ['category_id' => $targetId])
+            ->with(
+                'cus__success',
+                "Moved {$count} domain(s) from \"{$source->name}\" to \"{$target->name}\"."
+            );
+    }
 }

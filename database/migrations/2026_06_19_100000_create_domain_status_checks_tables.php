@@ -42,7 +42,7 @@ return new class extends Migration
             $table->unsignedInteger('sort_order')->default(0);
             $table->string('check_status', 20)->default('pending');
             $table->boolean('connected')->nullable();
-            $table->string('message')->nullable();
+            $table->text('message')->nullable();
             $table->unsignedSmallInteger('attempts')->default(0);
             $table->unsignedInteger('response_time_ms')->nullable();
             $table->boolean('in_inventory')->default(false);

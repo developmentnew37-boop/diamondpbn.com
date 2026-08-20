@@ -63,6 +63,11 @@ class DomainStatusCheck extends Model
 
     public function isFinished(): bool
     {
-        return in_array($this->status, ['completed', 'failed'], true);
+        return in_array($this->status, ['completed', 'failed', 'cancelled'], true);
+    }
+
+    public function isCancelled(): bool
+    {
+        return $this->status === 'cancelled';
     }
 }

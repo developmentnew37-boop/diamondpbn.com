@@ -21,7 +21,7 @@
           'admin.sticky.campaign',
       ];
       $findCampaignRoutes = ['admin.reports.find-campaign'];
-      $domainRoutes = ['admin.set', 'admin.select.category', 'admin.domain', 'admin.redirect', 'admin.webhook-secrets', 'admin.pending-domains', 'admin.transfer-domains', 'admin.domain.status-checker'];
+      $domainRoutes = ['admin.set', 'admin.select.category', 'admin.domain', 'admin.redirect', 'admin.webhook-secrets', 'admin.pending-domains', 'admin.transfer-domains', 'admin.domain.status-checker', 'admin.domain.recheck-disconnected'];
       $articleAddRoutes = [
           'admin.articles.opt',
           'admin.articles.category',
@@ -159,8 +159,12 @@
                       Domains</a>
                   <a href="{{ route('admin.domain.status-checker') }}"
                       class="submenu-item {{ str_starts_with($currentRoute, 'admin.domain.status-checker') ? 'active' : '' }}">Status Checker</a>
+                  <a href="{{ route('admin.domain.recheck-disconnected') }}"
+                      class="submenu-item {{ str_starts_with($currentRoute, 'admin.domain.recheck-disconnected') ? 'active' : '' }}">Recheck Disconnected</a>
                   <a href="{{ route('admin.domain.category.index') }}"
                       class="submenu-item {{ str_starts_with($currentRoute, 'admin.domain.category') ? 'active' : '' }} !flex justify-between">Category</a>
+                  <a href="{{ route('admin.domain.move-category') }}"
+                      class="submenu-item {{ str_starts_with($currentRoute, 'admin.domain.move-category') ? 'active' : '' }}">Move Category</a>
                   <a href="{{ route('admin.pending-domains.index') }}"
                       class="submenu-item submenu-item-with-badge {{ str_starts_with($currentRoute, 'admin.pending-domains') ? 'active' : '' }}">
                       <span class="submenu-item-text">Pending Domains</span>

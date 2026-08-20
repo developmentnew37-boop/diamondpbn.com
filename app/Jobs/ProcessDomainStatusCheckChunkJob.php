@@ -35,10 +35,6 @@ class ProcessDomainStatusCheckChunkJob implements ShouldQueue
             return;
         }
 
-        if ($this->phase === 'retry' && $check->phase !== 'retry') {
-            $check->update(['phase' => 'retry']);
-        }
-
         $lock = Cache::lock('domain_status_check:'.$check->id, $checker->lockSeconds());
 
         if (! $lock->get()) {
@@ -56,12 +52,18 @@ class ProcessDomainStatusCheckChunkJob implements ShouldQueue
                 return;
             }
 
-            $checker->processNextChunk($check);
+            $delaySeconds = $checker->processNextChunk($check);
             $check->refresh();
 
-            if (! $check->isFinished()) {
-                self::dispatch($check->id, $check->phase === 'retry' ? 'retry' : 'initial')
-                    ->onQueue('domainCheck');
+            if ($check->isFinished() || $delaySeconds === null) {
+                return;
+            }
+
+            $job = self::dispatch($check->id, $check->phase === 'backoff' ? 'backoff' : 'initial')
+                ->onQueue('domainCheck');
+
+            if ($delaySeconds > 0) {
+                $job->delay(now()->addSeconds($delaySeconds));
             }
         } finally {
             $lock->release();
@@ -86,6 +88,10 @@ class ProcessDomainStatusCheckChunkJob implements ShouldQueue
         $checker->recoverOrphanedItems($check);
         $check->refresh();
 
+        if ($check->isFinished()) {
+            return;
+        }
+
         // Fatal code errors should stop the loop; restart the queue worker after deploying.
         if ($exception instanceof \Error) {
             $check->update([
@@ -104,17 +110,19 @@ class ProcessDomainStatusCheckChunkJob implements ShouldQueue
             return;
         }
 
-        $pendingStatus = $check->phase === 'retry' ? 'retry_pending' : 'pending';
-        $hasPending = $check->items()->where('check_status', $pendingStatus)->exists();
+        $hasWork = $check->items()
+            ->whereIn('check_status', ['pending', 'retry_pending'])
+            ->exists();
 
-        if ($hasPending) {
+        if ($hasWork) {
+            $delay = $checker->secondsUntilNextReadyWork($check) ?? 5;
             $check->update([
                 'status' => 'processing',
                 'status_message' => 'Resuming after worker interruption...',
             ]);
 
-            self::dispatch($check->id, $check->phase === 'retry' ? 'retry' : 'initial')
-                ->delay(now()->addSeconds(5))
+            self::dispatch($check->id, $check->phase === 'backoff' ? 'backoff' : 'initial')
+                ->delay(now()->addSeconds(max(5, $delay)))
                 ->onQueue('domainCheck');
 
             Log::warning('Domain status check job failed; re-queued pending items', [

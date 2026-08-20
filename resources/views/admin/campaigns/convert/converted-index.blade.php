@@ -55,6 +55,7 @@
 
         @include('admin.campaigns.partials.campaign-list-toolbar', [
             'searchPlaceholder' => 'Search dripfeed or source campaign…',
+            'showStatusFilter' => false,
         ])
     </div>
 

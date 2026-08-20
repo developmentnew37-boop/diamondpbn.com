@@ -55,6 +55,7 @@
 
         @include('admin.campaigns.partials.campaign-list-toolbar', [
             'searchPlaceholder' => 'Search scheduled or source sidebar campaign…',
+            'showStatusFilter' => false,
         ])
     </div>
 

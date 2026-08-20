@@ -89,6 +89,9 @@
 
     {{-- ================= Campaign Header ================= --}}
     @include('admin.campaigns.partials.local-client-billing')
+
+    @include('admin.campaigns.partials.schedule-domain-replacements')
+
     <div class="content-card w-full">
 
         <h2 class="text-lg !mb-4 bg-[var(--primary-color)] text-white !px-4 !py-2 rounded w-fit">

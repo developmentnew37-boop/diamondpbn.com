@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Admin\Concerns\AppliesCampaignListStatusFilter;
 use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
 use App\Http\Controllers\Admin\Concerns\AuthorizesAdminCampaign;
 use App\Http\Controllers\Admin\Concerns\ProvidesLocalClientsForForms;
@@ -41,6 +42,7 @@ use Spatie\SimpleExcel\SimpleExcelWriter;
 
 class ScheduleSidebarCampaignController extends Controller
 {
+    use AppliesCampaignListStatusFilter;
     use AppliesSuperAdminCampaignOwnerFilter;
     use AuthorizesAdminCampaign;
     use ProvidesLocalClientsForForms;
@@ -62,7 +64,7 @@ class ScheduleSidebarCampaignController extends Controller
         $request->validate([
             'search' => 'nullable|string|max:150',
             'filter_user' => 'nullable|string|max:20',
-            'status' => 'nullable|in:queued,running,paused,completed,failed',
+            'status' => $this->campaignListStatusValidationRule(),
             'from' => 'nullable|date',
             'to' => 'nullable|date',
         ]);
@@ -108,9 +110,7 @@ class ScheduleSidebarCampaignController extends Controller
         /* ============================
      | Filter: status
      ============================ */
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        }
+        $this->applyCampaignListStatusFilter($query, $request);
 
         /* ============================
      | Filter: schedule date range
@@ -827,9 +827,19 @@ class ScheduleSidebarCampaignController extends Controller
 
         $offset = ($campaignTasks->currentPage() - 1) * $limit;
 
+        $recentReplacements = collect();
+        if (\Illuminate\Support\Facades\Schema::hasTable('schedule_sidebar_campaign_domain_replacements')) {
+            $recentReplacements = \App\Models\Admin\ScheduleSidebarCampaignDomainReplacement::query()
+                ->where('schedule_sidebar_campaign_id', $campaign->id)
+                ->whereIn('state', ['dispatch_pending', 'dispatching', 'dispatch_failed', 'completed'])
+                ->latest()
+                ->limit(10)
+                ->get();
+        }
+
         return view(
             'admin.campaigns.pbn-sidebar.view-schedule-campaign',
-            compact('campaign', 'campaignTasks', 'offset', 'statusFilter', 'statusCounts', 'isConvertedLiveCampaign')
+            compact('campaign', 'campaignTasks', 'offset', 'statusFilter', 'statusCounts', 'isConvertedLiveCampaign', 'recentReplacements')
         );
     }
 

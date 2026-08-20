@@ -3,6 +3,7 @@
 @section('title', 'Find Campaign')
 
 @push('style')
+    @include('admin.campaigns.partials.campaign-list-table-styles')
     <style>
         .report-lookup-card {
             border: 1px solid #e5e7eb;
@@ -37,29 +38,63 @@
             cursor: pointer;
         }
 
-        .report-action {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 38px;
-            padding: 0.5rem 0.875rem;
-            border: 1px solid var(--primary-color);
-            border-radius: 0.25rem;
-            color: var(--primary-color);
-            background: #fff;
-            text-decoration: none;
-            cursor: pointer;
-        }
-
-        .report-action:hover,
-        .report-action.primary {
-            color: #fff;
-            background: var(--primary-color);
+        .find-campaign-table thead th {
+            background-color: #1f2937 !important;
+            color: #ffffff !important;
+            border-color: #374151 !important;
         }
     </style>
 @endpush
 
 @section('main-content')
+    @php
+        $clTh = 'border border-gray-200 font-sans !font-normal !px-2 !py-3 capitalize text-left';
+        $clTd = 'border border-gray-200 font-sans !px-2 !py-3';
+        $clTdCenter = 'border border-gray-200 font-sans !px-2 !py-3 text-center';
+        $clTdProgress = 'border border-gray-200 font-sans !px-2 !py-3 min-w-[140px]';
+        $clTdActions = 'actions-col border border-gray-200 font-sans !px-2 !py-3 min-w-[252px]';
+
+        $resolveFindCampaignStatus = function (array $row): array {
+            $total = (int) ($row['total_targets'] ?? 0);
+            $completed = (int) ($row['completed_targets'] ?? 0);
+            $failed = (int) ($row['failed_targets'] ?? 0);
+            $pending = max($total - ($completed + $failed), 0);
+            $raw = strtolower(str_replace([' ', '-'], '_', (string) ($row['status'] ?? '')));
+
+            if ($pending > 0 || in_array($raw, ['running', 'publishing', 'queued'], true)) {
+                if ($raw === 'queued' && $pending === $total) {
+                    return ['queued', 'bg-gray-100 text-gray-600'];
+                }
+                if (in_array($raw, ['paused', 'cancelled'], true)) {
+                    return [$raw === 'paused' ? 'paused' : 'cancelled', 'bg-gray-100 text-gray-600'];
+                }
+
+                return ['running', 'bg-yellow-100 text-yellow-700'];
+            }
+
+            if ($failed === $total && $total > 0) {
+                return ['failed', 'bg-red-100 text-red-700'];
+            }
+
+            if ($completed === $total && $total > 0) {
+                return ['complete', 'bg-green-100 text-green-700'];
+            }
+
+            if ($completed + $failed === $total && $total > 0) {
+                return ['semi-complete', 'bg-orange-100 text-orange-700'];
+            }
+
+            return match ($raw) {
+                'failed' => ['failed', 'bg-red-100 text-red-700'],
+                'completed', 'complete' => ['complete', 'bg-green-100 text-green-700'],
+                'semi_failed', 'semi_complete' => ['semi-complete', 'bg-orange-100 text-orange-700'],
+                'paused' => ['paused', 'bg-gray-100 text-gray-600'],
+                'cancelled' => ['cancelled', 'bg-gray-100 text-gray-600'],
+                default => [str_replace('_', ' ', $raw) ?: 'queued', 'bg-gray-100 text-gray-600'],
+            };
+        };
+    @endphp
+
     <div class="page-header w-full">
         <div class="flex flex-col gap-2">
             <h2 class="page-title">Find Campaign</h2>
@@ -112,47 +147,84 @@
     </div>
 
     @if (! empty($keywordResults))
-        <div class="content-card w-full !mb-5">
-            <h3 class="text-lg font-semibold !mb-4">
+        <div class="w-full flex flex-wrap justify-between items-start content-card !mb-5">
+            <h2 class="text-xl capitalize !mb-4 bg-[var(--primary-color)] text-white w-fit !p-2 rounded">
                 {{ count($keywordResults) }} campaign{{ count($keywordResults) === 1 ? '' : 's' }} found
-            </h3>
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm text-left">
-                    <thead class="bg-gray-50">
+            </h2>
+
+            <div class="overflow-x-auto !mt-3 w-full max-w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
+                <table class="campaign-list-table find-campaign-table display w-full min-w-[1100px] border border-gray-200 border-collapse text-sm whitespace-nowrap">
+                    <thead>
                         <tr>
-                            <th class="!p-3">Type</th>
-                            <th class="!p-3">Campaign #</th>
-                            <th class="!p-3">Keyword</th>
-                            <th class="!p-3">Matched URL</th>
-                            <th class="!p-3">Status</th>
-                            <th class="!p-3">Created</th>
-                            <th class="!p-3">Owner</th>
-                            <th class="!p-3">Actions</th>
+                            @foreach ([
+                                'sno',
+                                'Type',
+                                'Campaign No',
+                                'Keyword',
+                                'Total Targets',
+                                'Completed',
+                                'Failed',
+                                'Pending',
+                                'Progress',
+                                'Status',
+                                'Created At',
+                                'Owner',
+                                'Actions',
+                            ] as $t)
+                                <th @class([
+                                    $clTh,
+                                    'actions-col' => $t === 'Actions',
+                                ])>{{ $t }}</th>
+                            @endforeach
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach ($keywordResults as $row)
-                            <tr class="border-t border-gray-200 align-top">
-                                <td class="!p-3">{{ $row['type'] }}</td>
-                                <td class="!p-3">{{ $row['campaign_no'] }}</td>
-                                <td class="!p-3">{{ $row['keyword'] ?? '—' }}</td>
-                                <td class="!p-3 break-all max-w-xs">{{ $row['matched_url'] }}</td>
-                                <td class="!p-3">{{ ucfirst(str_replace('_', ' ', $row['status'])) }}</td>
-                                <td class="!p-3">{{ $row['created_at']?->format('M j, Y g:i A') ?? '—' }}</td>
-                                <td class="!p-3">{{ $row['owner'] }}</td>
-                                <td class="!p-3">
-                                    <div class="flex flex-wrap gap-2">
-                                        <a href="{{ $row['manage_url'] }}" class="report-action primary">Manage</a>
-                                        @if (! empty($row['bulk_edit_url']))
-                                            <a href="{{ $row['bulk_edit_url'] }}" class="report-action">Bulk Edit</a>
-                                        @endif
-                                        @if (! empty($row['report_url']))
-                                            <a href="{{ $row['report_url'] }}" class="report-action" target="_blank" rel="noopener">Report</a>
-                                        @endif
-                                        @if (! empty($row['bulk_replace_url']))
-                                            <a href="{{ $row['bulk_replace_url'] }}" class="report-action">Bulk Replace Domains</a>
-                                        @endif
-                                    </div>
+                        @foreach ($keywordResults as $index => $row)
+                            @php
+                                $total = (int) ($row['total_targets'] ?? 0);
+                                $completed = (int) ($row['completed_targets'] ?? 0);
+                                $failed = (int) ($row['failed_targets'] ?? 0);
+                                $pending = max($total - ($completed + $failed), 0);
+                                $progress = $total > 0 ? round(($completed / $total) * 100, 1) : 0;
+                                [$statusLabel, $statusClass] = $resolveFindCampaignStatus($row);
+                            @endphp
+                            <tr class="hover:bg-gray-50">
+                                <td class="{{ $clTdCenter }}">{{ $index + 1 }}</td>
+                                <td class="{{ $clTd }}">{{ $row['type'] }}</td>
+                                <td class="{{ $clTd }}">
+                                    <div>{{ $row['campaign_no'] }}</div>
+                                    @if (! empty($row['matched_url']))
+                                        <div class="text-[11px] text-gray-500 whitespace-normal break-all max-w-[220px]">
+                                            {{ $row['matched_url'] }}
+                                        </div>
+                                    @endif
+                                </td>
+                                <td class="{{ $clTd }}">{{ $row['keyword'] ?? '—' }}</td>
+                                <td class="{{ $clTdCenter }}">{{ $total }}</td>
+                                <td class="{{ $clTdCenter }}">{{ $completed }}</td>
+                                <td class="{{ $clTdCenter }}">{{ $failed }}</td>
+                                <td class="{{ $clTdCenter }}">{{ $pending }}</td>
+                                <td class="{{ $clTdProgress }}">
+                                    @include('admin.campaigns.partials.campaign-list-progress', ['progress' => $progress])
+                                </td>
+                                <td class="{{ $clTdCenter }}">
+                                    @include('admin.campaigns.partials.campaign-list-status-badge', [
+                                        'label' => ucfirst($statusLabel),
+                                        'statusClass' => $statusClass,
+                                    ])
+                                </td>
+                                <td class="{{ $clTd }}">
+                                    {{ $row['created_at']?->format('d-M-Y H:i') ?? '—' }}
+                                </td>
+                                <td class="{{ $clTd }}">{{ $row['owner'] }}</td>
+                                <td class="{{ $clTdActions }}">
+                                    @include('admin.campaigns.partials.campaign-list-actions', [
+                                        'viewUrl' => $row['manage_url'],
+                                        'editUrl' => $row['bulk_edit_url'] ?? null,
+                                        'reportUrl' => $row['report_url'] ?? null,
+                                        'bulkReplaceUrl' => $row['bulk_replace_url'] ?? null,
+                                        'openReportInNewTab' => true,
+                                    ])
                                 </td>
                             </tr>
                         @endforeach
@@ -200,51 +272,74 @@
 
     @isset($result)
         @if ($result)
-            <div class="content-card w-full !mt-5">
-                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between !mb-4">
-                    <h3 class="text-lg font-semibold">Campaign found</h3>
-                    <div class="flex flex-wrap gap-2">
-                        <a href="{{ $result['manage_url'] }}" class="report-action primary">Manage Campaign</a>
-                        @if (! empty($result['bulk_edit_url']))
-                            <a href="{{ $result['bulk_edit_url'] }}" class="report-action">Bulk Edit</a>
-                        @endif
-                        <a href="{{ $result['report_url'] }}" class="report-action" target="_blank" rel="noopener">Open Report</a>
-                        @if (! empty($result['bulk_replace_url']))
-                            <a href="{{ $result['bulk_replace_url'] }}" class="report-action">Bulk Replace Domains</a>
-                        @endif
-                        <button
-                            type="button"
-                            class="report-action"
-                            id="copy-report-url"
-                            data-report-url="{{ $result['report_url'] }}"
-                        >Copy Report URL</button>
-                    </div>
-                </div>
+            <div class="w-full flex flex-wrap justify-between items-start content-card !mt-5">
+                <h2 class="text-xl capitalize !mb-4 bg-[var(--primary-color)] text-white w-fit !p-2 rounded">
+                    Campaign found
+                </h2>
 
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm text-left">
-                        <thead class="bg-gray-50">
+                @php
+                    $total = (int) ($result['total_targets'] ?? 0);
+                    $completed = (int) ($result['completed_targets'] ?? 0);
+                    $failed = (int) ($result['failed_targets'] ?? 0);
+                    $pending = max($total - ($completed + $failed), 0);
+                    $progress = $total > 0 ? round(($completed / $total) * 100, 1) : 0;
+                    [$statusLabel, $statusClass] = $resolveFindCampaignStatus($result);
+                @endphp
+
+                <div class="overflow-x-auto !mt-3 w-full max-w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
+                    <table class="campaign-list-table find-campaign-table display w-full min-w-[1100px] border border-gray-200 border-collapse text-sm whitespace-nowrap">
+                        <thead>
                             <tr>
-                                <th class="!p-3">Type</th>
-                                <th class="!p-3">Campaign #</th>
-                                <th class="!p-3">Status</th>
-                                <th class="!p-3">Created</th>
-                                <th class="!p-3">Owner</th>
-                                <th class="!p-3">Total</th>
-                                <th class="!p-3">Completed</th>
-                                <th class="!p-3">Failed</th>
+                                @foreach ([
+                                    'Type',
+                                    'Campaign No',
+                                    'Total Targets',
+                                    'Completed',
+                                    'Failed',
+                                    'Pending',
+                                    'Progress',
+                                    'Status',
+                                    'Created At',
+                                    'Owner',
+                                    'Actions',
+                                ] as $t)
+                                    <th @class([
+                                        $clTh,
+                                        'actions-col' => $t === 'Actions',
+                                    ])>{{ $t }}</th>
+                                @endforeach
                             </tr>
                         </thead>
                         <tbody>
-                            <tr class="border-t border-gray-200">
-                                <td class="!p-3">{{ $result['type'] }}</td>
-                                <td class="!p-3">{{ $result['campaign_no'] }}</td>
-                                <td class="!p-3">{{ ucfirst(str_replace('_', ' ', $result['status'])) }}</td>
-                                <td class="!p-3">{{ $result['created_at']?->format('M j, Y g:i A') ?? '—' }}</td>
-                                <td class="!p-3">{{ $result['owner'] }}</td>
-                                <td class="!p-3">{{ number_format($result['total_targets']) }}</td>
-                                <td class="!p-3">{{ number_format($result['completed_targets']) }}</td>
-                                <td class="!p-3">{{ number_format($result['failed_targets']) }}</td>
+                            <tr class="hover:bg-gray-50">
+                                <td class="{{ $clTd }}">{{ $result['type'] }}</td>
+                                <td class="{{ $clTd }}">{{ $result['campaign_no'] }}</td>
+                                <td class="{{ $clTdCenter }}">{{ $total }}</td>
+                                <td class="{{ $clTdCenter }}">{{ $completed }}</td>
+                                <td class="{{ $clTdCenter }}">{{ $failed }}</td>
+                                <td class="{{ $clTdCenter }}">{{ $pending }}</td>
+                                <td class="{{ $clTdProgress }}">
+                                    @include('admin.campaigns.partials.campaign-list-progress', ['progress' => $progress])
+                                </td>
+                                <td class="{{ $clTdCenter }}">
+                                    @include('admin.campaigns.partials.campaign-list-status-badge', [
+                                        'label' => ucfirst($statusLabel),
+                                        'statusClass' => $statusClass,
+                                    ])
+                                </td>
+                                <td class="{{ $clTd }}">
+                                    {{ $result['created_at']?->format('d-M-Y H:i') ?? '—' }}
+                                </td>
+                                <td class="{{ $clTd }}">{{ $result['owner'] }}</td>
+                                <td class="{{ $clTdActions }}">
+                                    @include('admin.campaigns.partials.campaign-list-actions', [
+                                        'viewUrl' => $result['manage_url'],
+                                        'editUrl' => $result['bulk_edit_url'] ?? null,
+                                        'reportUrl' => $result['report_url'] ?? null,
+                                        'bulkReplaceUrl' => $result['bulk_replace_url'] ?? null,
+                                        'openReportInNewTab' => true,
+                                    ])
+                                </td>
                             </tr>
                         </tbody>
                     </table>
@@ -255,14 +350,5 @@
 @endsection
 
 @push('scripts')
-    <script>
-        document.getElementById('copy-report-url')?.addEventListener('click', async function () {
-            await navigator.clipboard.writeText(this.dataset.reportUrl);
-            const originalText = this.textContent;
-            this.textContent = 'Copied';
-            window.setTimeout(() => {
-                this.textContent = originalText;
-            }, 1500);
-        });
-    </script>
+    <script src="{{ asset('js/copy.js') }}"></script>
 @endpush
