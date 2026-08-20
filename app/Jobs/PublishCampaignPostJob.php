@@ -175,6 +175,12 @@ class PublishCampaignPostJob implements ShouldQueue
                 // ➕ Increment locally
                 $campaign->completed_targets++;
 
+                // Keep list filters/badges honest while work is in progress
+                if (in_array((string) $campaign->status, ['queued', ''], true)
+                    && ($campaign->completed_targets + $campaign->failed_targets) < $campaign->total_targets) {
+                    $campaign->status = 'running';
+                }
+
                 // ✅ Check completion
                 if ($campaign->completed_targets >= $campaign->total_targets) {
                     $campaign->status = 'completed';

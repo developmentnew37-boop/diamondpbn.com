@@ -141,7 +141,7 @@
                             $progress = $total > 0 ? round(($completed / $total) * 100, 1) : 0;
 
                             $isBulkUpdated = $campaign->last_bulk_updated_at !== null;
-                            if ($pending > 0 && $completed > 0) {
+                            if ($pending > 0 && ($completed > 0 || $failed > 0)) {
                                 $status = 'running';
                                 $statusClass = 'bg-yellow-100 text-yellow-700';
                             } elseif ($completed + $failed === $total && $failed === 0 && $total > 0) {
@@ -150,6 +150,9 @@
                             } elseif ($failed === $total && $total > 0) {
                                 $status = 'failed';
                                 $statusClass = 'bg-red-100 text-red-700';
+                            } elseif ($completed + $failed === $total && $completed > 0 && $failed > 0) {
+                                $status = 'semi-complete';
+                                $statusClass = 'bg-orange-100 text-orange-700';
                             } else {
                                 $status = 'queued';
                                 $statusClass = 'bg-gray-100 text-gray-600';

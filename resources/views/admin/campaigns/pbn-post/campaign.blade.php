@@ -137,7 +137,7 @@
 
                             // ✅ Status: show "Updated" when campaign was bulk-updated after completion
                             $isBulkUpdated = $campaign->last_bulk_updated_at !== null;
-                            if ($pending > 0) {
+                            if ($pending > 0 && ($completed > 0 || $failed > 0)) {
                                 $status = 'running';
                                 $statusClass = 'bg-yellow-100 text-yellow-700';
                             } elseif ($failed === $total && $total > 0) {

@@ -286,7 +286,42 @@ class CampaignListStatusFilterTest extends TestCase
             ->get(route('admin.campaign.index', ['status' => 'running']))
             ->assertOk()
             ->assertSee('CMP-RUN')
-            ->assertDontSee('CMP-SEMI');
+            ->assertDontSee('CMP-SEMI')
+            ->assertDontSee('CMP-QUEUE');
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.campaign.index', ['status' => 'queued']))
+            ->assertOk()
+            ->assertSee('CMP-QUEUE')
+            ->assertDontSee('CMP-RUN')
+            ->assertDontSee('CMP-STALE-DB');
+    }
+
+    public function test_stale_db_queued_with_progress_shows_under_running_not_queued(): void
+    {
+        $admin = $this->createAdmin();
+
+        Campaign::query()->create([
+            'campaign_no' => 'CMP-STALE-DB',
+            'domain_category_id' => 1,
+            'admin_id' => $admin->id,
+            'status' => 'queued', // stale DB status while work progressed
+            'is_sticky_campaign' => false,
+            'total_targets' => 80,
+            'completed_targets' => 75,
+            'failed_targets' => 0,
+            'report_token' => Str::random(64),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.campaign.index', ['status' => 'queued']))
+            ->assertOk()
+            ->assertDontSee('CMP-STALE-DB');
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.campaign.index', ['status' => 'running']))
+            ->assertOk()
+            ->assertSee('CMP-STALE-DB');
     }
 
     public function test_post_campaign_index_rejects_invalid_status(): void
@@ -307,6 +342,9 @@ class CampaignListStatusFilterTest extends TestCase
             'domain_category_id' => 1,
             'admin_id' => $admin->id,
             'status' => 'semi_failed',
+            'total_targets' => 2,
+            'completed_targets' => 1,
+            'failed_targets' => 1,
             'report_token' => Str::random(64),
         ]);
         SidebarCampaign::query()->create([
@@ -314,6 +352,9 @@ class CampaignListStatusFilterTest extends TestCase
             'domain_category_id' => 1,
             'admin_id' => $admin->id,
             'status' => 'completed',
+            'total_targets' => 2,
+            'completed_targets' => 2,
+            'failed_targets' => 0,
             'report_token' => Str::random(64),
         ]);
 
@@ -322,6 +363,9 @@ class CampaignListStatusFilterTest extends TestCase
             'domain_category_id' => 1,
             'admin_id' => $admin->id,
             'status' => 'failed',
+            'total_targets' => 2,
+            'completed_targets' => 0,
+            'failed_targets' => 2,
             'report_token' => Str::random(64),
         ]);
         HiddenLinksCampaign::query()->create([
@@ -329,6 +373,9 @@ class CampaignListStatusFilterTest extends TestCase
             'domain_category_id' => 1,
             'admin_id' => $admin->id,
             'status' => 'completed',
+            'total_targets' => 2,
+            'completed_targets' => 2,
+            'failed_targets' => 0,
             'report_token' => Str::random(64),
         ]);
 
@@ -338,6 +385,9 @@ class CampaignListStatusFilterTest extends TestCase
             'admin_id' => $admin->id,
             'status' => 'queued',
             'is_sticky_campaign' => false,
+            'total_targets' => 2,
+            'completed_targets' => 0,
+            'failed_targets' => 0,
             'report_token' => Str::random(64),
         ]);
         ScheduleCampaign::query()->create([
@@ -346,6 +396,9 @@ class CampaignListStatusFilterTest extends TestCase
             'admin_id' => $admin->id,
             'status' => 'completed',
             'is_sticky_campaign' => false,
+            'total_targets' => 2,
+            'completed_targets' => 2,
+            'failed_targets' => 0,
             'report_token' => Str::random(64),
         ]);
 
@@ -353,7 +406,10 @@ class CampaignListStatusFilterTest extends TestCase
             'campaign_no' => 'SS-RUN',
             'domain_category_id' => 1,
             'admin_id' => $admin->id,
-            'status' => 'running',
+            'status' => 'queued',
+            'total_targets' => 2,
+            'completed_targets' => 1,
+            'failed_targets' => 0,
             'report_token' => Str::random(64),
         ]);
         ScheduleSidebarCampaign::query()->create([
@@ -361,6 +417,9 @@ class CampaignListStatusFilterTest extends TestCase
             'domain_category_id' => 1,
             'admin_id' => $admin->id,
             'status' => 'completed',
+            'total_targets' => 2,
+            'completed_targets' => 2,
+            'failed_targets' => 0,
             'report_token' => Str::random(64),
         ]);
 
@@ -391,22 +450,24 @@ class CampaignListStatusFilterTest extends TestCase
 
     private function seedCampaigns(int $adminId): void
     {
-        foreach ([
-            'CMP-SEMI' => 'semi_failed',
-            'CMP-DONE' => 'completed',
-            'CMP-FAIL' => 'failed',
-            'CMP-RUN' => 'running',
-            'CMP-QUEUE' => 'queued',
-        ] as $no => $status) {
+        $rows = [
+            'CMP-SEMI' => ['status' => 'semi_failed', 'total' => 2, 'completed' => 1, 'failed' => 1],
+            'CMP-DONE' => ['status' => 'completed', 'total' => 2, 'completed' => 2, 'failed' => 0],
+            'CMP-FAIL' => ['status' => 'failed', 'total' => 2, 'completed' => 0, 'failed' => 2],
+            'CMP-RUN' => ['status' => 'queued', 'total' => 80, 'completed' => 75, 'failed' => 0],
+            'CMP-QUEUE' => ['status' => 'queued', 'total' => 2, 'completed' => 0, 'failed' => 0],
+        ];
+
+        foreach ($rows as $no => $row) {
             Campaign::query()->create([
                 'campaign_no' => $no,
                 'domain_category_id' => 1,
                 'admin_id' => $adminId,
-                'status' => $status,
+                'status' => $row['status'],
                 'is_sticky_campaign' => false,
-                'total_targets' => 2,
-                'completed_targets' => $status === 'completed' ? 2 : ($status === 'semi_failed' ? 1 : 0),
-                'failed_targets' => $status === 'failed' ? 2 : ($status === 'semi_failed' ? 1 : 0),
+                'total_targets' => $row['total'],
+                'completed_targets' => $row['completed'],
+                'failed_targets' => $row['failed'],
                 'report_token' => Str::random(64),
             ]);
         }

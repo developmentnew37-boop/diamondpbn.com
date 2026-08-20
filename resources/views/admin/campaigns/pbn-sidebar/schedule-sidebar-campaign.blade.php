@@ -137,9 +137,16 @@
 
                             $progress = $total > 0 ? round(($completed / $total) * 100, 1) : 0;
 
-                            $displayStatus = $campaign->status;
-                            if ($total > 0 && $completed === $total && $failed === 0) {
+                            if ($pending > 0 && ($completed > 0 || $failed > 0)) {
+                                $displayStatus = 'running';
+                            } elseif ($failed === $total && $total > 0) {
+                                $displayStatus = 'failed';
+                            } elseif ($completed === $total && $total > 0) {
                                 $displayStatus = 'completed';
+                            } elseif ($completed + $failed === $total && $completed > 0 && $failed > 0) {
+                                $displayStatus = 'semi_failed';
+                            } else {
+                                $displayStatus = 'queued';
                             }
 
                             $statusClass = match ($displayStatus) {

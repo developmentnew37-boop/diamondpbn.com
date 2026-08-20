@@ -134,15 +134,18 @@
                             $pending = max($total - ($completed + $failed), 0);
                             $progress = $total > 0 ? round(($completed / $total) * 100, 1) : 0;
 
-                            if ($pending > 0) {
+                            if ($pending > 0 && ($completed > 0 || $failed > 0)) {
                                 $status = 'running';
                                 $statusClass = 'bg-yellow-100 text-yellow-700';
                             } elseif ($failed === $total && $total > 0) {
                                 $status = 'failed';
                                 $statusClass = 'bg-red-100 text-red-700';
-                            } elseif ($completed + $failed === $total && $total > 0) {
+                            } elseif ($completed === $total && $total > 0) {
                                 $status = 'completed';
                                 $statusClass = 'bg-green-100 text-green-700';
+                            } elseif ($completed + $failed === $total && $total > 0) {
+                                $status = 'semi-complete';
+                                $statusClass = 'bg-orange-100 text-orange-700';
                             } else {
                                 $status = 'queued';
                                 $statusClass = 'bg-gray-100 text-gray-600';
