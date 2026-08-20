@@ -324,6 +324,41 @@ class CampaignListStatusFilterTest extends TestCase
             ->assertSee('CMP-STALE-DB');
     }
 
+    public function test_running_filter_tolerates_overcounted_targets(): void
+    {
+        $admin = $this->createAdmin();
+
+        Campaign::query()->create([
+            'campaign_no' => 'CMP-OVERCOUNT',
+            'domain_category_id' => 1,
+            'admin_id' => $admin->id,
+            'status' => 'running',
+            'is_sticky_campaign' => false,
+            'total_targets' => 10,
+            'completed_targets' => 8,
+            'failed_targets' => 5, // completed + failed > total (unsigned-safe path)
+            'report_token' => Str::random(64),
+        ]);
+
+        Campaign::query()->create([
+            'campaign_no' => 'CMP-STILL-RUN',
+            'domain_category_id' => 1,
+            'admin_id' => $admin->id,
+            'status' => 'running',
+            'is_sticky_campaign' => false,
+            'total_targets' => 10,
+            'completed_targets' => 3,
+            'failed_targets' => 0,
+            'report_token' => Str::random(64),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.campaign.index', ['status' => 'running']))
+            ->assertOk()
+            ->assertSee('CMP-STILL-RUN')
+            ->assertDontSee('CMP-OVERCOUNT');
+    }
+
     public function test_post_campaign_index_rejects_invalid_status(): void
     {
         $admin = $this->createAdmin();

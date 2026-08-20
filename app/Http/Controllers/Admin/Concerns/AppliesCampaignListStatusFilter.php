@@ -42,11 +42,6 @@ trait AppliesCampaignListStatusFilter
             return;
         }
 
-        $driver = $query->getConnection()->getDriverName();
-        $pendingExpr = $driver === 'sqlite'
-            ? 'MAX(total_targets - (completed_targets + failed_targets), 0)'
-            : 'GREATEST(total_targets - (completed_targets + failed_targets), 0)';
-
         match ($status) {
             'queued' => $query
                 ->where('completed_targets', 0)
@@ -55,8 +50,9 @@ trait AppliesCampaignListStatusFilter
                     $inner->where('total_targets', 0)
                         ->orWhereRaw('(completed_targets + failed_targets) < total_targets');
                 }),
+            // Compare sums — never subtract UNSIGNED columns (MySQL underflow if done > total).
             'running' => $query
-                ->whereRaw("{$pendingExpr} > 0")
+                ->whereRaw('(completed_targets + failed_targets) < total_targets')
                 ->where(function (Builder $inner) {
                     $inner->where('completed_targets', '>', 0)
                         ->orWhere('failed_targets', '>', 0)
