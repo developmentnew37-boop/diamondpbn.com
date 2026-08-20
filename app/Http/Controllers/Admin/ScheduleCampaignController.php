@@ -122,6 +122,7 @@ class ScheduleCampaignController extends Controller
         $request->validate([
             'search' => 'nullable|string|max:150',
             'filter_user' => 'nullable|string|max:20',
+            'status' => $this->campaignListStatusValidationRule(),
         ]);
 
         $limit = config('campaign.pagination.default_limit');
@@ -139,6 +140,9 @@ class ScheduleCampaignController extends Controller
                 '%'.trim($request->search).'%'
             );
         }
+
+        $this->applyCampaignListStatusFilter($query, $request);
+
         $admin = Auth::guard('admin')->user();
         $ownerData = $this->scopeCampaignQueryForOwner($query, $request, $admin);
 

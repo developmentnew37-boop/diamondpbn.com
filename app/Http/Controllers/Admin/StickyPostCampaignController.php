@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Admin\Concerns\AppliesCampaignListStatusFilter;
 use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
 use App\Http\Controllers\Admin\Concerns\ProvidesLocalClientsForForms;
 use App\Http\Controllers\Controller;
@@ -18,6 +19,7 @@ use Illuminate\Support\Facades\Auth;
 
 class StickyPostCampaignController extends Controller
 {
+    use AppliesCampaignListStatusFilter;
     use AppliesSuperAdminCampaignOwnerFilter;
     use ProvidesLocalClientsForForms;
 
@@ -32,6 +34,7 @@ class StickyPostCampaignController extends Controller
         $request->validate([
             'search' => 'nullable|string|max:150',
             'filter_user' => 'nullable|string|max:20',
+            'status' => $this->campaignListStatusValidationRule(),
         ]);
 
         // ✅ Clean empty search from URL
@@ -55,6 +58,9 @@ class StickyPostCampaignController extends Controller
             $search = '%'.trim($request->search).'%';
             $query->where('campaign_no', 'LIKE', $search);
         }
+
+        $this->applyCampaignListStatusFilter($query, $request);
+
         $admin = Auth::guard('admin')->user();
         $ownerData = $this->scopeCampaignQueryForOwner($query, $request, $admin);
         // ✅ Paginate + keep query params

@@ -483,6 +483,82 @@ class CampaignListStatusFilterTest extends TestCase
             ->assertDontSee('SS-DONE');
     }
 
+    public function test_sticky_campaign_indexes_filter_by_status(): void
+    {
+        $admin = $this->createAdmin();
+
+        Campaign::query()->create([
+            'campaign_no' => 'STK-RUN',
+            'domain_category_id' => 1,
+            'admin_id' => $admin->id,
+            'status' => 'queued',
+            'is_sticky_campaign' => true,
+            'total_targets' => 10,
+            'completed_targets' => 4,
+            'failed_targets' => 0,
+            'report_token' => Str::random(64),
+        ]);
+        Campaign::query()->create([
+            'campaign_no' => 'STK-DONE',
+            'domain_category_id' => 1,
+            'admin_id' => $admin->id,
+            'status' => 'completed',
+            'is_sticky_campaign' => true,
+            'total_targets' => 10,
+            'completed_targets' => 10,
+            'failed_targets' => 0,
+            'report_token' => Str::random(64),
+        ]);
+        // Non-sticky should never appear on sticky index
+        Campaign::query()->create([
+            'campaign_no' => 'CMP-NOT-STICKY',
+            'domain_category_id' => 1,
+            'admin_id' => $admin->id,
+            'status' => 'queued',
+            'is_sticky_campaign' => false,
+            'total_targets' => 10,
+            'completed_targets' => 4,
+            'failed_targets' => 0,
+            'report_token' => Str::random(64),
+        ]);
+
+        ScheduleCampaign::query()->create([
+            'campaign_no' => 'SSTK-RUN',
+            'domain_category_id' => 1,
+            'admin_id' => $admin->id,
+            'status' => 'queued',
+            'is_sticky_campaign' => true,
+            'total_targets' => 5,
+            'completed_targets' => 2,
+            'failed_targets' => 0,
+            'report_token' => Str::random(64),
+        ]);
+        ScheduleCampaign::query()->create([
+            'campaign_no' => 'SSTK-DONE',
+            'domain_category_id' => 1,
+            'admin_id' => $admin->id,
+            'status' => 'completed',
+            'is_sticky_campaign' => true,
+            'total_targets' => 5,
+            'completed_targets' => 5,
+            'failed_targets' => 0,
+            'report_token' => Str::random(64),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.sticky.campaign.index', ['status' => 'running']))
+            ->assertOk()
+            ->assertSee('STK-RUN')
+            ->assertDontSee('STK-DONE')
+            ->assertDontSee('CMP-NOT-STICKY');
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.schedule.sticky.campaign.index', ['status' => 'running']))
+            ->assertOk()
+            ->assertSee('SSTK-RUN')
+            ->assertDontSee('SSTK-DONE');
+    }
+
     private function seedCampaigns(int $adminId): void
     {
         $rows = [
