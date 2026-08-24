@@ -241,9 +241,23 @@ class PublishScheduledSidebarBlogrollJob implements ShouldQueue
                 $fresh->lock_token = null;
                 $fresh->save();
 
-                ScheduleSidebarCampaign::whereKey(
-                    $fresh->schedule_sidebar_campaign_id
-                )->increment('completed_targets');
+                $campaign = ScheduleSidebarCampaign::lockForUpdate()->find($fresh->schedule_sidebar_campaign_id);
+                if ($campaign) {
+                    $campaign->completed_targets++;
+
+                    if (in_array((string) $campaign->status, ['queued', ''], true)
+                        && ($campaign->completed_targets + $campaign->failed_targets) < $campaign->total_targets) {
+                        $campaign->status = 'running';
+                        $campaign->finished_at = null;
+                    }
+
+                    if ($campaign->completed_targets + $campaign->failed_targets > $campaign->total_targets
+                        && $campaign->failed_targets > 0) {
+                        $campaign->failed_targets--;
+                    }
+
+                    $campaign->save();
+                }
             });
         } catch (Throwable $e) {
 
@@ -283,9 +297,17 @@ class PublishScheduledSidebarBlogrollJob implements ShouldQueue
                     $fresh->lock_token = null;
                     $fresh->save();
 
-                    ScheduleSidebarCampaign::whereKey(
-                        $fresh->schedule_sidebar_campaign_id
-                    )->increment('failed_targets');
+                    $campaign = ScheduleSidebarCampaign::lockForUpdate()->find($fresh->schedule_sidebar_campaign_id);
+                    if ($campaign) {
+                        if (($campaign->completed_targets + $campaign->failed_targets) < $campaign->total_targets) {
+                            $campaign->failed_targets++;
+                        }
+                        if (in_array((string) $campaign->status, ['queued', ''], true)) {
+                            $campaign->status = 'running';
+                            $campaign->finished_at = null;
+                        }
+                        $campaign->save();
+                    }
                 }
             });
         } finally {
@@ -307,6 +329,12 @@ class PublishScheduledSidebarBlogrollJob implements ShouldQueue
 
             $totalDone = $campaign->completed_targets + $campaign->failed_targets;
             if ($totalDone < $campaign->total_targets) {
+                if (in_array((string) $campaign->status, ['queued', ''], true) && $totalDone > 0) {
+                    $campaign->status = 'running';
+                    $campaign->finished_at = null;
+                    $campaign->save();
+                }
+
                 return;
             }
 

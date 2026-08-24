@@ -226,7 +226,7 @@
                                         ['name' => 'campaign_ids[]', 'value' => $campaign->id],
                                     ],
                                     'purgeAction' => route('admin.hidden.link.campaign.purge.local', $campaign->id),
-                                    'destroyConfirm' => 'Delete this campaign? Links will be removed from remote sites, then the campaign and its data will be deleted.',
+                                    'destroyConfirm' => 'Delete this campaign? Links will be removed from remote sites, then the campaign and its data will be deleted. This cannot be undone.',
                                     'purgeConfirm' => 'Remove this campaign from the dashboard only? Remote hidden links stay. You will not be able to edit this campaign here anymore.',
                                     'bulkReplaceUrl' => in_array((int) $campaign->id, $replaceableCampaignIds ?? [], true)
                                         ? route('admin.hidden.link.campaign.bulk-domain-replacement.create', $campaign)
@@ -304,7 +304,7 @@
                         alert('Please select at least one campaign.');
                         return;
                     }
-                    if (!confirm('Delete selected campaign(s) from remote sites and from the database?')) {
+                    if (!confirm('Delete selected campaign(s) from remote sites and from the database? This cannot be undone.')) {
                         return;
                     }
                     fillFormWithCampaignIds(formDelete, ids);

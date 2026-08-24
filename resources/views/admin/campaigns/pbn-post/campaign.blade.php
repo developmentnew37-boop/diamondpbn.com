@@ -216,7 +216,7 @@
                                         : null,
                                     'destroyAction' => route('admin.campaign.destroy', $campaign->id),
                                     'purgeAction' => route('admin.campaign.purge.local', $campaign->id),
-                                    'destroyConfirm' => 'Delete this campaign? All campaign posts will be removed from the database and from remote sites.',
+                                    'destroyConfirm' => 'Delete this campaign? All campaign posts will be removed from the database and from remote sites. This cannot be undone.',
                                     'purgeConfirm' => 'Remove this campaign from the dashboard only? Published posts on remote sites will stay. You will not be able to edit this campaign here anymore.',
                                 ])
                             </td>

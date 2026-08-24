@@ -423,7 +423,7 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
 
     Route::post('/campaign/updatecampaignpost/{id}', [CampaignController::class, 'updateCampaignPost'])->name('campaign.update.post'); // admin.campaign.blogpost
 
-    Route::get('/campaign/deleteCampaignPost/{id}', [CampaignController::class, 'deleteCampaignPost'])->name('campaign.delete.post'); // admin.campaign.blogpost
+    Route::post('/campaign/deleteCampaignPost/{id}', [CampaignController::class, 'deleteCampaignPost'])->name('campaign.delete.post'); // admin.campaign.blogpost
 
     Route::post('/campaign/bulk/update/{id}', [CampaignController::class, 'bulkUpdateCampaignPosts'])->name('campaign.bulk.update');
 
@@ -442,7 +442,7 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     Route::get('/sidebar/campaign/retry-task/{id}', [SidebarCampaignController::class, 'retryTask'])->name('sidebar.campaign.retry.task');
     Route::get('/sidebar/campaign/edit-task/{id}', [SidebarCampaignController::class, 'editSidebarTask'])->name('sidebar.campaign.edit.task');
     Route::post('/sidebar/campaign/update-task/{id}', [SidebarCampaignController::class, 'updateSidebarTask'])->name('sidebar.campaign.update.task');
-    Route::get('/sidebar/campaign/delete-task/{id}', [SidebarCampaignController::class, 'deleteSidebarTask'])->name('sidebar.campaign.delete.task');
+    Route::post('/sidebar/campaign/delete-task/{id}', [SidebarCampaignController::class, 'deleteSidebarTask'])->name('sidebar.campaign.delete.task');
     Route::post('/sidebar/campaign/{id}/bulk-delete-tasks', [SidebarCampaignController::class, 'bulkDeleteTasks'])->name('sidebar.campaign.bulk.delete.tasks');
 
     Route::post('/sidebar/campaign/{id}/purge-local', [SidebarCampaignController::class, 'purgeLocalOnly'])->name('sidebar.campaign.purge.local');
@@ -457,7 +457,7 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     Route::get('/hidden/link/campaign/edit-task/{id}', [HiddenLinkCampaignController::class, 'editTask'])->name('hidden.link.campaign.edit.task');
     Route::post('/hidden/link/campaign/update-task/{id}', [HiddenLinkCampaignController::class, 'updateTask'])->name('hidden.link.campaign.update.task');
     Route::get('/hidden/link/campaign/retry-task/{id}', [HiddenLinkCampaignController::class, 'retryTask'])->name('hidden.link.campaign.retry.task');
-    Route::get('/hidden/link/campaign/delete-task/{id}', [HiddenLinkCampaignController::class, 'deleteTask'])->name('hidden.link.campaign.delete.task');
+    Route::post('/hidden/link/campaign/delete-task/{id}', [HiddenLinkCampaignController::class, 'deleteTask'])->name('hidden.link.campaign.delete.task');
     Route::post('/hidden/link/campaign/{id}/bulk-delete-tasks', [HiddenLinkCampaignController::class, 'bulkDeleteTasks'])->name('hidden.link.campaign.bulk.delete.tasks');
     Route::post('/hidden/link/campaign/bulk-delete', [HiddenLinkCampaignController::class, 'bulkDeleteCampaigns'])->name('hidden.link.campaign.bulk.delete');
 
@@ -528,6 +528,8 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     Route::post('/campaign/post/schedule/delete-post/{postId}', [ScheduleCampaignController::class, 'deletePost'])->name('schedule.campaign.delete.post');
 
     Route::post('/campaign/post/schedule/{id}/purge-local', [ScheduleCampaignController::class, 'purgeLocalOnly'])->name('schedule.campaign.purge.local');
+
+    Route::post('/campaign/post/schedule/{id}/publish-remaining', [ScheduleCampaignController::class, 'publishRemainingNow'])->name('schedule.campaign.publish.remaining');
 
     Route::post('/campaign/post/schedule/bulk-purge-local', [ScheduleCampaignController::class, 'bulkPurgeLocal'])->name('schedule.campaign.bulk.purge.local');
 

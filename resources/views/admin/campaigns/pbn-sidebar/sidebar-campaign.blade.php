@@ -221,7 +221,7 @@
                                     ]),
                                     'destroyAction' => route('admin.sidebar.campaign.destroy', $campaign->id),
                                     'purgeAction' => route('admin.sidebar.campaign.purge.local', $campaign->id),
-                                    'destroyConfirm' => 'Delete this sidebar campaign? All tasks will be removed from the database and from remote blogroll.',
+                                    'destroyConfirm' => 'Delete this sidebar campaign? All tasks will be removed from the database and from remote blogroll. This cannot be undone.',
                                     'purgeConfirm' => 'Remove this campaign from the dashboard only? Remote blogroll links stay. You will not be able to edit this campaign here anymore.',
                                     'bulkReplaceUrl' => in_array((int) $campaign->id, $replaceableCampaignIds ?? [], true)
                                         ? route('admin.sidebar.campaign.bulk-domain-replacement.create', $campaign)

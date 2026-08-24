@@ -27,6 +27,7 @@ use App\Services\LiveTaskDomainReplacement\LiveTaskBulkDomainReplacementService;
 use App\Services\LiveTaskDomainReplacement\LiveTaskReplacementProfile;
 use App\Services\LocalClientBillingService;
 use App\Services\PurgeLocalCampaignDataService;
+use App\Services\ScheduleSidebarCampaignTargetCounterService;
 use App\Services\SidebarLiveToDripfeedConversionService;
 use App\Support\CampaignTaskStatusFilter;
 use App\Support\ReportDisplay;
@@ -1255,6 +1256,9 @@ class ScheduleSidebarCampaignController extends Controller
 
         Cache::put($cacheKey, true, now()->addMinutes(3));
 
+        $wasFailed = $task->status === 'failed';
+        $campaign = $task->campaign;
+
         $task->update([
             'status' => 'queued',
             'last_error' => null,
@@ -1262,6 +1266,14 @@ class ScheduleSidebarCampaignController extends Controller
             'locked_at' => null,
             'lock_token' => null,
         ]);
+
+        if ($campaign) {
+            $counters = app(ScheduleSidebarCampaignTargetCounterService::class);
+            if ($wasFailed) {
+                $counters->accountForFailedTaskRetries($campaign, 1);
+            }
+            $counters->syncCampaignFromTasks($campaign->fresh());
+        }
 
         PublishScheduledSidebarBlogrollJob::dispatch($task->id, (int) ($task->dispatch_generation ?? 0))->onQueue('scheduled_sidebar_campaigns');
 
@@ -1339,8 +1351,6 @@ class ScheduleSidebarCampaignController extends Controller
             return back()->with('cus__error', 'Campaign not found.');
         }
 
-        $taskStatus = $task->status;
-
         if ($task->remote_id) {
             $domain = $task->domain?->domain;
             if ($domain && $domain->api_key) {
@@ -1350,18 +1360,6 @@ class ScheduleSidebarCampaignController extends Controller
                 }
             }
         }
-
-        if ($campaign->total_targets > 0) {
-            $campaign->decrement('total_targets');
-        }
-        if ($taskStatus === 'success' && $campaign->completed_targets > 0) {
-            $campaign->decrement('completed_targets');
-        } elseif ($taskStatus === 'failed' && $campaign->failed_targets > 0) {
-            $campaign->decrement('failed_targets');
-        }
-
-        $campaign->refresh();
-        $campaign->syncStatusFromCounts();
 
         $campaignDomainId = $task->schedule_sidebar_campaign_domain_id;
         $linkId = $task->schedule_sidebar_campaign_link_id;
@@ -1374,6 +1372,8 @@ class ScheduleSidebarCampaignController extends Controller
         if ($campaignDomainId && ScheduleSidebarCampaignTask::where('schedule_sidebar_campaign_domain_id', $campaignDomainId)->count() === 0) {
             ScheduleSidebarCampaignDomain::where('id', $campaignDomainId)->delete();
         }
+
+        app(ScheduleSidebarCampaignTargetCounterService::class)->syncCampaignFromTasks($campaign->fresh());
 
         return back()->with('cus__success', 'Sidebar link removed from campaign and remote site.');
     }

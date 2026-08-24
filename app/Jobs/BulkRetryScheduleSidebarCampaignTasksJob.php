@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Admin\ScheduleSidebarCampaign;
 use App\Models\Admin\ScheduleSidebarCampaignTask;
+use App\Services\ScheduleSidebarCampaignTargetCounterService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -26,7 +27,7 @@ class BulkRetryScheduleSidebarCampaignTasksJob implements ShouldQueue
         $this->onQueue('bulk_retry_scheduled_sidebar_campaigns');
     }
 
-    public function handle(): void
+    public function handle(ScheduleSidebarCampaignTargetCounterService $counters): void
     {
         $totalRetried = 0;
         $skipped = 0;
@@ -52,6 +53,11 @@ class BulkRetryScheduleSidebarCampaignTasksJob implements ShouldQueue
                 ->where('status', 'failed')
                 ->get();
 
+            $failedCount = $failedTasks->count();
+            if ($failedCount < 1) {
+                continue;
+            }
+
             foreach ($failedTasks as $task) {
                 $task->update([
                     'status' => 'queued',
@@ -64,6 +70,9 @@ class BulkRetryScheduleSidebarCampaignTasksJob implements ShouldQueue
                 PublishScheduledSidebarBlogrollJob::dispatch($task->id, (int) ($task->dispatch_generation ?? 0))->onQueue('scheduled_sidebar_campaigns');
                 $totalRetried++;
             }
+
+            $counters->accountForFailedTaskRetries($campaign, $failedCount);
+            $counters->syncCampaignFromTasks($campaign->fresh());
         }
 
         Log::info('BulkRetryScheduleSidebarCampaignTasksJob completed', [

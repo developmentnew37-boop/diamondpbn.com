@@ -322,11 +322,15 @@
                                                 title="Edit post">
                                                 <span class="material-symbols-outlined !text-[16px] text-white text-sm">edit</span>
                                             </a>
-                                            <a href="{{ route('admin.campaign.delete.post', $post->id) }}"
-                                                class="bg-red-500 rounded w-7 h-7 flex items-center justify-center shrink-0"
-                                                title="Delete post">
-                                                <span class="material-symbols-outlined !text-[16px] text-white text-sm">delete</span>
-                                            </a>
+                                            <form action="{{ route('admin.campaign.delete.post', $post->id) }}" method="POST" class="inline"
+                                                onsubmit="return confirm('Delete this post from the campaign and from the remote site? This cannot be undone.');">
+                                                @csrf
+                                                <button type="submit"
+                                                    class="bg-red-500 border-0 cursor-pointer rounded w-7 h-7 flex items-center justify-center shrink-0 hover:bg-red-600"
+                                                    title="Delete post">
+                                                    <span class="material-symbols-outlined !text-[16px] text-white text-sm">delete</span>
+                                                </button>
+                                            </form>
                                         @endif
 
                                         @if ($canRetry)

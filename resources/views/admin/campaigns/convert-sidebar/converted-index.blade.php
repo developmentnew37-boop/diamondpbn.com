@@ -256,7 +256,7 @@
                                     'openReportInNewTab' => true,
                                     'destroyAction' => route('admin.schedule.sidebar.campaign.destroy', $campaign->id),
                                     'purgeAction' => route('admin.schedule.sidebar.campaign.purge.local', $campaign->id),
-                                    'destroyConfirm' => 'Delete this campaign? All tasks will be removed from the database and from the remote site.',
+                                    'destroyConfirm' => 'Delete this campaign? All tasks will be removed from the database and from the remote site. This cannot be undone.',
                                     'purgeConfirm' => 'Remove this campaign from the dashboard only? Remote blogroll entries stay published.',
                                 ])
                             </td>

@@ -126,6 +126,9 @@
                 </thead>
 
                 <tbody>
+                    @php
+                        $scheduleCounterService = app(\App\Services\ScheduleCampaignTargetCounterService::class);
+                    @endphp
                     @forelse ($campaigns as $index => $campaign)
                         @php
                             $total = (int) $campaign->total_targets;
@@ -134,22 +137,22 @@
                             $pending = max($total - ($completed + $failed), 0);
                             $progress = $total > 0 ? round(($completed / $total) * 100, 1) : 0;
 
-                            if ($pending > 0 && ($completed > 0 || $failed > 0)) {
-                                $status = 'running';
-                                $statusClass = 'bg-yellow-100 text-yellow-700';
-                            } elseif ($failed === $total && $total > 0) {
-                                $status = 'failed';
-                                $statusClass = 'bg-red-100 text-red-700';
-                            } elseif ($completed === $total && $total > 0) {
-                                $status = 'completed';
-                                $statusClass = 'bg-green-100 text-green-700';
-                            } elseif ($completed + $failed === $total && $total > 0) {
-                                $status = 'semi-complete';
-                                $statusClass = 'bg-orange-100 text-orange-700';
-                            } else {
-                                $status = 'queued';
-                                $statusClass = 'bg-gray-100 text-gray-600';
-                            }
+                            $statusKey = $scheduleCounterService
+                                ->deriveStatusFromCounters($total, $completed, $failed, $pending);
+
+                            $status = match ($statusKey) {
+                                'semi_failed' => 'semi-complete',
+                                'completed' => 'completed',
+                                default => $statusKey,
+                            };
+
+                            $statusClass = match ($statusKey) {
+                                'running' => 'bg-yellow-100 text-yellow-700',
+                                'failed' => 'bg-red-100 text-red-700',
+                                'completed' => 'bg-green-100 text-green-700',
+                                'semi_failed' => 'bg-orange-100 text-orange-700',
+                                default => 'bg-gray-100 text-gray-600',
+                            };
                         @endphp
 
                         <tr class="hover:bg-gray-50">
@@ -208,7 +211,7 @@
                                     'openReportInNewTab' => true,
                                     'destroyAction' => route('admin.schedule.campaign.destroy', $campaign->id),
                                     'purgeAction' => route('admin.schedule.campaign.purge.local', $campaign->id),
-                                    'destroyConfirm' => 'Delete this campaign? All posts will be removed from the database and from the remote site.',
+                                    'destroyConfirm' => 'Delete this campaign? All posts will be removed from the database and from the remote site. This cannot be undone.',
                                     'purgeConfirm' => 'Remove this campaign from the dashboard only? Remote posts stay published. You will not be able to edit this campaign here anymore.',
                                     'bulkReplaceUrl' => in_array((int) $campaign->id, $replaceableCampaignIds ?? [], true)
                                         ? route('admin.schedule.campaign.bulk-domain-replacement.create', $campaign)

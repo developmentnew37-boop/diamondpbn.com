@@ -42,7 +42,7 @@ class ScheduleCampaignTargetCounterService
         if ($total < 1 && filled($campaign->converted_from_campaign_id)) {
             $total = (int) $campaign->total_targets;
         } elseif ($total > 0) {
-            // For converted campaigns, post rows are the source of truth for total.
+            // Post rows are the source of truth for total when present.
             $campaign->total_targets = $total;
         }
 
@@ -50,7 +50,7 @@ class ScheduleCampaignTargetCounterService
         $failed = $counts['failed'];
         $pending = max($total - ($completed + $failed), 0);
 
-        $status = $this->deriveListStatus($total, $completed, $failed, $pending);
+        $status = $this->deriveStatusFromCounters($total, $completed, $failed, $pending);
 
         $updates = [
             'completed_targets' => $completed,
@@ -62,18 +62,74 @@ class ScheduleCampaignTargetCounterService
             $updates['total_targets'] = $total;
         }
 
+        if (in_array($status, ['completed', 'semi_failed', 'failed'], true)) {
+            $updates['finished_at'] = $campaign->finished_at ?? now();
+        } elseif (in_array($status, ['queued', 'running'], true)) {
+            $updates['finished_at'] = null;
+        }
+
         if (filled($campaign->converted_from_campaign_id)) {
             $pipeline = $this->deriveConversionPipelineStatus($campaign, $total, $completed, $failed, $pending);
             $updates['conversion_pipeline_status'] = $pipeline;
-
-            if (in_array($status, ['completed', 'semi_failed', 'failed'], true)) {
-                $updates['finished_at'] = $campaign->finished_at ?? now();
-            }
         }
 
         $campaign->update($updates);
 
         return $campaign->fresh();
+    }
+
+    /**
+     * When retrying failed posts: drop their failed_targets and reopen the campaign.
+     */
+    public function accountForFailedPostRetries(ScheduleCampaign $campaign, int $failedPostsRetried): ScheduleCampaign
+    {
+        if ($failedPostsRetried < 1) {
+            return $campaign;
+        }
+
+        $campaign->refresh();
+        $decrement = min($failedPostsRetried, (int) $campaign->failed_targets);
+        if ($decrement > 0) {
+            $campaign->failed_targets = max(0, (int) $campaign->failed_targets - $decrement);
+        }
+
+        if (in_array((string) $campaign->status, ['completed', 'semi_failed', 'failed', 'queued'], true)) {
+            $campaign->status = 'running';
+            $campaign->finished_at = null;
+        }
+
+        $campaign->save();
+
+        return $campaign->fresh();
+    }
+
+    /**
+     * List / DB status from counters (pending already clamped with max(..., 0)).
+     */
+    public function deriveStatusFromCounters(int $total, int $completed, int $failed, int $pending): string
+    {
+        if ($pending > 0 && ($completed > 0 || $failed > 0)) {
+            return 'running';
+        }
+
+        if ($total > 0 && $failed === $total && $completed === 0) {
+            return 'failed';
+        }
+
+        if ($total > 0 && $pending === 0 && $failed === 0 && $completed >= $total) {
+            return 'completed';
+        }
+
+        if ($total > 0 && $pending === 0 && $failed > 0 && $completed > 0) {
+            return 'semi_failed';
+        }
+
+        // Overshoot (completed+failed > total) with some successes → treat as semi_failed
+        if ($total > 0 && ($completed + $failed) > $total && $completed > 0 && $failed > 0) {
+            return 'semi_failed';
+        }
+
+        return 'queued';
     }
 
     /**
@@ -128,23 +184,6 @@ class ScheduleCampaignTargetCounterService
             'completed' => $completed,
             'attention' => $attention,
         ];
-    }
-
-    private function deriveListStatus(int $total, int $completed, int $failed, int $pending): string
-    {
-        if ($pending > 0) {
-            return 'running';
-        }
-
-        if ($total > 0 && $failed === $total) {
-            return 'failed';
-        }
-
-        if ($total > 0 && ($completed + $failed) >= $total) {
-            return $failed > 0 ? 'semi_failed' : 'completed';
-        }
-
-        return 'queued';
     }
 
     private function deriveConversionPipelineStatus(

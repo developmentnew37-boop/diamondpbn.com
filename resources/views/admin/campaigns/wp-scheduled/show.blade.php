@@ -27,7 +27,7 @@
                     Edit campaign
                 </a>
                 <form action="{{ route('admin.wp.schedule.campaign.destroy', $campaign->id) }}" method="POST" class="inline"
-                    onsubmit="return confirm('Delete this entire campaign? All posts (including scheduled) will be removed from WordPress and the database.');">
+                    onsubmit="return confirm('Delete this entire campaign? All posts (including scheduled) will be removed from WordPress and the database. This cannot be undone.');">
                     @csrf
                     @method('DELETE')
                     <button type="submit" class="inline-flex items-center gap-1.5 !px-3 !py-2 rounded bg-red-600 text-white text-sm hover:bg-red-700" title="Delete whole campaign">
@@ -156,7 +156,7 @@
                                         </form>
                                     @endif
                                     <form action="{{ route('admin.wp.schedule.campaign.delete.post', $p->id) }}" method="POST" class="inline"
-                                          onsubmit="return confirm('Delete this scheduled post?');">
+                                          onsubmit="return confirm('Delete this scheduled post? This cannot be undone.');">
                                         @csrf
                                         <button type="submit" class="flex items-center justify-center rounded w-8 h-8 bg-red-500 text-white hover:bg-red-600 border-0 cursor-pointer" title="Delete post">
                                             <span class="material-symbols-outlined !text-lg">delete</span>

@@ -687,7 +687,7 @@
         <div
             class="dy-key-set-overlay w-screen h-screen bg-black/40 absolute top-0 left-0 duration-300 opacity-0  transition-all">
         </div>
-        <div class="dy-key-pop-box w-[96%] sm:w-[80%] max-w-[850px] max-h-[calc(100vh-24px)] sm:max-h-none flex flex-col items-center !shadow-2xl bg-gray-50 border border-gray-300 z-2 rounded !mt-3 sm:!mt-[70px] linear duration-600 opacity-0 -translate-y-[20%] transition-all"
+        <div class="dy-key-pop-box w-[96%] sm:w-[90%] max-w-[min(96vw,1280px)] max-h-[calc(100vh-24px)] sm:max-h-none flex flex-col items-stretch !shadow-2xl bg-gray-50 border border-gray-300 z-2 rounded !mt-3 sm:!mt-[70px] linear duration-600 opacity-0 -translate-y-[20%] transition-all min-w-0"
             id="dy-key-article-box">
             {{-- pop top bar --}}
             <div class="w-full flex justify-between items-center !bg-gray-200 !p-3">

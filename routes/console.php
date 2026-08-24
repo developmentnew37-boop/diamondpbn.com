@@ -51,6 +51,12 @@ Schedule::call(function () {
     ->withoutOverlapping($schedulerLockTtlMinutes)
     ->onOneServer();
 
+Schedule::command('schedule-campaigns:carry-failed-posts')
+    ->dailyAt('00:15')
+    ->name('carry_failed_schedule_campaign_posts')
+    ->withoutOverlapping(30)
+    ->onOneServer();
+
 Schedule::call(function () {
     $posts = ScheduleCampaignPost::query()
         ->where('is_converted_live', true)

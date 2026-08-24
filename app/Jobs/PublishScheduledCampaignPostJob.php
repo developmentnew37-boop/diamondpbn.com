@@ -157,12 +157,34 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
 
                 $fresh->save();
 
-                if ($fresh->status === 'success') {
-                    ScheduleCampaign::whereKey($fresh->schedule_campaign_id)
-                        ->increment('completed_targets');
-                } else {
-                    ScheduleCampaign::whereKey($fresh->schedule_campaign_id)
-                        ->increment('failed_targets');
+                $campaign = ScheduleCampaign::lockForUpdate()->find($fresh->schedule_campaign_id);
+                if ($campaign) {
+                    if ($fresh->status === 'success') {
+                        $campaign->completed_targets++;
+                    } else {
+                        $campaign->failed_targets++;
+                    }
+
+                    if (in_array((string) $campaign->status, ['queued', ''], true)
+                        && ($campaign->completed_targets + $campaign->failed_targets) < $campaign->total_targets) {
+                        $campaign->status = 'running';
+                        $campaign->finished_at = null;
+                    }
+
+                    if ($campaign->completed_targets + $campaign->failed_targets > $campaign->total_targets) {
+                        if ($fresh->status === 'success' && $campaign->failed_targets > 0) {
+                            $campaign->failed_targets--;
+                        } elseif ($fresh->status !== 'success' && $campaign->completed_targets > 0
+                            && ($campaign->completed_targets + $campaign->failed_targets) > $campaign->total_targets) {
+                            // Prefer keeping completed accurate; clamp failed.
+                            $campaign->failed_targets = max(
+                                0,
+                                (int) $campaign->total_targets - (int) $campaign->completed_targets
+                            );
+                        }
+                    }
+
+                    $campaign->save();
                 }
 
                 if ($fresh->status === 'success') {
@@ -217,8 +239,17 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
                     $fresh->lock_token = null;
                     $fresh->save();
 
-                    ScheduleCampaign::whereKey($fresh->schedule_campaign_id)
-                        ->increment('failed_targets');
+                    $campaign = ScheduleCampaign::lockForUpdate()->find($fresh->schedule_campaign_id);
+                    if ($campaign) {
+                        if (($campaign->completed_targets + $campaign->failed_targets) < $campaign->total_targets) {
+                            $campaign->failed_targets++;
+                        }
+                        if (in_array((string) $campaign->status, ['queued', ''], true)) {
+                            $campaign->status = 'running';
+                            $campaign->finished_at = null;
+                        }
+                        $campaign->save();
+                    }
                 }
             });
         } finally {
@@ -568,27 +599,35 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
      */
     private function finalizeCampaignIfDone(int $campaignId): void
     {
-        $campaign = ScheduleCampaign::find($campaignId);
-        if (! $campaign) {
-            return;
-        }
+        DB::transaction(function () use ($campaignId) {
+            $campaign = ScheduleCampaign::lockForUpdate()->find($campaignId);
+            if (! $campaign) {
+                return;
+            }
 
-        $totalDone = $campaign->completed_targets + $campaign->failed_targets;
+            $totalDone = $campaign->completed_targets + $campaign->failed_targets;
 
-        if ($totalDone < $campaign->total_targets) {
-            return;
-        }
+            if ($totalDone < $campaign->total_targets) {
+                if (in_array((string) $campaign->status, ['queued', ''], true) && $totalDone > 0) {
+                    $campaign->status = 'running';
+                    $campaign->finished_at = null;
+                    $campaign->save();
+                }
 
-        $campaign->finished_at = now();
+                return;
+            }
 
-        if ($campaign->failed_targets === 0) {
-            $campaign->status = 'completed';
-        } elseif ($campaign->completed_targets > 0) {
-            $campaign->status = 'semi_failed';
-        } else {
-            $campaign->status = 'failed';
-        }
+            $campaign->finished_at = now();
 
-        $campaign->save();
+            if ($campaign->failed_targets === 0) {
+                $campaign->status = 'completed';
+            } elseif ($campaign->completed_targets > 0) {
+                $campaign->status = 'semi_failed';
+            } else {
+                $campaign->status = 'failed';
+            }
+
+            $campaign->save();
+        });
     }
 }

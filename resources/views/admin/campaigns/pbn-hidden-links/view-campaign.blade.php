@@ -70,7 +70,7 @@
         @csrf
         <div id="bulk-delete-task-ids-container"></div>
         <button type="submit" class="!px-3 !py-2 rounded bg-red-600 text-white text-sm hover:bg-red-700"
-            onclick="return confirm('Remove selected links from remote sites and database?');">Bulk delete selected</button>
+            onclick="return confirm('Remove selected links from remote sites and database? This cannot be undone.');">Bulk delete selected</button>
     </form>
 
     @include('admin.campaigns.partials.post-status-filters', [
@@ -218,11 +218,15 @@
                                         <span class="material-symbols-outlined text-white !text-sm">edit</span>
                                     </a>
                                 @endif
-                                <a href="{{ route('admin.hidden.link.campaign.delete.task', $task->id) }}"
-                                    class="bg-red-500 rounded w-7 h-7 flex items-center justify-center" title="Delete this link"
-                                    onclick="return confirm('Remove this hidden link from remote and database?');">
-                                    <span class="material-symbols-outlined text-white !text-sm">delete</span>
-                                </a>
+                                <form action="{{ route('admin.hidden.link.campaign.delete.task', $task->id) }}" method="POST" class="inline"
+                                    onsubmit="return confirm('Remove this hidden link from remote and database? This cannot be undone.');">
+                                    @csrf
+                                    <button type="submit"
+                                        class="bg-red-500 border-0 cursor-pointer rounded w-7 h-7 flex items-center justify-center hover:bg-red-600"
+                                        title="Delete this link">
+                                        <span class="material-symbols-outlined text-white !text-sm">delete</span>
+                                    </button>
+                                </form>
                             </div>
                         </td>
 

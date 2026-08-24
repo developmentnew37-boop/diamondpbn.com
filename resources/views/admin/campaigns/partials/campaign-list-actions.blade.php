@@ -6,8 +6,8 @@
     $destroyAction = $destroyAction ?? null;
     $destroyMethod = $destroyMethod ?? 'DELETE';
     $purgeAction = $purgeAction ?? null;
-    $destroyConfirm = $destroyConfirm ?? 'Delete this campaign?';
-    $purgeConfirm = $purgeConfirm ?? 'Remove this campaign from the dashboard only? Remote content will stay.';
+    $destroyConfirm = $destroyConfirm ?? 'Delete this campaign? This cannot be undone.';
+    $purgeConfirm = $purgeConfirm ?? 'Remove this campaign from the dashboard only? Remote content will stay. This cannot be undone from here.';
     $openReportInNewTab = $openReportInNewTab ?? false;
     $bulkReplaceUrl = $bulkReplaceUrl ?? null;
     $showView = $showView ?? true;
@@ -57,7 +57,7 @@
 
     @if ($destroyAction)
         <form action="{{ $destroyAction }}" method="POST" class="inline-flex shrink-0"
-            onsubmit="return confirm(@json($destroyConfirm));">
+            onsubmit='return confirm(@json($destroyConfirm));'>
             @csrf
             @if (strtoupper($destroyMethod) !== 'POST')
                 @method($destroyMethod)
@@ -77,7 +77,7 @@
 
     @if ($purgeAction)
         <form action="{{ $purgeAction }}" method="POST" class="inline-flex shrink-0"
-            onsubmit="return confirm(@json($purgeConfirm));">
+            onsubmit='return confirm(@json($purgeConfirm));'>
             @csrf
             <button type="submit"
                 class="bg-orange-500 flex items-center justify-center rounded w-7 h-7 hover:bg-orange-600 border-0 cursor-pointer"

@@ -148,6 +148,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Schedule Post Campaign Settings
+    |--------------------------------------------------------------------------
+    |
+    | Auto-carry of failed schedule posts through schedule_to_date plus a
+    | grace window (calendar days) so temporary domain outages can recover.
+    |
+    */
+
+    'schedule' => [
+        // Extra calendar days after schedule_to_date to keep auto-requeuing failed posts
+        'failed_carry_grace_days' => (int) env('SCHEDULE_FAILED_CARRY_GRACE_DAYS', 2),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Validation Rules
     |--------------------------------------------------------------------------
     |

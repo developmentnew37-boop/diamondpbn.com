@@ -28,7 +28,7 @@
                     Edit campaign
                 </a>
                 <form action="{{ route('admin.schedule.sidebar.campaign.destroy', $campaign->id) }}" method="post" class="inline"
-                    onsubmit="return confirm('Delete this campaign? All blogroll links will be removed from remote sites and from the database.');">
+                    onsubmit="return confirm('Delete this campaign? All blogroll links will be removed from remote sites and from the database. This cannot be undone.');">
                     @csrf
                     @method('DELETE')
                     <button type="submit" class="inline-flex items-center gap-2 !px-3 !py-2 rounded bg-red-600 text-white hover:bg-red-700 text-sm">
@@ -289,7 +289,7 @@
                                         </form>
                                     @endif
                                     <form action="{{ route('admin.schedule.sidebar.campaign.delete.task', $task->id) }}" method="post" class="inline"
-                                        onsubmit="return confirm('Delete this link from the campaign and from the remote site?');">
+                                        onsubmit="return confirm('Delete this link from the campaign and from the remote site? This cannot be undone.');">
                                         @csrf
                                         <button type="submit" class="bg-red-500 w-7 h-7 inline-flex items-center justify-center rounded hover:bg-red-600 border-0 cursor-pointer" title="Delete">
                                             <span class="material-symbols-outlined text-white !text-sm">delete</span>

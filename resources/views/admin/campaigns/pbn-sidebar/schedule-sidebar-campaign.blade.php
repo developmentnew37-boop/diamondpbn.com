@@ -128,6 +128,9 @@
                 </thead>
 
                 <tbody>
+                    @php
+                        $sidebarCounterService = app(\App\Services\ScheduleSidebarCampaignTargetCounterService::class);
+                    @endphp
                     @forelse ($campaigns as $index => $campaign)
                         @php
                             $total = (int) $campaign->total_targets;
@@ -137,17 +140,8 @@
 
                             $progress = $total > 0 ? round(($completed / $total) * 100, 1) : 0;
 
-                            if ($pending > 0 && ($completed > 0 || $failed > 0)) {
-                                $displayStatus = 'running';
-                            } elseif ($failed === $total && $total > 0) {
-                                $displayStatus = 'failed';
-                            } elseif ($completed === $total && $total > 0) {
-                                $displayStatus = 'completed';
-                            } elseif ($completed + $failed === $total && $completed > 0 && $failed > 0) {
-                                $displayStatus = 'semi_failed';
-                            } else {
-                                $displayStatus = 'queued';
-                            }
+                            $displayStatus = $sidebarCounterService
+                                ->deriveStatusFromCounters($total, $completed, $failed, $pending);
 
                             $statusClass = match ($displayStatus) {
                                 'queued' => 'bg-gray-100 text-gray-600',
@@ -239,7 +233,7 @@
                                     'openReportInNewTab' => true,
                                     'destroyAction' => route('admin.schedule.sidebar.campaign.destroy', $campaign->id),
                                     'purgeAction' => route('admin.schedule.sidebar.campaign.purge.local', $campaign->id),
-                                    'destroyConfirm' => 'Delete this campaign? All blogroll links will be removed from remote sites and from the database.',
+                                    'destroyConfirm' => 'Delete this campaign? All blogroll links will be removed from remote sites and from the database. This cannot be undone.',
                                     'purgeConfirm' => 'Remove this campaign from the dashboard only? Remote blogroll links stay. You will not be able to edit this campaign here anymore.',
                                     'bulkReplaceUrl' => in_array((int) $campaign->id, $replaceableCampaignIds ?? [], true)
                                         ? route('admin.schedule.sidebar.campaign.bulk-domain-replacement.create', $campaign)

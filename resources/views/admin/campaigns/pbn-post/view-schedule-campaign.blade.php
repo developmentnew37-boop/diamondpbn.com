@@ -15,20 +15,37 @@
                     <span>›</span>
                 </div>
                 <div class="breadcrumb-item">
-                    <a href="{{ route('admin.schedule.campaign.index') }}" class="breadcrumb-link">
-                        Scheduled Campaigns
-                    </a>
+                    @if (filled($campaign->converted_from_campaign_id))
+                        <a href="{{ route('admin.convert.post.converted.index') }}" class="breadcrumb-link">
+                            Live → Dripfeed
+                        </a>
+                    @else
+                        <a href="{{ route('admin.schedule.campaign.index') }}" class="breadcrumb-link">
+                            Scheduled Campaigns
+                        </a>
+                    @endif
                 </div>
             </div>
         </div>
 
-        <div class="w-1/2 flex justify-end items-center gap-2">
+        <div class="w-1/2 flex justify-end items-center gap-2 flex-wrap">
+            @if ($canPublishRemaining ?? false)
+                <form action="{{ route('admin.schedule.campaign.publish.remaining', $campaign->id) }}" method="post" class="inline"
+                      onsubmit="return confirm('Publish {{ (int) ($remainingPublishableCount ?? 0) }} remaining post(s) immediately?\n\nScheduled dates on this page and the report will stay as assigned (they will not change to today).');">
+                    @csrf
+                    <button type="submit"
+                            class="inline-flex items-center gap-2 !px-3 !py-2 rounded bg-emerald-600 text-white hover:bg-emerald-700 text-sm"
+                            title="Queue remaining posts for immediate publish without changing schedule dates">
+                        Publish remaining now ({{ (int) $remainingPublishableCount }})
+                    </button>
+                </form>
+            @endif
             <a href="{{ route('admin.schedule.campaign.edit', $campaign->id) }}"
                class="inline-flex items-center gap-2 !px-3 !py-2 rounded bg-[var(--primary-color)] text-white hover:opacity-90 text-sm">
                 Edit campaign
             </a>
             <form action="{{ route('admin.schedule.campaign.destroy', $campaign->id) }}" method="post" class="inline"
-                  onsubmit="return confirm('Delete this campaign? All posts will be removed from the database and from the remote site.');">
+                  onsubmit="return confirm('Delete this campaign? All posts will be removed from the database and from the remote site. This cannot be undone.');">
                 @csrf
                 @method('DELETE')
                 <button type="submit" class="inline-flex items-center gap-2 !px-3 !py-2 rounded bg-red-600 text-white hover:bg-red-700 text-sm">
@@ -289,7 +306,7 @@
                                 </form>
                             @endif
                             <form action="{{ route('admin.schedule.campaign.delete.post', $post->id) }}" method="post" class="inline"
-                                onsubmit="return confirm('Delete this post from the campaign and from the remote site?');">
+                                onsubmit="return confirm('Delete this post from the campaign and from the remote site? This cannot be undone.');">
                                 @csrf
                                 <button type="submit" class="bg-red-500 w-7 h-7 inline-flex items-center justify-center rounded hover:bg-red-600 border-0 cursor-pointer"
                                     title="Delete post">

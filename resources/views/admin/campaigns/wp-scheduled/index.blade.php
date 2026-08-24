@@ -128,7 +128,7 @@
                                     'openReportInNewTab' => true,
                                     'destroyAction' => route('admin.wp.schedule.campaign.destroy', $campaign->id),
                                     'purgeAction' => route('admin.wp.schedule.campaign.purge.local', $campaign->id),
-                                    'destroyConfirm' => 'Delete this entire campaign? All posts will be removed from WordPress and the database.',
+                                    'destroyConfirm' => 'Delete this entire campaign? All posts will be removed from WordPress and the database. This cannot be undone.',
                                     'purgeConfirm' => 'Remove this campaign from the dashboard only? Remote WordPress posts stay. You will not be able to edit this campaign here anymore.',
                                 ])
                             </td>

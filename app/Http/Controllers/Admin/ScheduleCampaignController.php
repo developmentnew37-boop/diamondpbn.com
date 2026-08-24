@@ -12,6 +12,7 @@ use App\Http\Controllers\Controller;
 use App\Jobs\BulkRetryScheduleCampaignPostsJob;
 use App\Jobs\BulkUpdateScheduleCampaignPostsJob;
 use App\Jobs\DeleteScheduleCampaignJob;
+use App\Jobs\PublishRemainingScheduleCampaignPostsJob;
 use App\Jobs\PublishScheduledCampaignPostJob;
 use App\Jobs\SyncConvertedCampaignRemoteStatusJob;
 use App\Models\Admin\Article;
@@ -33,6 +34,7 @@ use App\Services\LiveTaskDomainReplacement\LiveTaskBulkDomainReplacementService;
 use App\Services\LiveTaskDomainReplacement\LiveTaskReplacementProfile;
 use App\Services\LocalClientBillingService;
 use App\Services\PurgeLocalCampaignDataService;
+use App\Services\ScheduleCampaignTargetCounterService;
 use App\Support\CampaignTaskStatusFilter;
 use App\Support\WordPressApiFetchedPost;
 use Illuminate\Http\Request;
@@ -74,6 +76,7 @@ class ScheduleCampaignController extends Controller
 
         $query = ScheduleCampaign::query()
             ->where('is_sticky_campaign', false)
+            ->whereNull('converted_from_campaign_id')
             ->with([
                 'domainCategory',
             ]);
@@ -129,6 +132,7 @@ class ScheduleCampaignController extends Controller
 
         $query = ScheduleCampaign::query()
             ->where('is_sticky_campaign', true)
+            ->whereNull('converted_from_campaign_id')
             ->with([
                 'domainCategory',
             ]);
@@ -861,9 +865,33 @@ class ScheduleCampaignController extends Controller
                 ->get();
         }
 
+        $remainingPublishableCount = 0;
+        if (! $isConvertedLiveCampaign) {
+            $remainingPublishableCount = ScheduleCampaignPost::query()
+                ->where('schedule_campaign_id', $campaign->id)
+                ->whereIn('status', ['queued', 'failed', 'publishing'])
+                ->where(function ($q) {
+                    $q->where('is_converted_live', false)->orWhereNull('is_converted_live');
+                })
+                ->count();
+        }
+
+        $canPublishRemaining = $remainingPublishableCount > 0
+            && ! in_array((string) $campaign->status, ['paused', 'cancelled'], true);
+
         return view(
             'admin.campaigns.pbn-post.view-schedule-campaign',
-            compact('campaign', 'campaignPost', 'offset', 'statusFilter', 'statusCounts', 'isConvertedLiveCampaign', 'recentReplacements')
+            compact(
+                'campaign',
+                'campaignPost',
+                'offset',
+                'statusFilter',
+                'statusCounts',
+                'isConvertedLiveCampaign',
+                'recentReplacements',
+                'remainingPublishableCount',
+                'canPublishRemaining',
+            )
         );
     }
 
@@ -1556,6 +1584,43 @@ class ScheduleCampaignController extends Controller
     }
 
     /**
+     * Immediately queue all remaining (non-success) posts for publish.
+     * schedule_at is left unchanged so details/report keep original dates.
+     */
+    public function publishRemainingNow(string $id)
+    {
+        $campaign = ScheduleCampaign::find($id);
+        if (! $campaign) {
+            return back()->with('cus__error', 'Campaign not found');
+        }
+
+        $this->authorizeCampaignAccess($campaign);
+
+        if (in_array((string) $campaign->status, ['paused', 'cancelled'], true)) {
+            return back()->with('cus__error', 'Cannot publish remaining posts while the campaign is paused or cancelled.');
+        }
+
+        $remaining = ScheduleCampaignPost::query()
+            ->where('schedule_campaign_id', $campaign->id)
+            ->whereIn('status', ['queued', 'failed', 'publishing'])
+            ->where(function ($q) {
+                $q->where('is_converted_live', false)->orWhereNull('is_converted_live');
+            })
+            ->count();
+
+        if ($remaining < 1) {
+            return back()->with('cus__error', 'No remaining posts to publish.');
+        }
+
+        PublishRemainingScheduleCampaignPostsJob::dispatch((int) $campaign->id);
+
+        return back()->with(
+            'cus__success',
+            $remaining.' remaining post(s) queued for immediate publish. Scheduled dates on this page and the report stay as assigned. Run the scheduled_campaigns queue worker to process them.'
+        );
+    }
+
+    /**
      * Bulk retry all failed posts across selected schedule campaigns.
      */
     public function bulkRetryFailed(Request $request)
@@ -1597,13 +1662,25 @@ class ScheduleCampaignController extends Controller
 
         Cache::put($cacheKey, true, now()->addMinutes(3));
 
+        $wasFailed = $post->status === 'failed';
+        $campaign = $post->campaign;
+
         $post->update([
             'status' => 'queued',
+            'attempt_count' => 0,
             'last_error' => null,
             'next_retry_at' => null,
             'locked_at' => null,
             'lock_token' => null,
         ]);
+
+        if ($campaign) {
+            $counters = app(ScheduleCampaignTargetCounterService::class);
+            if ($wasFailed) {
+                $counters->accountForFailedPostRetries($campaign, 1);
+            }
+            $counters->syncCampaignFromPosts($campaign->fresh());
+        }
 
         PublishScheduledCampaignPostJob::dispatch($post->id, (int) ($post->dispatch_generation ?? 0))->onQueue('scheduled_campaigns');
 
@@ -1868,6 +1945,10 @@ class ScheduleCampaignController extends Controller
 
             $post->delete();
         });
+
+        if ($campaign) {
+            app(ScheduleCampaignTargetCounterService::class)->syncCampaignFromPosts($campaign->fresh());
+        }
 
         return back()->with('cus__success', 'Post deleted from the campaign and remote site.');
     }

@@ -66,14 +66,14 @@
     .lcb-optional-badge {
         display: inline-flex;
         align-items: center;
-        padding: 0.125rem 0.5rem;
-        font-size: 0.6875rem;
-        font-weight: 600;
-        letter-spacing: 0.02em;
+        padding: 0.2rem 0.625rem;
+        font-size: 0.75rem;
+        font-weight: 500;
+        letter-spacing: 0.03em;
         text-transform: uppercase;
-        color: #6b7280;
+        color: #4b5563;
         background: #f3f4f6;
-        border: 1px solid #e5e7eb;
+        border: 1px solid #d1d5db;
         border-radius: 9999px;
     }
 
@@ -496,11 +496,12 @@
         display: flex;
         flex-wrap: wrap;
         align-items: center;
-        gap: 0.75rem 1rem;
-        padding: 0.75rem 1rem;
-        border-radius: 0.5rem;
-        border: 1px solid #e5e7eb;
+        gap: 0.875rem 1.25rem;
+        padding: 1rem 1.25rem;
+        border-radius: 0.625rem;
+        border: 1px solid #d1d5db;
         background: #ffffff;
+        box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04);
     }
 
     .lcb-view-bar-left {
@@ -516,33 +517,34 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 2rem;
-        height: 2rem;
+        width: 2.5rem;
+        height: 2.5rem;
         flex-shrink: 0;
-        border-radius: 0.375rem;
-        background: rgba(255, 74, 23, 0.1);
+        border-radius: 0.5rem;
+        background: rgba(255, 74, 23, 0.12);
         color: var(--primary-color);
     }
 
     .lcb-view-bar-icon .material-symbols-outlined {
-        font-size: 1.125rem !important;
+        font-size: 1.375rem !important;
     }
 
     .lcb-view-bar-title {
-        font-size: 0.875rem;
-        font-weight: 600;
+        font-size: 1.125rem;
+        font-weight: 500;
         color: #111827;
         word-break: break-word;
+        line-height: 1.3;
     }
 
     .lcb-view-bar-meta {
-        font-size: 0.8125rem;
-        color: #6b7280;
+        font-size: 0.9375rem;
+        color: #4b5563;
     }
 
     .lcb-view-bar-meta strong {
         color: #111827;
-        font-weight: 600;
+        font-weight: 500;
     }
 
     .lcb-view-bar-actions {
@@ -559,7 +561,7 @@
         flex-wrap: wrap;
         align-items: center;
         justify-content: flex-end;
-        gap: 0.75rem 1rem;
+        gap: 0.875rem 1.25rem;
         flex: 1 1 16rem;
         min-width: 0;
     }
@@ -567,28 +569,30 @@
     .lcb-field-inline {
         flex-direction: row;
         align-items: center;
-        gap: 0.5rem;
+        gap: 0.625rem;
         flex: 0 1 auto;
         min-width: 0;
     }
 
     .lcb-view-bar-fields .lcb-field-inline .lcb-label {
         margin: 0;
-        font-size: 0.8125rem;
+        font-size: 1rem;
         font-weight: 500;
+        color: #1f2937;
         white-space: nowrap;
         flex-shrink: 0;
     }
 
     .lcb-view-bar-fields .lcb-field-inline .lcb-select-compact {
-        min-width: 9rem;
+        min-width: 11rem;
         max-width: 100%;
     }
 
     .lcb-select-compact {
-        padding: 0.5rem 0.625rem;
-        font-size: 0.8125rem;
-        min-height: 2.25rem;
+        padding: 0.625rem 0.75rem;
+        font-size: 1rem;
+        min-height: 2.75rem;
+        font-weight: 500;
     }
 
     .lcb-toggle-btn {
@@ -596,11 +600,11 @@
         align-items: center;
         justify-content: center;
         gap: 0.375rem;
-        min-height: 2.25rem;
-        padding: 0.375rem 0.875rem;
-        font-size: 0.8125rem;
+        min-height: 2.75rem;
+        padding: 0.5rem 1rem;
+        font-size: 1rem;
         font-weight: 500;
-        color: #374151;
+        color: #1f2937;
         background: #f9fafb;
         border: 1px solid #d1d5db;
         border-radius: 0.375rem;
@@ -615,7 +619,25 @@
     }
 
     .lcb-toggle-btn .material-symbols-outlined {
-        font-size: 1.125rem !important;
+        font-size: 1.25rem !important;
+    }
+
+    @media (min-width: 640px) {
+        .lcb-view-bar-title {
+            font-size: 1.25rem;
+        }
+
+        .lcb-view-bar-fields .lcb-field-inline .lcb-label {
+            font-size: 1.0625rem;
+        }
+
+        .lcb-select-compact {
+            font-size: 1.0625rem;
+        }
+
+        .lcb-toggle-btn {
+            font-size: 1.0625rem;
+        }
     }
 
     .lcb-view-panel.is-collapsed {
