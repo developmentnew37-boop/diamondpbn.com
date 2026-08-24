@@ -1012,4 +1012,197 @@
     .billing-pagination nav[role="navigation"] {
         width: 100%;
     }
+
+    /* ── Rates modal ── */
+    body.billing-rates-modal-open {
+        overflow: hidden;
+    }
+
+    .billing-rates-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 80;
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        padding: 0;
+    }
+
+    .billing-rates-modal[hidden] {
+        display: none !important;
+    }
+
+    @media (min-width: 640px) {
+        .billing-rates-modal {
+            align-items: center;
+            padding: 1.25rem;
+        }
+    }
+
+    .billing-rates-modal-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.55);
+        border: none;
+        cursor: pointer;
+    }
+
+    .billing-rates-modal-dialog {
+        position: relative;
+        z-index: 1;
+        width: 100%;
+        max-width: 52rem;
+        max-height: min(92vh, 40rem);
+        display: flex;
+        flex-direction: column;
+        background: #fff;
+        border-radius: 1rem 1rem 0 0;
+        box-shadow: 0 -8px 40px rgba(15, 23, 42, 0.2);
+        overflow: hidden;
+    }
+
+    @media (min-width: 640px) {
+        .billing-rates-modal-dialog {
+            border-radius: 1rem;
+            box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25);
+            max-height: min(88vh, 42rem);
+        }
+    }
+
+    .billing-rates-modal-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 1rem 1.125rem;
+        border-bottom: 1px solid #e2e8f0;
+        flex-shrink: 0;
+    }
+
+    @media (min-width: 640px) {
+        .billing-rates-modal-header {
+            padding: 1.25rem 1.5rem;
+        }
+    }
+
+    .billing-rates-modal-title {
+        margin: 0;
+        font-size: 1.125rem;
+        font-weight: 700;
+        color: #0f172a;
+        letter-spacing: -0.02em;
+    }
+
+    .billing-rates-modal-subtitle {
+        margin: 0.25rem 0 0;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        color: #64748b;
+    }
+
+    .billing-rates-modal-close {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2.5rem;
+        height: 2.5rem;
+        flex-shrink: 0;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.5rem;
+        background: #f8fafc;
+        color: #475569;
+        cursor: pointer;
+        transition: background 0.15s ease, color 0.15s ease;
+    }
+
+    .billing-rates-modal-close:hover {
+        background: #f1f5f9;
+        color: #0f172a;
+    }
+
+    .billing-rates-modal-body {
+        padding: 0.75rem 1.125rem 1.25rem;
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;
+        flex: 1;
+        min-height: 0;
+    }
+
+    @media (min-width: 640px) {
+        .billing-rates-modal-body {
+            padding: 1rem 1.5rem 1.5rem;
+        }
+    }
+
+    .billing-rates-table-wrap {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.75rem;
+    }
+
+    .billing-rates-table {
+        width: 100%;
+        min-width: 32rem;
+        border-collapse: collapse;
+        font-size: 0.8125rem;
+    }
+
+    .billing-rates-table th,
+    .billing-rates-table td {
+        padding: 0.625rem 0.75rem;
+        text-align: left;
+        border-bottom: 1px solid #f1f5f9;
+        white-space: nowrap;
+    }
+
+    .billing-rates-table th {
+        background: #0f172a;
+        color: #fff;
+        font-weight: 600;
+        font-size: 0.75rem;
+    }
+
+    .billing-rates-table tbody tr:last-child td {
+        border-bottom: none;
+    }
+
+    .billing-rates-table tbody tr:nth-child(even) {
+        background: #f8fafc;
+    }
+
+    .billing-rates-cat {
+        font-weight: 600;
+        color: #1e293b;
+        white-space: normal !important;
+        min-width: 7rem;
+    }
+
+    .billing-rates-empty {
+        text-align: center;
+        color: #64748b;
+        padding: 1.5rem 0.75rem !important;
+        white-space: normal !important;
+    }
+
+    .billing-rates-note {
+        margin: 0.875rem 0 0;
+        font-size: 0.75rem;
+        line-height: 1.45;
+        color: #94a3b8;
+    }
+
+    @media (max-width: 639px) {
+        .billing-doc-actions .billing-btn {
+            flex: 1 1 calc(50% - 0.3125rem);
+            min-width: calc(50% - 0.3125rem);
+        }
+
+        .billing-doc-actions #billing-view-rates-btn {
+            flex: 1 1 100%;
+            min-width: 100%;
+            order: -1;
+        }
+    }
 </style>

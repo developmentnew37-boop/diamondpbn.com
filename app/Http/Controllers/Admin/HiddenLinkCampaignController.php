@@ -545,7 +545,7 @@ class HiddenLinkCampaignController extends Controller
      */
     public function edit(string $id)
     {
-        $campaign = HiddenLinksCampaign::with(['links', 'domains'])->findOrFail($id);
+        $campaign = HiddenLinksCampaign::with(['links', 'domains', 'localClient'])->findOrFail($id);
         $this->authorizeCampaignAccess($campaign);
 
         $links = HiddenLinksCampaignLinks::where('hidden_links_campaigns_id', $campaign->id)->get();
@@ -587,7 +587,10 @@ class HiddenLinkCampaignController extends Controller
 
         return view(
             'admin.campaigns.pbn-hidden-links.edit-campaign',
-            compact('campaign', 'distinctBatches', 'allLinksForBulk')
+            array_merge(
+                compact('campaign', 'distinctBatches', 'allLinksForBulk'),
+                ['localClients' => $this->activeLocalClientsForForms()]
+            )
         );
     }
 

@@ -14,6 +14,8 @@
         ? route('admin.local-clients.show', $client)
         : route('admin.local-clients.index');
     $backLabel = $mode === 'edit' ? 'Back to client' : 'Back to Local Clients';
+    $selectedRateSource = old('rate_source', $client->rate_list_id ? (string) $client->rate_list_id : 'custom');
+    $isCustomRates = $selectedRateSource === 'custom';
 @endphp
 
     <div class="page-header w-full max-w-full min-w-0">
@@ -125,7 +127,7 @@
             </div>
         </div>
 
-        {{-- Price matrix --}}
+        {{-- Rate source + matrix --}}
         <div class="w-full content-card !mt-4">
             <div class="lc-section-heading">
                 <span class="material-symbols-outlined text-[var(--primary-color)] !text-xl">payments</span>
@@ -133,14 +135,48 @@
             </div>
 
             <p class="lc-help-text !mb-4">
-                Set per-domain-category prices in the client's default currency
-                (<strong id="currency-label">{{ $currencySymbol }}</strong>).
+                Changing rate source affects <strong>future billing only</strong>. Past campaign invoices stay unchanged.
+                For Customize rates, every domain category must have Post, Sidebar, Hidden links, and Sticky filled.
                 Schedule Post uses the Post column; Schedule Sidebar uses the Sidebar column.
-                Leave a cell empty if that category is not billed for this client.
+                Zero is a valid price; empty cells are not allowed.
+            </p>
+
+            <div class="w-full grid grid-cols-1 lg:grid-cols-2 gap-5 !mb-5">
+                <div class="flex flex-col gap-2">
+                    <label for="rate_source" class="lc-form-label required">Rate source</label>
+                    <select name="rate_source" id="rate_source" class="lc-form-input">
+                        <option value="custom" @selected($selectedRateSource === 'custom')>Customize rates</option>
+                        @foreach ($rateLists as $list)
+                            <option value="{{ $list->id }}" @selected($selectedRateSource === (string) $list->id)>
+                                {{ $list->name }}@if (! $list->is_active) (inactive)@endif
+                            </option>
+                        @endforeach
+                    </select>
+                    @error('rate_source')<div class="text-sm text-red-600">{{ $message }}</div>@enderror
+                </div>
+                <div class="flex flex-col gap-2">
+                    <label for="copy_from_client" class="lc-form-label">Copy rates from client</label>
+                    <select name="copy_from_client" id="copy_from_client" class="lc-form-input"
+                        @disabled(! $isCustomRates)>
+                        <option value="">— Start blank / keep current —</option>
+                        @foreach ($copyFromClients as $copyClient)
+                            <option value="{{ $copyClient->id }}">{{ $copyClient->name }}</option>
+                        @endforeach
+                    </select>
+                    <p class="lc-help-text !mt-1">Enabled only for Customize rates. Copies once into this form (not a live link).</p>
+                </div>
+            </div>
+
+            <p id="matrix-mode-hint" class="lc-help-text !mb-3">
+                @if ($isCustomRates)
+                    Editing custom prices for this client.
+                @else
+                    Preview of the selected shared rate list (read-only). Save to link this client to the list.
+                @endif
             </p>
 
             <div class="overflow-x-auto w-full max-w-full min-w-0">
-                <table class="lc-matrix-table">
+                <table class="lc-matrix-table" id="price-matrix-table">
                     <thead>
                         <tr>
                             <th>Domain category</th>
@@ -152,19 +188,32 @@
                     </thead>
                     <tbody>
                         @foreach ($matrix as $row)
-                            <tr>
+                            <tr data-category-id="{{ $row['domain_category_id'] }}">
                                 <td class="font-medium text-gray-800">{{ $row['category_name'] }}</td>
                                 @foreach (['post_price', 'sidebar_price', 'hidden_links_price', 'sticky_price'] as $field)
                                     <td>
                                         <input type="number" step="0.01" min="0"
                                             name="prices[{{ $row['domain_category_id'] }}][{{ $field }}]"
-                                            value="{{ old('prices.'.$row['domain_category_id'].'.'.$field, $row[$field]) }}"
+                                            data-field="{{ $field }}"
+                                            value="{{ old('prices.'.$row['domain_category_id'].'.'.$field, $row[$field] ?? ($isCustomRates ? '0.00' : '')) }}"
                                             placeholder="0.00"
-                                            class="lc-form-input">
+                                            class="lc-form-input matrix-price-input"
+                                            @disabled(! $isCustomRates)
+                                            @if ($isCustomRates) required @endif>
+                                        @error('prices.'.$row['domain_category_id'].'.'.$field)
+                                            <div class="text-xs text-red-600 !mt-1">{{ $message }}</div>
+                                        @enderror
                                     </td>
                                 @endforeach
                             </tr>
                         @endforeach
+                        @if ($matrix->isEmpty())
+                            <tr>
+                                <td colspan="5" class="!py-6 text-center text-gray-500">
+                                    No domain categories yet.
+                                </td>
+                            </tr>
+                        @endif
                     </tbody>
                 </table>
             </div>
@@ -185,10 +234,80 @@
 @push('scripts')
 <script>
 const currencySymbols = @json(collect($currencies)->mapWithKeys(fn ($c) => [$c => \App\Support\CurrencyFormatter::symbol($c)]));
+const rateListMatrices = @json($rateListMatrices ?? []);
+const customClientMatrices = @json($customClientMatrices ?? []);
+
 document.getElementById('default_currency')?.addEventListener('change', function () {
     const sym = currencySymbols[this.value] || this.value;
-    document.getElementById('currency-label').textContent = sym;
+    document.getElementById('currency-label') && (document.getElementById('currency-label').textContent = sym);
     document.querySelectorAll('.price-symbol').forEach(el => el.textContent = sym);
+});
+
+const rateSourceEl = document.getElementById('rate_source');
+const copyFromEl = document.getElementById('copy_from_client');
+const matrixHint = document.getElementById('matrix-mode-hint');
+const priceInputs = () => document.querySelectorAll('.matrix-price-input');
+
+function fillMatrix(pricesByCategory, fillEmptyWithZero = false) {
+    if (!pricesByCategory) return;
+    document.querySelectorAll('#price-matrix-table tbody tr[data-category-id]').forEach(row => {
+        const catId = row.getAttribute('data-category-id');
+        const prices = pricesByCategory[catId] || pricesByCategory[String(catId)] || {};
+        row.querySelectorAll('.matrix-price-input').forEach(input => {
+            const field = input.getAttribute('data-field');
+            const val = prices[field];
+            if (val === null || val === undefined || val === '') {
+                input.value = fillEmptyWithZero ? '0.00' : '';
+            } else {
+                input.value = val;
+            }
+        });
+    });
+}
+
+function setMatrixEditable(editable) {
+    priceInputs().forEach(input => {
+        input.disabled = !editable;
+        input.required = editable;
+        if (editable && input.value === '') {
+            input.value = '0.00';
+        }
+    });
+    if (copyFromEl) {
+        copyFromEl.disabled = !editable;
+        if (!editable) {
+            copyFromEl.value = '';
+        }
+    }
+    if (matrixHint) {
+        matrixHint.textContent = editable
+            ? 'Editing custom prices for this client. All cells are required (0.00 allowed).'
+            : 'Preview of the selected shared rate list (read-only). Save to link this client to the list.';
+    }
+}
+
+rateSourceEl?.addEventListener('change', function () {
+    const value = this.value;
+    if (value === 'custom') {
+        setMatrixEditable(true);
+        return;
+    }
+    setMatrixEditable(false);
+    fillMatrix(rateListMatrices[value] || {});
+});
+
+copyFromEl?.addEventListener('change', function () {
+    if (!this.value || this.disabled) return;
+    fillMatrix(customClientMatrices[this.value] || {}, true);
+});
+
+// Ensure disabled inputs are not submitted empty wiping custom — when shared list selected,
+// prices are ignored server-side; re-enable briefly before submit is unnecessary.
+document.querySelector('form')?.addEventListener('submit', function () {
+    // Disabled inputs are not posted; fine for shared lists. For custom, ensure enabled.
+    if (rateSourceEl?.value === 'custom') {
+        priceInputs().forEach(input => { input.disabled = false; });
+    }
 });
 </script>
 @endpush

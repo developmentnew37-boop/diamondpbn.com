@@ -69,8 +69,12 @@
     @endif
 
     @php
+        $showLocalClientTab = (Auth::guard('admin')->user()?->isSuperAdmin()
+            || (int) ($campaign->admin_id ?? 0) === (int) Auth::guard('admin')->id())
+            && ($localClients ?? collect())->isNotEmpty();
+        $allowedEditTabs = $showLocalClientTab ? ['campaign', 'keywords', 'local_client'] : ['campaign', 'keywords'];
         $editTab = session('edit_schedule_campaign_tab', 'campaign');
-        if (! in_array($editTab, ['campaign', 'keywords'], true)) {
+        if (! in_array($editTab, $allowedEditTabs, true)) {
             $editTab = 'campaign';
         }
     @endphp
@@ -104,6 +108,20 @@
                     <div class="heading-line w-15 h-1 flex rounded duration-300 transition-all {{ $editTab === 'keywords' ? 'bg-[var(--primary-color)]' : 'bg-gray-300 group-hover:bg-[var(--primary-color)]' }}"></div>
                 </div>
             </button>
+            @if ($showLocalClientTab)
+                <button type="button" data-edit-tab="local_client"
+                    class="edit-campaign-tab group flex flex-col gap-3 rounded !p-2 cursor-pointer text-lg w-fit {{ $editTab === 'local_client' ? 'text-[var(--primary-color)]' : 'duration-300 transition-all hover:text-[var(--primary-color)]' }}">
+                    <span>Local client</span>
+                    <div class="w-full flex items-center gap-1">
+                        <div class="flex items-center gap-1">
+                            <span class="heading-dots w-1 h-1 flex rounded-full duration-300 transition-all {{ $editTab === 'local_client' ? 'bg-[var(--primary-color)]' : 'bg-gray-300 group-hover:bg-[var(--primary-color)]' }}"></span>
+                            <span class="heading-dots w-1 h-1 flex rounded-full duration-300 transition-all {{ $editTab === 'local_client' ? 'bg-[var(--primary-color)]' : 'bg-gray-300 group-hover:bg-[var(--primary-color)]' }}"></span>
+                            <span class="heading-dots w-1 h-1 flex rounded-full duration-300 transition-all {{ $editTab === 'local_client' ? 'bg-[var(--primary-color)]' : 'bg-gray-300 group-hover:bg-[var(--primary-color)]' }}"></span>
+                        </div>
+                        <div class="heading-line w-15 h-1 flex rounded duration-300 transition-all {{ $editTab === 'local_client' ? 'bg-[var(--primary-color)]' : 'bg-gray-300 group-hover:bg-[var(--primary-color)]' }}"></div>
+                    </div>
+                </button>
+            @endif
         </div>
 
         <div id="edit-campaign-info" data-edit-panel="campaign"
@@ -356,6 +374,13 @@
                 @endif
             </div>
         </div>
+
+        @if ($showLocalClientTab)
+            <div id="edit-local-client" data-edit-panel="local_client"
+                class="edit-campaign-panel w-full !p-4 duration-500 transition-all {{ $editTab === 'local_client' ? '' : 'hidden opacity-0 translate-y-5' }}">
+                @include('admin.campaigns.partials.local-client-billing-edit')
+            </div>
+        @endif
     </div>
 
     @push('scripts')

@@ -789,7 +789,7 @@ class CampaignController extends Controller
 
     public function edit(string $id)
     {
-        $campaign = Campaign::findOrFail($id);
+        $campaign = Campaign::with('localClient')->findOrFail($id);
 
         $articles = CampaignArticle::with('campaignPosts')
             ->where('campaign_id', $campaign->id)
@@ -852,7 +852,10 @@ class CampaignController extends Controller
 
         return view(
             'admin.campaigns.pbn-post.edit-campaign',
-            compact('campaign', 'postQuantity', 'multiLevelBoxes', 'initialNofollow', 'initialSponsored', 'initialUgc', 'initialNoopener', 'initialNoreferrer', 'distinctBatches', 'preferredKeywordTab')
+            array_merge(
+                compact('campaign', 'postQuantity', 'multiLevelBoxes', 'initialNofollow', 'initialSponsored', 'initialUgc', 'initialNoopener', 'initialNoreferrer', 'distinctBatches', 'preferredKeywordTab'),
+                ['localClients' => $this->activeLocalClientsForForms()]
+            )
         );
     }
 

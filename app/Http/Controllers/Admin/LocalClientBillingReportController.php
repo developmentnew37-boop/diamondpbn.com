@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Admin\LocalClient;
 use App\Services\LocalClientBillingReportService;
+use App\Services\LocalClientPriceMatrixService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 
@@ -75,12 +76,15 @@ class LocalClientBillingReportController extends Controller
      *   allCampaigns: \Illuminate\Support\Collection,
      *   summary: array<string, mixed>,
      *   filters: array<string, mixed>,
-     *   availableMonths: \Illuminate\Support\Collection
+     *   rateMatrix: \Illuminate\Support\Collection,
+     *   rateSourceLabel: string
      * }
      */
     private function buildReportPayload(int $id, string $token, Request $request, LocalClientBillingReportService $reportService): array
     {
         $client = $this->resolveClient($id, $token);
+        $client->loadMissing('rateList:id,name');
+
         $allCampaigns = $reportService->campaignsForClient($client);
         $filters = $reportService->resolveFilters($request);
         $filteredCampaigns = $reportService->filterCampaigns($allCampaigns, $filters);
@@ -93,6 +97,12 @@ class LocalClientBillingReportController extends Controller
         $statusFilterOptions = $reportService->statusFilterOptions();
         $typeFilterOptions = $reportService->typeFilterOptions();
         $monthFilterOptions = $reportService->monthFilterOptions();
+
+        $matrixService = app(LocalClientPriceMatrixService::class);
+        $rateMatrix = $client->rate_list_id && $client->rateList
+            ? $matrixService->buildGridForRateList($client->rateList)
+            : $matrixService->buildGrid($client);
+        $rateSourceLabel = $client->rateList?->name ?? 'Custom rates';
 
         return compact(
             'client',
@@ -107,6 +117,8 @@ class LocalClientBillingReportController extends Controller
             'statusFilterOptions',
             'typeFilterOptions',
             'monthFilterOptions',
+            'rateMatrix',
+            'rateSourceLabel',
         );
     }
 

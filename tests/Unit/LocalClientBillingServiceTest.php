@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Models\Admin\BillingCampaignType;
 use App\Models\Admin\Campaign;
+use App\Models\Admin\CampaignDomain;
 use App\Models\Admin\Domain;
 use App\Models\Admin\LocalClient;
 use App\Models\Admin\LocalClientBillLine;
@@ -108,6 +109,14 @@ class LocalClientBillingServiceTest extends TestCase
             $table->timestamps();
         });
 
+        Schema::create('campaign_domains', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('campaign_id');
+            $table->unsignedBigInteger('domain_id');
+            $table->unsignedInteger('sort_order')->default(0);
+            $table->timestamps();
+        });
+
         Schema::table('domain_categories', function (Blueprint $table) {
             if (! Schema::hasColumn('domain_categories', 'id')) {
                 return;
@@ -136,6 +145,7 @@ class LocalClientBillingServiceTest extends TestCase
         Schema::dropIfExists('local_client_bill_lines');
         Schema::dropIfExists('local_client_domain_category_prices');
         Schema::dropIfExists('local_clients');
+        Schema::dropIfExists('campaign_domains');
         Schema::dropIfExists('campaigns');
         Schema::dropIfExists('domains');
         Schema::dropIfExists('domain_categories');
@@ -223,5 +233,161 @@ class LocalClientBillingServiceTest extends TestCase
         $this->assertSame('10.00', (string) $campaign->billing_total);
         $this->assertSame('IDR', $campaign->billing_currency);
         $this->assertSame(1, LocalClientBillLine::count());
+    }
+
+    public function test_sync_attaches_client_from_campaign_domains(): void
+    {
+        $client = LocalClient::create([
+            'name' => 'Acme',
+            'default_currency' => 'USD',
+            'billing_report_token' => str_repeat('e', 64),
+            'created_by_admin_id' => 1,
+        ]);
+
+        LocalClientDomainCategoryPrice::create([
+            'local_client_id' => $client->id,
+            'domain_category_id' => 1,
+            'post_price' => 12.50,
+        ]);
+
+        $domain = Domain::create(['name' => 'attach.com', 'domain_category_id' => 1, 'admin_id' => 1]);
+        $campaign = Campaign::create([
+            'campaign_no' => 'CMP-ATTACH',
+            'report_token' => str_repeat('f', 64),
+            'admin_id' => 1,
+        ]);
+        CampaignDomain::create([
+            'campaign_id' => $campaign->id,
+            'domain_id' => $domain->id,
+            'sort_order' => 0,
+        ]);
+
+        app(LocalClientBillingService::class)->syncClientOnCampaign($campaign, $client->id, 'USD');
+
+        $campaign->refresh();
+        $this->assertSame($client->id, (int) $campaign->local_client_id);
+        $this->assertSame('12.50', (string) $campaign->billing_total);
+        $this->assertSame('USD', $campaign->billing_currency);
+        $this->assertNotEmpty($campaign->billing_snapshot);
+        $this->assertSame(1, LocalClientBillLine::count());
+    }
+
+    public function test_sync_changes_client_and_replaces_bill_lines(): void
+    {
+        $clientA = LocalClient::create([
+            'name' => 'Client A',
+            'default_currency' => 'USD',
+            'billing_report_token' => str_repeat('g', 64),
+            'created_by_admin_id' => 1,
+        ]);
+        $clientB = LocalClient::create([
+            'name' => 'Client B',
+            'default_currency' => 'EUR',
+            'billing_report_token' => str_repeat('h', 64),
+            'created_by_admin_id' => 1,
+        ]);
+
+        LocalClientDomainCategoryPrice::create([
+            'local_client_id' => $clientA->id,
+            'domain_category_id' => 1,
+            'post_price' => 10,
+        ]);
+        LocalClientDomainCategoryPrice::create([
+            'local_client_id' => $clientB->id,
+            'domain_category_id' => 1,
+            'post_price' => 20,
+        ]);
+
+        $domain = Domain::create(['name' => 'change.com', 'domain_category_id' => 1, 'admin_id' => 1]);
+        $campaign = Campaign::create([
+            'campaign_no' => 'CMP-CHANGE',
+            'report_token' => str_repeat('i', 64),
+            'admin_id' => 1,
+        ]);
+        CampaignDomain::create([
+            'campaign_id' => $campaign->id,
+            'domain_id' => $domain->id,
+            'sort_order' => 0,
+        ]);
+
+        $service = app(LocalClientBillingService::class);
+        $service->syncClientOnCampaign($campaign, $clientA->id);
+        $service->syncClientOnCampaign($campaign, $clientB->id, 'EUR');
+
+        $campaign->refresh();
+        $this->assertSame($clientB->id, (int) $campaign->local_client_id);
+        $this->assertSame('20.00', (string) $campaign->billing_total);
+        $this->assertSame('EUR', $campaign->billing_currency);
+        $this->assertSame(1, LocalClientBillLine::count());
+        $this->assertSame($clientB->id, (int) LocalClientBillLine::first()->local_client_id);
+    }
+
+    public function test_sync_removes_client_billing(): void
+    {
+        $client = LocalClient::create([
+            'name' => 'Acme',
+            'default_currency' => 'USD',
+            'billing_report_token' => str_repeat('j', 64),
+            'created_by_admin_id' => 1,
+        ]);
+
+        LocalClientDomainCategoryPrice::create([
+            'local_client_id' => $client->id,
+            'domain_category_id' => 1,
+            'post_price' => 10,
+        ]);
+
+        $domain = Domain::create(['name' => 'clear.com', 'domain_category_id' => 1, 'admin_id' => 1]);
+        $campaign = Campaign::create([
+            'campaign_no' => 'CMP-CLEAR',
+            'report_token' => str_repeat('k', 64),
+            'admin_id' => 1,
+            'billing_payment_status' => 'paid',
+            'billing_paid_at' => now(),
+        ]);
+        CampaignDomain::create([
+            'campaign_id' => $campaign->id,
+            'domain_id' => $domain->id,
+            'sort_order' => 0,
+        ]);
+
+        $service = app(LocalClientBillingService::class);
+        $service->syncClientOnCampaign($campaign, $client->id);
+        $service->syncClientOnCampaign($campaign, null);
+
+        $campaign->refresh();
+        $this->assertNull($campaign->local_client_id);
+        $this->assertNull($campaign->billing_total);
+        $this->assertNull($campaign->billing_currency);
+        $this->assertNull($campaign->billing_snapshot);
+        $this->assertSame('unpaid', $campaign->billing_payment_status);
+        $this->assertNull($campaign->billing_paid_at);
+        $this->assertSame(0, LocalClientBillLine::count());
+    }
+
+    public function test_sync_rejects_client_without_price(): void
+    {
+        $client = LocalClient::create([
+            'name' => 'NoPrice',
+            'default_currency' => 'USD',
+            'billing_report_token' => str_repeat('l', 64),
+            'created_by_admin_id' => 1,
+        ]);
+
+        $domain = Domain::create(['name' => 'noprice.com', 'domain_category_id' => 1, 'admin_id' => 1]);
+        $campaign = Campaign::create([
+            'campaign_no' => 'CMP-NOPRICE',
+            'report_token' => str_repeat('m', 64),
+            'admin_id' => 1,
+        ]);
+        CampaignDomain::create([
+            'campaign_id' => $campaign->id,
+            'domain_id' => $domain->id,
+            'sort_order' => 0,
+        ]);
+
+        $this->expectException(ValidationException::class);
+
+        app(LocalClientBillingService::class)->syncClientOnCampaign($campaign, $client->id);
     }
 }

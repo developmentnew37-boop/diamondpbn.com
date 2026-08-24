@@ -1086,7 +1086,7 @@ class ScheduleCampaignController extends Controller
      */
     public function edit(string $id)
     {
-        $campaign = ScheduleCampaign::findOrFail($id);
+        $campaign = ScheduleCampaign::with('localClient')->findOrFail($id);
 
         $articles = ScheduleCampaignArticle::with('posts')
             ->where('schedule_campaign_id', $campaign->id)
@@ -1171,15 +1171,18 @@ class ScheduleCampaignController extends Controller
 
         return view(
             'admin.campaigns.pbn-post.edit-schedule-campaign',
-            compact(
-                'campaign',
-                'distinctBatches',
-                'postQuantity',
-                'allLinksForBulk',
-                'multiLevelBoxes',
-                'initialNofollow',
-                'scheduleIndexUrl',
-                'preferredKeywordTab'
+            array_merge(
+                compact(
+                    'campaign',
+                    'distinctBatches',
+                    'postQuantity',
+                    'allLinksForBulk',
+                    'multiLevelBoxes',
+                    'initialNofollow',
+                    'scheduleIndexUrl',
+                    'preferredKeywordTab'
+                ),
+                ['localClients' => $this->activeLocalClientsForForms()]
             )
         );
     }

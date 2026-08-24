@@ -93,6 +93,11 @@
                             </div>
                         </div>
                         <div class="billing-doc-actions">
+                            <button type="button" class="billing-btn billing-btn-secondary" id="billing-view-rates-btn"
+                                aria-haspopup="dialog" aria-controls="billing-rates-modal">
+                                <span class="material-symbols-outlined !text-base">price_change</span>
+                                View rates
+                            </button>
                             <a class="billing-btn billing-btn-primary"
                                 href="{{ route('admin.local-client.billing.report.export', array_merge(['id' => $client->id, 'token' => $client->billing_report_token], $exportPdfParams)) }}">
                                 <span class="material-symbols-outlined !text-base">picture_as_pdf</span>
@@ -459,6 +464,65 @@
             </div>
         </footer>
     </div>
+
+    @php
+        $currencySymbol = \App\Support\CurrencyFormatter::symbol($client->default_currency ?? 'USD');
+        $rateMatrix = $rateMatrix ?? collect();
+        $rateSourceLabel = $rateSourceLabel ?? 'Custom rates';
+    @endphp
+
+    <div id="billing-rates-modal" class="billing-rates-modal" hidden aria-hidden="true">
+        <div class="billing-rates-modal-backdrop" data-rates-close tabindex="-1"></div>
+        <div class="billing-rates-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="billing-rates-modal-title">
+            <div class="billing-rates-modal-header">
+                <div class="min-w-0">
+                    <h2 id="billing-rates-modal-title" class="billing-rates-modal-title">Your rates</h2>
+                    <p class="billing-rates-modal-subtitle">{{ $rateSourceLabel }} · {{ $client->default_currency }}</p>
+                </div>
+                <button type="button" class="billing-rates-modal-close" data-rates-close aria-label="Close">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="billing-rates-modal-body">
+                <div class="billing-rates-table-wrap">
+                    <table class="billing-rates-table">
+                        <thead>
+                            <tr>
+                                <th>Domain category</th>
+                                <th>Post ({{ $currencySymbol }})</th>
+                                <th>Sidebar ({{ $currencySymbol }})</th>
+                                <th>Hidden links ({{ $currencySymbol }})</th>
+                                <th>Sticky ({{ $currencySymbol }})</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse ($rateMatrix as $row)
+                                <tr>
+                                    <td class="billing-rates-cat">{{ $row['category_name'] }}</td>
+                                    @foreach (['post_price', 'sidebar_price', 'hidden_links_price', 'sticky_price'] as $field)
+                                        <td>
+                                            @if ($row[$field] === null || $row[$field] === '')
+                                                —
+                                            @else
+                                                {{ number_format((float) $row[$field], 2) }}
+                                            @endif
+                                        </td>
+                                    @endforeach
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="5" class="billing-rates-empty">No rates are available yet.</td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+                <p class="billing-rates-note">
+                    These are your current rates. Past campaign totals on this report stay as billed.
+                </p>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @push('scripts')
@@ -467,21 +531,51 @@
             const yearSelect = document.getElementById('billing-filter-year');
             const monthSelect = document.getElementById('billing-filter-month');
 
-            if (!yearSelect || !monthSelect) {
+            if (yearSelect && monthSelect) {
+                function syncMonthState() {
+                    const hasYear = yearSelect.value !== '';
+                    monthSelect.disabled = !hasYear;
+
+                    if (!hasYear) {
+                        monthSelect.value = '';
+                    }
+                }
+
+                yearSelect.addEventListener('change', syncMonthState);
+                syncMonthState();
+            }
+
+            const modal = document.getElementById('billing-rates-modal');
+            const openBtn = document.getElementById('billing-view-rates-btn');
+            if (!modal || !openBtn) {
                 return;
             }
 
-            function syncMonthState() {
-                const hasYear = yearSelect.value !== '';
-                monthSelect.disabled = !hasYear;
+            const dialog = modal.querySelector('.billing-rates-modal-dialog');
 
-                if (!hasYear) {
-                    monthSelect.value = '';
-                }
+            function openRatesModal() {
+                modal.hidden = false;
+                modal.setAttribute('aria-hidden', 'false');
+                document.body.classList.add('billing-rates-modal-open');
+                dialog?.querySelector('.billing-rates-modal-close')?.focus();
             }
 
-            yearSelect.addEventListener('change', syncMonthState);
-            syncMonthState();
+            function closeRatesModal() {
+                modal.hidden = true;
+                modal.setAttribute('aria-hidden', 'true');
+                document.body.classList.remove('billing-rates-modal-open');
+                openBtn.focus();
+            }
+
+            openBtn.addEventListener('click', openRatesModal);
+            modal.querySelectorAll('[data-rates-close]').forEach(function (el) {
+                el.addEventListener('click', closeRatesModal);
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && !modal.hidden) {
+                    closeRatesModal();
+                }
+            });
         })();
     </script>
 @endpush

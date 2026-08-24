@@ -5,9 +5,11 @@ namespace App\Providers;
 use App\Models\Admin\Article;
 use App\Models\Admin\Campaign;
 use App\Models\Admin\Domain;
+use App\Models\Admin\DomainCategory;
 use App\Observers\ArticleObserver;
 use App\Observers\BillableCampaignBillingObserver;
 use App\Observers\CampaignObserver;
+use App\Observers\DomainCategoryObserver;
 use App\Observers\DomainObserver;
 use App\Support\BillableCampaignRegistry;
 use Illuminate\Support\ServiceProvider;
@@ -31,6 +33,7 @@ class AppServiceProvider extends ServiceProvider
         Article::observe(ArticleObserver::class);
         Campaign::observe(CampaignObserver::class);
         Domain::observe(DomainObserver::class);
+        DomainCategory::observe(DomainCategoryObserver::class);
 
         $billingObserver = BillableCampaignBillingObserver::class;
         $registered = [];

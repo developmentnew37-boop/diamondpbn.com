@@ -68,7 +68,8 @@
              data-campaign-type="{{ $billingCampaignType ?? 'post' }}"
              data-is-sticky="{{ !empty($isStickyBilling) ? '1' : '0' }}">
             <p class="lcb-panel-desc !mb-3">
-                Per-domain billing uses the client price matrix for the selected domains.
+                Per-domain billing uses the client price matrix (or linked rate list) for the selected domains.
+                Estimate appears after domains are resolved — for Manual Domains, after the list validates against your inventory.
                 Currency defaults from the client profile and can be overridden above (no FX conversion).
             </p>
 

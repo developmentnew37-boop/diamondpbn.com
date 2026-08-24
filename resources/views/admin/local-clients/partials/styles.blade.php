@@ -250,6 +250,13 @@
         background: #fee2e2;
     }
 
+    .lc-chip-btn:disabled,
+    .lc-chip-btn[disabled] {
+        opacity: 0.45;
+        cursor: not-allowed;
+        pointer-events: none;
+    }
+
     .lc-chip-btn.is-copied {
         border-color: #86efac;
         color: #166534;

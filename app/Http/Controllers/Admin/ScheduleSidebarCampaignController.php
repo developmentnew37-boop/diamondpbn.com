@@ -849,7 +849,7 @@ class ScheduleSidebarCampaignController extends Controller
      */
     public function edit(string $id)
     {
-        $campaign = ScheduleSidebarCampaign::findOrFail($id);
+        $campaign = ScheduleSidebarCampaign::with('localClient')->findOrFail($id);
         $this->authorizeCampaignAccess($campaign);
 
         $links = ScheduleSidebarCampaignLink::where('schedule_sidebar_campaign_id', $campaign->id)->get();
@@ -940,7 +940,10 @@ class ScheduleSidebarCampaignController extends Controller
 
         return view(
             'admin.campaigns.pbn-sidebar.edit-schedule-sidebar-campaign',
-            compact('campaign', 'distinctBatches', 'allLinksForBulk')
+            array_merge(
+                compact('campaign', 'distinctBatches', 'allLinksForBulk'),
+                ['localClients' => $this->activeLocalClientsForForms()]
+            )
         );
     }
 

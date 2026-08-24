@@ -33,6 +33,7 @@
           || (str_starts_with($currentRoute, 'admin.convert.sidebar') && ! str_starts_with($currentRoute, 'admin.convert.sidebar.converted'));
       $userRoutes = ['admin.user'];
       $localClientRoutes = ['admin.local-clients'];
+      $localClientRateListRoutes = ['admin.local-client-rate-lists'];
 
       $pendingCounts = \App\Models\Admin\PendingDomain::cachedSidebarCounts();
       $pendingDomainUnviewedCount = $pendingCounts['unviewed'];
@@ -372,6 +373,14 @@
                       <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
                   </svg>
                   <span class="menu-text">Local Clients</span>
+              </a>
+              <a href="{{ route('admin.local-client-rate-lists.index') }}"
+                  class="menu-item {{ $isActive($localClientRateListRoutes) ? 'active' : '' }}">
+                  <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="12" y1="1" x2="12" y2="23"></line>
+                      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                  </svg>
+                  <span class="menu-text">Rate Lists</span>
               </a>
           </div>
           @endif

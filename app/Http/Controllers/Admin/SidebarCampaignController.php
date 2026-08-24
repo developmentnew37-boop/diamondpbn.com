@@ -1020,7 +1020,7 @@ class SidebarCampaignController extends Controller
      */
     public function edit(string $id)
     {
-        $campaign = SidebarCampaign::with(['links', 'domains'])->findOrFail($id);
+        $campaign = SidebarCampaign::with(['links', 'domains', 'localClient'])->findOrFail($id);
         $this->authorizeCampaignAccess($campaign);
 
         $links = SidebarCampaignLink::where('sidebar_campaign_id', $campaign->id)->get();
@@ -1119,7 +1119,10 @@ class SidebarCampaignController extends Controller
 
         return view(
             'admin.campaigns.pbn-sidebar.edit-sidebar-campaign',
-            compact('campaign', 'distinctBatches', 'allLinksForBulk')
+            array_merge(
+                compact('campaign', 'distinctBatches', 'allLinksForBulk'),
+                ['localClients' => $this->activeLocalClientsForForms()]
+            )
         );
     }
 

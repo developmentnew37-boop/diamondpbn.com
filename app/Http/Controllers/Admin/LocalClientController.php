@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Admin\LocalClient;
 use App\Models\Admin\LocalClientBillingPeriod;
+use App\Models\Admin\LocalClientRateList;
 use App\Services\LocalClientBillingPeriodService;
 use App\Services\LocalClientBillingReportService;
 use App\Services\LocalClientBillingService;
@@ -16,6 +17,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class LocalClientController extends Controller
@@ -57,6 +59,10 @@ class LocalClientController extends Controller
             'matrix' => $matrix,
             'currencies' => $currencies,
             'mode' => 'create',
+            'rateLists' => $this->rateListsForForm(),
+            'copyFromClients' => $this->customRateClients(),
+            'rateListMatrices' => $this->rateListMatricesJson($matrixService),
+            'customClientMatrices' => $this->customClientMatricesJson($matrixService),
         ]);
     }
 
@@ -64,12 +70,16 @@ class LocalClientController extends Controller
     {
         $validated = $this->validateClient($request);
 
-        $client = LocalClient::create([
-            ...$validated,
-            'created_by_admin_id' => Auth::guard('admin')->id(),
-        ]);
+        $client = DB::transaction(function () use ($request, $validated, $matrixService) {
+            $client = LocalClient::create([
+                ...$validated,
+                'created_by_admin_id' => Auth::guard('admin')->id(),
+            ]);
 
-        $matrixService->upsertPrices($client, $request->input('prices', []));
+            $this->syncClientRateSource($client, $request, $matrixService);
+
+            return $client;
+        });
 
         return redirect()
             ->route('admin.local-clients.show', $client)
@@ -90,6 +100,8 @@ class LocalClientController extends Controller
             'id' => $localClient->id,
             'token' => $localClient->billing_report_token,
         ]);
+
+        $localClient->loadMissing('rateList:id,name');
 
         return view('admin.local-clients.show', compact('localClient', 'summary', 'reportUrl', 'periods'));
     }
@@ -165,7 +177,9 @@ class LocalClientController extends Controller
 
     public function edit(LocalClient $localClient, LocalClientPriceMatrixService $matrixService)
     {
-        $matrix = $matrixService->buildGrid($localClient);
+        $matrix = $localClient->rate_list_id
+            ? $matrixService->buildGridForRateList($localClient->rateList)
+            : $matrixService->buildGrid($localClient);
         $currencies = CurrencyFormatter::supportedCodes();
 
         return view('admin.local-clients.form', [
@@ -173,18 +187,40 @@ class LocalClientController extends Controller
             'matrix' => $matrix,
             'currencies' => $currencies,
             'mode' => 'edit',
+            'rateLists' => $this->rateListsForForm($localClient),
+            'copyFromClients' => $this->customRateClients($localClient->id),
+            'rateListMatrices' => $this->rateListMatricesJson($matrixService),
+            'customClientMatrices' => $this->customClientMatricesJson($matrixService, $localClient->id),
         ]);
     }
 
     public function update(Request $request, LocalClient $localClient, LocalClientPriceMatrixService $matrixService)
     {
         $validated = $this->validateClient($request, $localClient);
-        $localClient->update($validated);
-        $matrixService->upsertPrices($localClient, $request->input('prices', []));
+
+        DB::transaction(function () use ($request, $localClient, $validated, $matrixService) {
+            $localClient->update($validated);
+            $this->syncClientRateSource($localClient, $request, $matrixService);
+        });
 
         return redirect()
             ->route('admin.local-clients.show', $localClient)
             ->with('cus__success', 'Client updated successfully.');
+    }
+
+    public function priceMatrix(LocalClient $localClient, LocalClientPriceMatrixService $matrixService): JsonResponse
+    {
+        if ($localClient->rate_list_id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This client uses a shared rate list. Only custom-rate clients can be copied from.',
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'prices' => $matrixService->pricesKeyedByCategory($localClient),
+        ]);
     }
 
     public function toggleActive(LocalClient $localClient)
@@ -249,10 +285,99 @@ class LocalClientController extends Controller
             'notes' => 'nullable|string|max:2000',
             'default_currency' => ['required', 'string', Rule::in(CurrencyFormatter::supportedCodes())],
             'is_active' => 'nullable|in:0,1',
+            'rate_source' => [
+                'required',
+                'string',
+                function (string $attribute, mixed $value, \Closure $fail) use ($client) {
+                    if ($value === 'custom') {
+                        return;
+                    }
+                    $ok = LocalClientRateList::query()
+                        ->where('id', $value)
+                        ->where(function ($q) use ($client) {
+                            $q->where('is_active', true);
+                            if ($client?->rate_list_id) {
+                                $q->orWhere('id', $client->rate_list_id);
+                            }
+                        })
+                        ->exists();
+                    if (! $ok) {
+                        $fail('Selected rate list is invalid or inactive.');
+                    }
+                },
+            ],
         ]);
 
         $validated['is_active'] = filter_var($request->input('is_active', '1'), FILTER_VALIDATE_BOOLEAN);
+        unset($validated['rate_source']);
 
         return $validated;
+    }
+
+    private function syncClientRateSource(
+        LocalClient $client,
+        Request $request,
+        LocalClientPriceMatrixService $matrixService,
+    ): void {
+        $rateSource = (string) $request->input('rate_source', 'custom');
+
+        if ($rateSource === 'custom') {
+            $matrixService->validateCompleteMatrix($request->input('prices', []));
+            $client->update(['rate_list_id' => null]);
+            $matrixService->upsertPrices($client, $request->input('prices', []));
+
+            return;
+        }
+
+        $rateListId = (int) $rateSource;
+        $client->update(['rate_list_id' => $rateListId]);
+        $matrixService->clearClientPrices($client);
+    }
+
+    /** @return \Illuminate\Support\Collection<int, LocalClientRateList> */
+    private function rateListsForForm(?LocalClient $client = null)
+    {
+        return LocalClientRateList::query()
+            ->where(function ($q) use ($client) {
+                $q->where('is_active', true);
+                if ($client?->rate_list_id) {
+                    $q->orWhere('id', $client->rate_list_id);
+                }
+            })
+            ->orderBy('name')
+            ->get(['id', 'name', 'is_active']);
+    }
+
+    /** @return \Illuminate\Support\Collection<int, LocalClient> */
+    private function customRateClients(?int $excludeId = null)
+    {
+        return LocalClient::query()
+            ->whereNull('rate_list_id')
+            ->where('is_active', true)
+            ->when($excludeId, fn ($q) => $q->where('id', '!=', $excludeId))
+            ->orderBy('name')
+            ->get(['id', 'name']);
+    }
+
+    /** @return array<string, array<int, array<string, ?string>>> */
+    private function rateListMatricesJson(LocalClientPriceMatrixService $matrixService): array
+    {
+        $out = [];
+        foreach (LocalClientRateList::query()->get() as $list) {
+            $out[(string) $list->id] = $matrixService->rateListPricesKeyedByCategory($list);
+        }
+
+        return $out;
+    }
+
+    /** @return array<string, array<int, array<string, ?string>>> */
+    private function customClientMatricesJson(LocalClientPriceMatrixService $matrixService, ?int $excludeId = null): array
+    {
+        $out = [];
+        foreach ($this->customRateClients($excludeId) as $customClient) {
+            $out[(string) $customClient->id] = $matrixService->pricesKeyedByCategory($customClient);
+        }
+
+        return $out;
     }
 }

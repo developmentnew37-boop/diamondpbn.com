@@ -70,6 +70,17 @@
         return getSelectedDomainMethod() === '2';
     }
 
+    function parseManualDomainLines(raw) {
+        return String(raw || '')
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean);
+    }
+
+    function manualDomainsFingerprint(domains) {
+        return domains.map((d) => d.toLowerCase()).join('\n');
+    }
+
     function readDomainIdsFromLocalStorage() {
         const method = getSelectedDomainMethod();
         if (method !== '0' && method !== '1') {
@@ -82,6 +93,14 @@
         return parseStoredDomainIds(localStorage.getItem(storageKey));
     }
 
+    function setHolderValue(holder, value) {
+        if (!holder || holder.value === value) {
+            return;
+        }
+
+        holder.value = value;
+    }
+
     function syncDomainsToHolder(domainIds) {
         const holder = getDomainHolder();
         if (!holder) {
@@ -92,6 +111,24 @@
         setHolderValue(holder, payload);
 
         return domainIds;
+    }
+
+    function rememberManualValidation(holder, domains, domainIds) {
+        if (!holder) {
+            return;
+        }
+
+        holder.dataset.lcbManualFp = manualDomainsFingerprint(domains);
+        setHolderValue(holder, JSON.stringify(domainIds));
+    }
+
+    function clearManualValidationCache(holder) {
+        if (!holder) {
+            return;
+        }
+
+        delete holder.dataset.lcbManualFp;
+        setHolderValue(holder, '');
     }
 
     function getSelectedDomainIds() {
@@ -119,6 +156,9 @@
         return [];
     }
 
+    /**
+     * @returns {Promise<{ ids: number[], error: string|null }>}
+     */
     async function resolveCampaignDomainIds(forceValidate = false) {
         if (isManualDomainMethodSelected()) {
             return resolveManualDomainIds(forceValidate);
@@ -126,7 +166,7 @@
 
         const fromStorage = readDomainIdsFromLocalStorage();
         if (fromStorage.length) {
-            return syncDomainsToHolder(fromStorage);
+            return { ids: syncDomainsToHolder(fromStorage), error: null };
         }
 
         const ids = getSelectedDomainIds();
@@ -134,31 +174,48 @@
             throw new Error('Select domains (random, domain set, or manual) before submitting with a local client.');
         }
 
-        return ids;
-    }
-
-    function setHolderValue(holder, value) {
-        if (!holder || holder.value === value) {
-            return;
+        if (!ids.length) {
+            return {
+                ids: [],
+                error: 'Select domains (random, domain set, or manual) to see the billing estimate.',
+            };
         }
 
-        holder.value = value;
+        return { ids, error: null };
     }
 
+    /**
+     * @returns {Promise<{ ids: number[], error: string|null }>}
+     */
     async function resolveManualDomainIds(forceValidate = false) {
         const holder = getDomainHolder();
         if (!manualDomainsArea || !holder || !isManualDomainMethodSelected()) {
-            return getSelectedDomainIds();
+            const ids = getSelectedDomainIds();
+            return {
+                ids,
+                error: ids.length ? null : 'Select manual domains to see the billing estimate.',
+            };
         }
 
-        const domains = manualDomainsArea.value
-            .split('\n')
-            .map((line) => line.trim())
-            .filter(Boolean);
+        const domains = parseManualDomainLines(manualDomainsArea.value);
 
         if (!domains.length) {
-            setHolderValue(holder, '');
-            return [];
+            clearManualValidationCache(holder);
+            return {
+                ids: [],
+                error: 'Paste manual domains to see the billing estimate.',
+            };
+        }
+
+        const cachedFp = holder.dataset.lcbManualFp || '';
+        const cachedIds = parseStoredDomainIds(holder.value);
+        if (
+            !forceValidate
+            && cachedFp
+            && cachedFp === manualDomainsFingerprint(domains)
+            && cachedIds.length === domains.length
+        ) {
+            return { ids: cachedIds, error: null };
         }
 
         const requestId = ++manualResolveRequest;
@@ -173,30 +230,66 @@
                 body: JSON.stringify({ domains }),
             });
 
-            const res = await response.json();
+            const res = await response.json().catch(() => ({}));
             if (requestId !== manualResolveRequest) {
-                return getSelectedDomainIds();
+                return { ids: getSelectedDomainIds(), error: null };
             }
 
             if (res.status && Array.isArray(res.data?.domain_ids)) {
-                setHolderValue(holder, JSON.stringify(res.data.domain_ids));
-                return res.data.domain_ids.map((id) => parseInt(id, 10)).filter(Boolean);
+                const ids = res.data.domain_ids.map((id) => parseInt(id, 10)).filter(Boolean);
+                rememberManualValidation(holder, domains, ids);
+                return { ids, error: null };
+            }
+
+            const missing = Array.isArray(res?.data?.missing) ? res.data.missing : [];
+            let message = res.message || 'Could not resolve manual domains for estimate.';
+            if (missing.length) {
+                const preview = missing.slice(0, 5).join(', ');
+                const more = missing.length > 5 ? ` (+${missing.length - 5} more)` : '';
+                message += ` Missing: ${preview}${more}.`;
             }
 
             if (forceValidate) {
-                throw new Error(res.message || 'Manual domain validation failed.');
+                throw new Error(message);
             }
 
-            setHolderValue(holder, '');
-            return [];
+            clearManualValidationCache(holder);
+            return { ids: [], error: message };
         } catch (e) {
             if (forceValidate) {
                 throw e;
             }
 
-            setHolderValue(holder, '');
-            return [];
+            clearManualValidationCache(holder);
+            return {
+                ids: [],
+                error: e?.message || 'Could not resolve manual domains for estimate.',
+            };
         }
+    }
+
+    function extractApiErrorMessage(data, fallback) {
+        if (!data || typeof data !== 'object') {
+            return fallback;
+        }
+
+        if (typeof data.message === 'string' && data.message.trim()) {
+            return data.message.trim();
+        }
+
+        if (data.errors && typeof data.errors === 'object') {
+            for (const key of Object.keys(data.errors)) {
+                const val = data.errors[key];
+                if (Array.isArray(val) && val[0]) {
+                    return String(val[0]);
+                }
+                if (typeof val === 'string' && val.trim()) {
+                    return val.trim();
+                }
+            }
+        }
+
+        return fallback;
     }
 
     async function fetchBillingEstimate(clientId, domainIds) {
@@ -212,10 +305,16 @@
         const response = await fetch(`${url}?${params.toString()}`, {
             headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         });
-        const data = await response.json();
+
+        let data = {};
+        try {
+            data = await response.json();
+        } catch (e) {
+            throw new Error('Could not calculate client billing.');
+        }
 
         if (!response.ok || !data.success) {
-            throw new Error(data.message || 'Could not calculate client billing.');
+            throw new Error(extractApiErrorMessage(data, 'Could not calculate client billing.'));
         }
 
         return data;
@@ -225,6 +324,18 @@
         lastEstimateKey = '';
         estimateBox.classList.add('hidden');
         errorEl.classList.add('hidden');
+    }
+
+    function showEstimateError(message) {
+        lastEstimateKey = '';
+        estimateBox.classList.add('hidden');
+        const text = message || 'Estimate failed.';
+        if (errorTextEl) {
+            errorTextEl.textContent = text;
+        } else {
+            errorEl.textContent = text;
+        }
+        errorEl.classList.remove('hidden');
     }
 
     function renderEstimate(data) {
@@ -257,9 +368,20 @@
             return;
         }
 
-        const domainIds = await resolveCampaignDomainIds(false);
+        let resolved;
+        try {
+            resolved = await resolveCampaignDomainIds(false);
+        } catch (err) {
+            showEstimateError(err.message || 'Could not resolve domains for estimate.');
+            return;
+        }
+
+        const domainIds = resolved.ids || [];
         if (!domainIds.length) {
-            hideEstimate();
+            showEstimateError(
+                resolved.error
+                || 'Select domains first to see the billing estimate.'
+            );
             return;
         }
 
@@ -283,15 +405,7 @@
                 return;
             }
 
-            lastEstimateKey = '';
-            estimateBox.classList.add('hidden');
-
-            if (errorTextEl) {
-                errorTextEl.textContent = err.message || 'Estimate failed.';
-            } else {
-                errorEl.textContent = err.message || 'Estimate failed.';
-            }
-            errorEl.classList.remove('hidden');
+            showEstimateError(err.message || 'Estimate failed.');
         }
     }
 
@@ -308,7 +422,12 @@
 
         let domainIds = [];
         try {
-            domainIds = await resolveCampaignDomainIds(true);
+            const resolved = await resolveCampaignDomainIds(true);
+            domainIds = resolved.ids || [];
+            if (!domainIds.length && resolved.error) {
+                alert(resolved.error);
+                return false;
+            }
         } catch (err) {
             alert(err.message || 'Could not resolve selected domains for client billing.');
             return false;
@@ -364,6 +483,10 @@
 
     manualDomainsArea?.addEventListener('input', function () {
         lastEstimateKey = '';
+        const holder = getDomainHolder();
+        if (holder) {
+            delete holder.dataset.lcbManualFp;
+        }
         scheduleRefreshEstimate();
     });
 })();

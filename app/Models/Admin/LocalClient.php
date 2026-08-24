@@ -21,6 +21,7 @@ class LocalClient extends Model
         'billing_report_token',
         'is_active',
         'created_by_admin_id',
+        'rate_list_id',
     ];
 
     protected $casts = [
@@ -39,6 +40,16 @@ class LocalClient extends Model
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(Admin::class, 'created_by_admin_id');
+    }
+
+    public function rateList(): BelongsTo
+    {
+        return $this->belongsTo(LocalClientRateList::class, 'rate_list_id');
+    }
+
+    public function usesCustomRates(): bool
+    {
+        return $this->rate_list_id === null;
     }
 
     public function categoryPrices(): HasMany

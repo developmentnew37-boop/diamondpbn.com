@@ -34,6 +34,14 @@
                     <span class="lc-status-badge {{ $localClient->is_active ? 'active' : 'inactive' }}">
                         {{ $localClient->is_active ? 'Active' : 'Inactive' }}
                     </span>
+                    <span class="text-sm text-gray-600">
+                        Rates:
+                        @if ($localClient->rateList)
+                            {{ $localClient->rateList->name }}
+                        @else
+                            Customize
+                        @endif
+                    </span>
                 </div>
             </div>
             <div class="w-full sm:w-auto flex flex-wrap gap-2 shrink-0">

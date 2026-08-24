@@ -4,10 +4,17 @@ namespace App\Services;
 
 use App\Data\BillingResult;
 use App\Models\Admin\BillingCampaignType;
+use App\Models\Admin\Campaign;
 use App\Models\Admin\Domain;
+use App\Models\Admin\HiddenLinksCampaign;
 use App\Models\Admin\LocalClient;
 use App\Models\Admin\LocalClientBillLine;
 use App\Models\Admin\LocalClientDomainCategoryPrice;
+use App\Models\Admin\LocalClientRateListPrice;
+use App\Models\Admin\ScheduleCampaign;
+use App\Models\Admin\ScheduleSidebarCampaign;
+use App\Models\Admin\SidebarCampaign;
+use App\Support\BillableCampaignRegistry;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -59,11 +66,7 @@ class LocalClientBillingService
 
         $categoryIds = $domains->pluck('domain_category_id')->unique()->filter()->values();
 
-        $prices = LocalClientDomainCategoryPrice::query()
-            ->where('local_client_id', $client->id)
-            ->when($categoryIds->isNotEmpty(), fn ($query) => $query->whereIn('domain_category_id', $categoryIds))
-            ->get()
-            ->keyBy('domain_category_id');
+        $prices = $this->priceRowsForClient($client, $categoryIds);
 
         $lines = [];
         $total = 0.0;
@@ -213,5 +216,106 @@ class LocalClientBillingService
                 'local_client_id' => 'Client billing could not be applied to this campaign.',
             ]);
         }
+    }
+
+    public function clearFromCampaign(Model $campaign): void
+    {
+        LocalClientBillLine::query()
+            ->where('billable_type', $campaign::class)
+            ->where('billable_id', $campaign->getKey())
+            ->delete();
+
+        $campaign->forceFill([
+            'local_client_id' => null,
+            'billing_total' => null,
+            'billing_currency' => null,
+            'billing_snapshot' => null,
+            'billing_payment_status' => 'unpaid',
+            'billing_paid_at' => null,
+            'billing_paid_by_admin_id' => null,
+            'billing_payment_note' => null,
+        ])->save();
+    }
+
+    /**
+     * @return list<int>
+     */
+    public function domainIdsForCampaign(Model $campaign): array
+    {
+        $ids = match (true) {
+            $campaign instanceof Campaign => $campaign->campaignDomains()->pluck('domain_id'),
+            $campaign instanceof SidebarCampaign,
+            $campaign instanceof HiddenLinksCampaign,
+            $campaign instanceof ScheduleCampaign,
+            $campaign instanceof ScheduleSidebarCampaign => $campaign->domains()->pluck('domain_id'),
+            default => throw ValidationException::withMessages([
+                'local_client_id' => 'Unsupported campaign type for client billing.',
+            ]),
+        };
+
+        return array_values(array_unique(array_filter(array_map('intval', $ids->all()))));
+    }
+
+    /**
+     * Attach, change, or remove client billing on an existing campaign (edit flow).
+     * Empty $localClientId clears billing. Otherwise recalculates snapshot from campaign domains.
+     */
+    public function syncClientOnCampaign(
+        Model $campaign,
+        ?int $localClientId,
+        ?string $currencyOverride = null,
+    ): void {
+        DB::transaction(function () use ($campaign, $localClientId, $currencyOverride) {
+            $this->clearFromCampaign($campaign);
+
+            if (! $localClientId) {
+                return;
+            }
+
+            $client = LocalClient::query()
+                ->where('id', $localClientId)
+                ->where('is_active', true)
+                ->first();
+
+            if (! $client) {
+                throw ValidationException::withMessages([
+                    'local_client_id' => 'Selected client is invalid or inactive.',
+                ]);
+            }
+
+            $domainIds = $this->domainIdsForCampaign($campaign);
+
+            if ($domainIds === []) {
+                throw ValidationException::withMessages([
+                    'local_client_id' => 'This campaign has no domains to bill.',
+                ]);
+            }
+
+            $type = BillableCampaignRegistry::billingTypeForModel($campaign);
+            $currency = strtoupper($currencyOverride ?: $client->default_currency);
+            $result = $this->calculate($client, $type, $domainIds);
+            $this->applyToCampaign($campaign, $result, $client, $currency);
+        });
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, int|string>  $categoryIds
+     * @return \Illuminate\Support\Collection<int, LocalClientDomainCategoryPrice|LocalClientRateListPrice>
+     */
+    private function priceRowsForClient(LocalClient $client, $categoryIds)
+    {
+        if ($client->rate_list_id) {
+            return LocalClientRateListPrice::query()
+                ->where('rate_list_id', $client->rate_list_id)
+                ->when($categoryIds->isNotEmpty(), fn ($query) => $query->whereIn('domain_category_id', $categoryIds))
+                ->get()
+                ->keyBy('domain_category_id');
+        }
+
+        return LocalClientDomainCategoryPrice::query()
+            ->where('local_client_id', $client->id)
+            ->when($categoryIds->isNotEmpty(), fn ($query) => $query->whereIn('domain_category_id', $categoryIds))
+            ->get()
+            ->keyBy('domain_category_id');
     }
 }

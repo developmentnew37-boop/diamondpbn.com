@@ -241,9 +241,8 @@ class LocalClientBillingFeatureTest extends TestCase
 
         $reportToken = str_repeat('y', 64);
 
-        Campaign::create([
+        $campaign = new Campaign([
             'campaign_no' => 'cmp-report-link-1',
-            'report_token' => $reportToken,
             'admin_id' => 1,
             'local_client_id' => $client->id,
             'billing_total' => 50,
@@ -251,6 +250,9 @@ class LocalClientBillingFeatureTest extends TestCase
             'billing_snapshot' => ['total' => '50.00', 'lines' => []],
             'billing_payment_status' => 'unpaid',
         ]);
+        // report_token is not mass-assignable; set explicitly so the expected URL is stable.
+        $campaign->report_token = $reportToken;
+        $campaign->save();
 
         $expectedReportUrl = route('admin.campaign.report', [
             'campaign_no' => 'cmp-report-link-1',

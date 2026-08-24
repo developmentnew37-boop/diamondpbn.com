@@ -16,9 +16,9 @@ use App\Http\Controllers\Admin\CampaignReportLookupController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DomainCategoryController;
 use App\Http\Controllers\Admin\DomainController;
+use App\Http\Controllers\Admin\DomainRecheckDisconnectedController;
 use App\Http\Controllers\Admin\DomainSetController;
 use App\Http\Controllers\Admin\DomainStatusCheckerController;
-use App\Http\Controllers\Admin\DomainRecheckDisconnectedController;
 use App\Http\Controllers\Admin\HiddenLinkCampaignController;
 use App\Http\Controllers\Admin\InvoiceController;
 use App\Http\Controllers\Admin\LiveTaskBulkDomainReplacementController;
@@ -26,6 +26,7 @@ use App\Http\Controllers\Admin\LiveTaskDomainReplacementController;
 use App\Http\Controllers\Admin\LocalClientBillingReportController;
 use App\Http\Controllers\Admin\LocalClientController;
 use App\Http\Controllers\Admin\LocalClientPaymentController;
+use App\Http\Controllers\Admin\LocalClientRateListController;
 use App\Http\Controllers\Admin\PendingDomainController;
 use App\Http\Controllers\Admin\PluginDeploymentController;
 use App\Http\Controllers\Admin\PluginPackageController;
@@ -579,6 +580,8 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
             ->name('local-clients.estimate');
         Route::patch('/local-clients/payment/{billableType}/{id}', [LocalClientPaymentController::class, 'update'])
             ->name('local-clients.payment.update');
+        Route::patch('/local-clients/client/{billableType}/{id}', [LocalClientPaymentController::class, 'updateClient'])
+            ->name('local-clients.client.update');
         Route::get('/local-clients/campaign-invoice/{billableType}/{id}', [LocalClientPaymentController::class, 'invoice'])
             ->name('local-clients.campaign-invoice');
     });
@@ -594,6 +597,11 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
             ->name('local-clients.billing-periods.destroy-by-paid-at');
         Route::post('/local-clients/{localClient}/regenerate-token', [LocalClientController::class, 'regenerateToken'])
             ->name('local-clients.regenerate-token');
+        Route::get('/local-clients/{localClient}/price-matrix', [LocalClientController::class, 'priceMatrix'])
+            ->name('local-clients.price-matrix');
+        Route::resource('/local-client-rate-lists', LocalClientRateListController::class)
+            ->except(['show'])
+            ->names('local-client-rate-lists');
         Route::resource('/local-clients', LocalClientController::class)->names('local-clients');
     });
 
