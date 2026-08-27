@@ -64,8 +64,8 @@ class CampaignBulkDomainReplacementController extends Controller
         $this->authorizeCampaignAccess($campaign);
 
         $admin = auth('admin')->user();
-        $failedLines = $this->bulkReplacementService->parseLines($request->input('failed_domains', ''));
-        $replacementLines = $this->bulkReplacementService->parseLines($request->input('replacement_domains', ''));
+        $failedLines = $this->bulkReplacementService->parseLines((string) $request->input('failed_domains', ''));
+        $replacementLines = $this->bulkReplacementService->parseLines((string) $request->input('replacement_domains', ''));
 
         if ($replacementLines === []) {
             throw ValidationException::withMessages([

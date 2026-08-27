@@ -21,9 +21,9 @@ class CampaignBulkDomainReplacementService
     /**
      * @return array<int, string>
      */
-    public function parseLines(string $text): array
+    public function parseLines(?string $text): array
     {
-        $lines = preg_split('/\R/', $text) ?: [];
+        $lines = preg_split('/\R/', (string) ($text ?? '')) ?: [];
         $parsed = [];
 
         foreach ($lines as $line) {

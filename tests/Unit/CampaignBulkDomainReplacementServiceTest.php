@@ -163,6 +163,14 @@ class CampaignBulkDomainReplacementServiceTest extends TestCase
         $this->assertSame(['failed.one.com', 'failed.two.com'], $lines);
     }
 
+    public function test_parse_lines_accepts_null_as_empty(): void
+    {
+        $service = $this->bulkService();
+
+        $this->assertSame([], $service->parseLines(null));
+        $this->assertSame([], $service->parseLines(''));
+    }
+
     public function test_validate_rejects_too_many_replacements(): void
     {
         $records = $this->campaignWithDomains(['failed.one.com'], ['replacement.one.com', 'replacement.two.com']);

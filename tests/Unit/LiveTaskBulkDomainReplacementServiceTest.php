@@ -164,6 +164,12 @@ class LiveTaskBulkDomainReplacementServiceTest extends TestCase
         $this->assertSame(['failed.one.com', 'failed.two.com'], $lines);
     }
 
+    public function test_parse_lines_accepts_null_as_empty(): void
+    {
+        $this->assertSame([], $this->bulkService()->parseLines(null));
+        $this->assertSame([], $this->bulkService()->parseLines(''));
+    }
+
     public function test_validate_rejects_too_many_replacements(): void
     {
         $records = $this->sidebarCampaignWithDomains(['failed.one.com'], ['replacement.one.com', 'replacement.two.com']);
