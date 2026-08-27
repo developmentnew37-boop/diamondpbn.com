@@ -6,6 +6,7 @@ use App\Data\AgentStatusResult;
 use App\Jobs\CleanupReplacedDomainRemoteContentJob;
 use App\Models\Admin;
 use App\Models\Admin\Domain;
+use App\Services\LocalClientBillingService;
 use App\Services\WordPressAgentStatusService;
 use App\Support\ConvertedLivePostSlot;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -271,6 +272,7 @@ class LiveTaskDomainReplacementService
                 $task->forceFill($resetFields)->save();
 
                 $this->recalculateCampaign($profile, $campaign);
+                app(LocalClientBillingService::class)->syncUnpaidCampaignBilling($campaign);
 
                 $audit->forceFill([
                     'result_status' => 'queued',

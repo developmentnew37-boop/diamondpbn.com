@@ -10,6 +10,7 @@ use App\Models\Admin\CampaignDomain;
 use App\Models\Admin\CampaignDomainReplacement;
 use App\Models\Admin\CampaignPost;
 use App\Models\Admin\Domain;
+use App\Services\LocalClientBillingService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
@@ -368,6 +369,7 @@ class CampaignDomainReplacementService
                 ])->save();
 
                 $this->recalculateCampaign($campaign);
+                app(LocalClientBillingService::class)->syncUnpaidCampaignBilling($campaign);
 
                 $audit->forceFill([
                     'result_status' => 'queued',

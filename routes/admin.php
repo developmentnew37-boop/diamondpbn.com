@@ -582,6 +582,8 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
             ->name('local-clients.payment.update');
         Route::patch('/local-clients/client/{billableType}/{id}', [LocalClientPaymentController::class, 'updateClient'])
             ->name('local-clients.client.update');
+        Route::post('/local-clients/billing-sync/{billableType}/{id}', [LocalClientPaymentController::class, 'syncBilling'])
+            ->name('local-clients.billing.sync');
         Route::get('/local-clients/campaign-invoice/{billableType}/{id}', [LocalClientPaymentController::class, 'invoice'])
             ->name('local-clients.campaign-invoice');
     });

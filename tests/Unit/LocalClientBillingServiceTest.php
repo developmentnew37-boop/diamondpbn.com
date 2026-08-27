@@ -390,4 +390,99 @@ class LocalClientBillingServiceTest extends TestCase
 
         app(LocalClientBillingService::class)->syncClientOnCampaign($campaign, $client->id);
     }
+
+    public function test_sync_unpaid_campaign_billing_recalculates_when_unpaid(): void
+    {
+        $client = LocalClient::create([
+            'name' => 'Sync Unpaid',
+            'default_currency' => 'USD',
+            'billing_report_token' => str_repeat('n', 64),
+            'created_by_admin_id' => 1,
+        ]);
+
+        LocalClientDomainCategoryPrice::create([
+            'local_client_id' => $client->id,
+            'domain_category_id' => 1,
+            'post_price' => 15,
+        ]);
+        LocalClientDomainCategoryPrice::create([
+            'local_client_id' => $client->id,
+            'domain_category_id' => 2,
+            'post_price' => 20,
+        ]);
+
+        Domain::create(['name' => 'old-bill.com', 'domain_category_id' => 1, 'admin_id' => 1]);
+        $newDomain = Domain::create(['name' => 'new-bill.com', 'domain_category_id' => 2, 'admin_id' => 1]);
+
+        $campaign = Campaign::create([
+            'campaign_no' => 'CMP-SYNC-UNPAID',
+            'report_token' => str_repeat('o', 64),
+            'admin_id' => 1,
+            'local_client_id' => $client->id,
+            'billing_total' => 15,
+            'billing_currency' => 'USD',
+            'billing_snapshot' => ['total' => '15.00', 'lines' => []],
+            'billing_payment_status' => 'unpaid',
+        ]);
+        CampaignDomain::create([
+            'campaign_id' => $campaign->id,
+            'domain_id' => $newDomain->id,
+            'sort_order' => 0,
+        ]);
+
+        app(LocalClientBillingService::class)->syncUnpaidCampaignBilling($campaign);
+
+        $campaign->refresh();
+        $this->assertSame('20.00', (string) $campaign->billing_total);
+        $this->assertSame('unpaid', $campaign->billing_payment_status);
+        $this->assertSame($newDomain->id, (int) LocalClientBillLine::first()->domain_id);
+    }
+
+    public function test_sync_unpaid_campaign_billing_skips_paid(): void
+    {
+        $client = LocalClient::create([
+            'name' => 'Sync Paid',
+            'default_currency' => 'USD',
+            'billing_report_token' => str_repeat('p', 64),
+            'created_by_admin_id' => 1,
+        ]);
+
+        LocalClientDomainCategoryPrice::create([
+            'local_client_id' => $client->id,
+            'domain_category_id' => 1,
+            'post_price' => 15,
+        ]);
+        LocalClientDomainCategoryPrice::create([
+            'local_client_id' => $client->id,
+            'domain_category_id' => 2,
+            'post_price' => 20,
+        ]);
+
+        Domain::create(['name' => 'paid-old.com', 'domain_category_id' => 1, 'admin_id' => 1]);
+        $newDomain = Domain::create(['name' => 'paid-new.com', 'domain_category_id' => 2, 'admin_id' => 1]);
+
+        $campaign = Campaign::create([
+            'campaign_no' => 'CMP-SYNC-PAID',
+            'report_token' => str_repeat('q', 64),
+            'admin_id' => 1,
+            'local_client_id' => $client->id,
+            'billing_total' => 15,
+            'billing_currency' => 'USD',
+            'billing_snapshot' => ['total' => '15.00', 'lines' => []],
+            'billing_payment_status' => 'paid',
+            'billing_paid_at' => now(),
+        ]);
+        CampaignDomain::create([
+            'campaign_id' => $campaign->id,
+            'domain_id' => $newDomain->id,
+            'sort_order' => 0,
+        ]);
+
+        app(LocalClientBillingService::class)->syncUnpaidCampaignBilling($campaign);
+
+        $campaign->refresh();
+        $this->assertSame('15.00', (string) $campaign->billing_total);
+        $this->assertSame('paid', $campaign->billing_payment_status);
+        $this->assertSame(0, LocalClientBillLine::count());
+    }
 }

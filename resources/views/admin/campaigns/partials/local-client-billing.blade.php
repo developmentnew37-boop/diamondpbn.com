@@ -62,7 +62,8 @@
                             </span>
                         </div>
                         <p class="lcb-panel-desc">
-                            Frozen billing snapshot from campaign creation.
+                            Current billed amount for this campaign’s domains.
+                            Unpaid totals update automatically when a domain is replaced; use Sync billing to rebuild from current domains (and to reopen a paid invoice).
                             @if ($lineCount > 0)
                                 {{ $lineCount }} {{ $lineCount === 1 ? 'domain' : 'domains' }} priced.
                             @endif
@@ -70,6 +71,20 @@
                     </div>
                 </div>
                 <div class="lcb-view-actions">
+                    @if (Auth::guard('admin')->user()?->isSuperAdmin() || (int) $campaign->admin_id === (int) Auth::guard('admin')->id())
+                        <form method="POST"
+                              action="{{ route('admin.local-clients.billing.sync', ['billableType' => $billableType, 'id' => $campaign->id]) }}"
+                              class="inline"
+                              @if ($isPaid)
+                              onsubmit="return confirm('This recalculates billing from current domains and marks the campaign unpaid. Continue?');"
+                              @endif>
+                            @csrf
+                            <button type="submit" class="lcb-btn-invoice">
+                                <span class="material-symbols-outlined">sync</span>
+                                Sync billing
+                            </button>
+                        </form>
+                    @endif
                     <a href="{{ route('admin.local-clients.campaign-invoice', ['billableType' => $billableType, 'id' => $campaign->id]) }}"
                        class="lcb-btn-invoice">
                         <span class="material-symbols-outlined">download</span>

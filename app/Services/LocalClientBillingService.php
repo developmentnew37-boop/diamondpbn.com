@@ -257,6 +257,30 @@ class LocalClientBillingService
     }
 
     /**
+     * Recalculate billing after domain replace when the campaign has a client and is unpaid.
+     * Paid invoices stay frozen; no-op when no client is attached.
+     */
+    public function syncUnpaidCampaignBilling(Model $campaign): void
+    {
+        $campaign->refresh();
+
+        $clientId = $campaign->local_client_id ? (int) $campaign->local_client_id : null;
+        if (! $clientId) {
+            return;
+        }
+
+        if (($campaign->billing_payment_status ?? 'unpaid') === 'paid') {
+            return;
+        }
+
+        $this->syncClientOnCampaign(
+            $campaign,
+            $clientId,
+            $campaign->billing_currency,
+        );
+    }
+
+    /**
      * Attach, change, or remove client billing on an existing campaign (edit flow).
      * Empty $localClientId clears billing. Otherwise recalculates snapshot from campaign domains.
      */

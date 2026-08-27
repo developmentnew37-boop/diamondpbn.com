@@ -44,6 +44,25 @@ class LocalClientBillingFeatureTest extends TestCase
             $table->timestamps();
         });
 
+        Schema::create('domain_categories', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->string('slug');
+            $table->unsignedBigInteger('admin_id')->default(1);
+            $table->timestamps();
+        });
+
+        Schema::create('local_client_domain_category_prices', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('local_client_id');
+            $table->unsignedBigInteger('domain_category_id');
+            $table->decimal('post_price', 12, 2)->nullable();
+            $table->decimal('sidebar_price', 12, 2)->nullable();
+            $table->decimal('hidden_links_price', 12, 2)->nullable();
+            $table->decimal('sticky_price', 12, 2)->nullable();
+            $table->timestamps();
+        });
+
         Schema::create('local_client_payment_events', function (Blueprint $table) {
             $table->id();
             $table->string('billable_type');
@@ -84,7 +103,12 @@ class LocalClientBillingFeatureTest extends TestCase
     protected function tearDown(): void
     {
         Schema::dropIfExists('local_client_payment_events');
+        Schema::dropIfExists('local_client_bill_lines');
+        Schema::dropIfExists('local_client_domain_category_prices');
+        Schema::dropIfExists('campaign_domains');
         Schema::dropIfExists('campaigns');
+        Schema::dropIfExists('domains');
+        Schema::dropIfExists('domain_categories');
         Schema::dropIfExists('local_clients');
         Schema::dropIfExists('admins');
 
@@ -263,5 +287,100 @@ class LocalClientBillingFeatureTest extends TestCase
             ->assertOk()
             ->assertSee('View report')
             ->assertSee($expectedReportUrl, false);
+    }
+
+    public function test_sync_billing_recalculates_total_and_marks_paid_unpaid(): void
+    {
+        Schema::create('domains', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->unsignedBigInteger('domain_category_id');
+            $table->unsignedBigInteger('admin_id')->default(1);
+            $table->integer('status')->default(1);
+            $table->timestamps();
+        });
+        Schema::create('local_client_bill_lines', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('local_client_id');
+            $table->unsignedBigInteger('domain_id')->nullable();
+            $table->unsignedBigInteger('domain_category_id')->nullable();
+            $table->string('billing_campaign_type', 32);
+            $table->decimal('unit_price', 12, 2);
+            $table->decimal('line_total', 12, 2);
+            $table->string('currency', 3)->default('USD');
+            $table->string('billable_type');
+            $table->unsignedBigInteger('billable_id');
+            $table->string('campaign_no', 64)->nullable();
+            $table->json('snapshot')->nullable();
+            $table->timestamp('created_at')->nullable();
+        });
+        Schema::create('campaign_domains', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('campaign_id');
+            $table->unsignedBigInteger('domain_id');
+            $table->unsignedInteger('sort_order')->default(0);
+            $table->timestamps();
+        });
+
+        \DB::table('domain_categories')->insert([
+            ['id' => 1, 'name' => 'A', 'slug' => 'a', 'admin_id' => 1, 'created_at' => now(), 'updated_at' => now()],
+            ['id' => 2, 'name' => 'B', 'slug' => 'b', 'admin_id' => 1, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        $client = LocalClient::create([
+            'name' => 'Sync Route Client',
+            'default_currency' => 'USD',
+            'billing_report_token' => str_repeat('s', 64),
+            'created_by_admin_id' => 1,
+        ]);
+
+        \App\Models\Admin\LocalClientDomainCategoryPrice::create([
+            'local_client_id' => $client->id,
+            'domain_category_id' => 1,
+            'post_price' => 15,
+        ]);
+        \App\Models\Admin\LocalClientDomainCategoryPrice::create([
+            'local_client_id' => $client->id,
+            'domain_category_id' => 2,
+            'post_price' => 20,
+        ]);
+
+        $domain = \App\Models\Admin\Domain::create([
+            'name' => 'sync-route.com',
+            'domain_category_id' => 2,
+            'admin_id' => 1,
+        ]);
+
+        $campaign = Campaign::create([
+            'campaign_no' => 'cmp-sync-route',
+            'admin_id' => 1,
+            'local_client_id' => $client->id,
+            'billing_total' => 15,
+            'billing_currency' => 'USD',
+            'billing_snapshot' => ['total' => '15.00', 'lines' => []],
+            'billing_payment_status' => 'paid',
+            'billing_paid_at' => now(),
+        ]);
+        $campaign->report_token = str_repeat('r', 64);
+        $campaign->save();
+
+        \App\Models\Admin\CampaignDomain::create([
+            'campaign_id' => $campaign->id,
+            'domain_id' => $domain->id,
+            'sort_order' => 0,
+        ]);
+
+        $this->actingAs(Admin::find(1), 'admin')
+            ->from('/admin/campaign/'.$campaign->id)
+            ->post(route('admin.local-clients.billing.sync', [
+                'billableType' => 'campaign',
+                'id' => $campaign->id,
+            ]))
+            ->assertRedirect('/admin/campaign/'.$campaign->id)
+            ->assertSessionHas('cus__success');
+
+        $campaign->refresh();
+        $this->assertSame('20.00', (string) $campaign->billing_total);
+        $this->assertSame('unpaid', $campaign->billing_payment_status);
     }
 }

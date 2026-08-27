@@ -84,6 +84,37 @@ class LocalClientPaymentController extends Controller
             ->with('edit_schedule_sidebar_campaign_tab', 'local_client');
     }
 
+    public function syncBilling(
+        string $billableType,
+        int $id,
+        LocalClientBillingService $billingService,
+    ) {
+        $campaign = BillableCampaignRegistry::resolve($billableType, $id);
+        $this->assertBillableTypeMatches($billableType, $campaign);
+
+        $admin = Auth::guard('admin')->user();
+        if (! $admin->isSuperAdmin() && (int) $campaign->admin_id !== (int) $admin->id) {
+            abort(403);
+        }
+
+        if (! $campaign->local_client_id) {
+            return back()->with('cus__error', 'This campaign has no local client billing to sync.');
+        }
+
+        $clientId = (int) $campaign->local_client_id;
+        $currency = $campaign->billing_currency;
+
+        $billingService->syncClientOnCampaign($campaign, $clientId, $currency);
+        $campaign->refresh();
+
+        $formatted = CurrencyFormatter::format(
+            $campaign->billing_total,
+            $campaign->billing_currency ?? 'USD'
+        );
+
+        return back()->with('cus__success', "Billing synced. New total: {$formatted}");
+    }
+
     public function invoice(
         string $billableType,
         int $id,
