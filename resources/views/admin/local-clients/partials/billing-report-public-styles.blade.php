@@ -1248,7 +1248,7 @@
 
     .billing-pagination {
         margin-top: 1.25rem;
-        padding-top: 1rem;
+        padding: 1rem;
         border-top: 1px solid #e2e8f0;
     }
 

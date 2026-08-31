@@ -103,7 +103,7 @@ class LocalClientBillingReportController extends Controller
         $summary = $reportService->formatSummaryForCurrency($summaryCampaigns, $client->default_currency);
         $overallOutstanding = $reportService->formatOverallUnpaidSummary($allCampaigns, $client->default_currency);
         $statusCounts = $reportService->statusCounts($scopeCampaigns);
-        $campaigns = $reportService->paginateCollection($filteredCampaigns, $request, 15);
+        $campaigns = $reportService->paginateCollection($filteredCampaigns, $request, 50);
         $filteredTotal = $filteredCampaigns->count();
         $availableYears = $reportService->availableYears($allCampaigns);
         $exportPdfParams = $reportService->exportQueryParams($filters, 'pdf');
