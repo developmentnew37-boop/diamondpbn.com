@@ -23,12 +23,13 @@
             vertical-align: top;
         }
         table.items th { background: #f3f4f6; font-size: 9px; }
-        table.items .col-campaign { width: 16%; }
-        table.items .col-type { width: 11%; }
-        table.items .col-date { width: 14%; }
-        table.items .col-total { width: 10%; }
+        table.items .col-campaign { width: 14%; }
+        table.items .col-type { width: 10%; }
+        table.items .col-date { width: 12%; }
+        table.items .col-total { width: 14%; }
+        table.items .col-due { width: 10%; }
         table.items .col-status { width: 8%; }
-        table.items .col-url { width: 41%; }
+        table.items .col-url { width: 32%; }
         .wrap {
             word-wrap: break-word;
             word-break: break-all;
@@ -67,11 +68,46 @@
         @endif
     </div>
 
+    @php
+        $overallOutstanding = $overallOutstanding ?? [
+            'total_unpaid_formatted' => '—',
+            'unpaid_count' => 0,
+            'has_unpaid' => false,
+            'breakdown' => [],
+        ];
+    @endphp
+
     <table class="grid">
         <tr>
-            <td><strong>Total billed</strong><br>{{ $summary['total_billed'] }}</td>
-            <td><strong>Paid</strong><br>{{ $summary['total_paid'] }} ({{ $summary['paid_count'] }})</td>
-            <td><strong>Unpaid</strong><br>{{ $summary['total_unpaid'] }} ({{ $summary['unpaid_count'] }})</td>
+            <td colspan="3">
+                <strong>Overall outstanding (all months)</strong><br>
+                @if ($overallOutstanding['has_unpaid'])
+                    {{ $overallOutstanding['total_unpaid_formatted'] }} ({{ $overallOutstanding['unpaid_count'] }} campaigns)
+                    @if (! empty($overallOutstanding['breakdown']))
+                        <div style="margin-top: 6px; font-size: 9px; line-height: 1.5;">
+                            @foreach ($overallOutstanding['breakdown'] as $monthRow)
+                                {{ $monthRow['formatted_amount'] }} remaining in {{ $monthRow['label'] }}@if (! $loop->last); @endif
+                            @endforeach
+                        </div>
+                    @endif
+                @else
+                    All clear — no outstanding balance
+                @endif
+            </td>
+        </tr>
+    </table>
+
+    <table class="grid">
+        <tr>
+            @if (($filters['status_selection'] ?? 'unpaid') === 'all')
+                <td><strong>Total billed</strong><br>{{ $summary['total_billed'] }}</td>
+                <td><strong>Paid</strong><br>{{ $summary['total_paid'] }} ({{ $summary['paid_count'] }})</td>
+                <td><strong>Unpaid</strong><br>{{ $summary['total_unpaid'] }} ({{ $summary['unpaid_count'] }})</td>
+            @elseif (($filters['status_selection'] ?? 'unpaid') === 'paid')
+                <td><strong>Paid</strong><br>{{ $summary['total_paid'] }} ({{ $summary['paid_count'] }} campaigns)</td>
+            @else
+                <td><strong>This month outstanding</strong><br>{{ $summary['total_unpaid'] }} ({{ $summary['unpaid_count'] }} campaigns)</td>
+            @endif
         </tr>
     </table>
 
@@ -82,6 +118,7 @@
                 <th class="col-type">Type</th>
                 <th class="col-date">Date</th>
                 <th class="col-total">Total</th>
+                <th class="col-due">Due now</th>
                 <th class="col-status">Status</th>
                 <th class="col-url">Report URL</th>
             </tr>
@@ -92,7 +129,21 @@
                     <td class="col-campaign wrap">{!! $softBreak($row['campaign_no'] ?? '', 22) !!}</td>
                     <td class="col-type wrap">{{ $row['type_label'] }}</td>
                     <td class="col-date wrap">{{ $row['created_at'] }}</td>
-                    <td class="col-total">{{ \App\Support\CurrencyFormatter::format($row['billing_total'], $row['billing_currency'] ?? $client->default_currency) }}</td>
+                    <td class="col-total">
+                        {{ \App\Support\CurrencyFormatter::format($row['billing_total'], $row['billing_currency'] ?? $client->default_currency) }}
+                        @if (! empty($row['billing_has_credit']))
+                            <div style="font-size: 8px; color: #555; margin-top: 2px;">
+                                Already paid {{ \App\Support\CurrencyFormatter::format($row['billing_amount_paid'], $row['billing_currency'] ?? $client->default_currency) }}
+                            </div>
+                        @endif
+                    </td>
+                    <td class="col-due">
+                        @if (! empty($row['billing_has_credit']))
+                            {{ \App\Support\CurrencyFormatter::format($row['billing_balance_due'], $row['billing_currency'] ?? $client->default_currency) }}
+                        @else
+                            —
+                        @endif
+                    </td>
                     <td class="col-status">{{ ucfirst($row['billing_payment_status'] ?? 'unpaid') }}</td>
                     <td class="col-url wrap">
                         @if (! empty($row['report_url']))

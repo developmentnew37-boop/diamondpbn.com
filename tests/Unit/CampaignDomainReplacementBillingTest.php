@@ -111,6 +111,7 @@ class CampaignDomainReplacementBillingTest extends TestCase
             $table->timestamp('finished_at')->nullable();
             $table->unsignedBigInteger('local_client_id')->nullable();
             $table->decimal('billing_total', 12, 2)->nullable();
+            $table->decimal('billing_amount_paid', 12, 2)->nullable();
             $table->string('billing_currency', 3)->nullable();
             $table->json('billing_snapshot')->nullable();
             $table->string('billing_payment_status')->nullable();

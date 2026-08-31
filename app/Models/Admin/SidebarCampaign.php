@@ -45,6 +45,7 @@ class SidebarCampaign extends Model
         'conversion_locked_at',
         'local_client_id',
         'billing_total',
+        'billing_amount_paid',
         'billing_currency',
         'billing_snapshot',
         'billing_payment_status',
@@ -60,6 +61,7 @@ class SidebarCampaign extends Model
         'conversion_locked_at' => 'datetime',
         'billing_snapshot' => 'array',
         'billing_total' => 'decimal:2',
+        'billing_amount_paid' => 'decimal:2',
         'billing_paid_at' => 'datetime',
     ];
 

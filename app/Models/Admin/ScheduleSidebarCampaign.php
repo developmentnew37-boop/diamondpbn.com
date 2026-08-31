@@ -27,6 +27,7 @@ class ScheduleSidebarCampaign extends Model
         'conversion_pipeline_status',
         'local_client_id',
         'billing_total',
+        'billing_amount_paid',
         'billing_currency',
         'billing_snapshot',
         'billing_payment_status',
@@ -43,6 +44,7 @@ class ScheduleSidebarCampaign extends Model
         'conversion_run_date' => 'date',
         'billing_snapshot' => 'array',
         'billing_total' => 'decimal:2',
+        'billing_amount_paid' => 'decimal:2',
         'billing_paid_at' => 'datetime',
     ];
 

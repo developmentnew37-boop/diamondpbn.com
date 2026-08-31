@@ -24,11 +24,12 @@ class LocalClientBillingReportController extends Controller
         $client = $payload['client'];
         $campaigns = $reportService->filterCampaigns($payload['allCampaigns'], $payload['filters']);
         $summary = $payload['summary'];
+        $overallOutstanding = $payload['overallOutstanding'];
         $filters = $payload['filters'];
         $format = $request->string('format', 'pdf')->toString();
 
         if ($format === 'pdf') {
-            $pdf = Pdf::loadView('admin.local-clients.billing-report-export-pdf', compact('client', 'campaigns', 'summary', 'filters'));
+            $pdf = Pdf::loadView('admin.local-clients.billing-report-export-pdf', compact('client', 'campaigns', 'summary', 'overallOutstanding', 'filters'));
             $pdf->setPaper('A4', 'portrait');
 
             return $pdf->download('client-billing-'.$client->id.'.pdf');
@@ -49,7 +50,7 @@ class LocalClientBillingReportController extends Controller
             }
 
             fputcsv($handle, []);
-            fputcsv($handle, ['Campaign No', 'Type', 'Date', 'Total', 'Currency', 'Status', 'Report URL']);
+            fputcsv($handle, ['Campaign No', 'Type', 'Date', 'Total', 'Already Paid', 'Due Now', 'Currency', 'Status', 'Report URL']);
 
             foreach ($campaigns as $row) {
                 fputcsv($handle, [
@@ -57,6 +58,8 @@ class LocalClientBillingReportController extends Controller
                     $row['type_label'],
                     $row['created_at'],
                     $row['billing_total'],
+                    ! empty($row['billing_has_credit']) ? $row['billing_amount_paid'] : '',
+                    ! empty($row['billing_has_credit']) ? $row['billing_balance_due'] : '',
                     $row['billing_currency'],
                     $row['billing_payment_status'],
                     $row['report_url'] ?? '',
@@ -75,6 +78,7 @@ class LocalClientBillingReportController extends Controller
      *   campaigns: \Illuminate\Support\Collection,
      *   allCampaigns: \Illuminate\Support\Collection,
      *   summary: array<string, mixed>,
+     *   overallOutstanding: array<string, mixed>,
      *   filters: array<string, mixed>,
      *   rateMatrix: \Illuminate\Support\Collection,
      *   rateSourceLabel: string
@@ -88,7 +92,17 @@ class LocalClientBillingReportController extends Controller
         $allCampaigns = $reportService->campaignsForClient($client);
         $filters = $reportService->resolveFilters($request);
         $filteredCampaigns = $reportService->filterCampaigns($allCampaigns, $filters);
-        $summary = $reportService->formatSummaryForCurrency($filteredCampaigns, $client->default_currency);
+        $scopeCampaigns = $reportService->filterCampaigns(
+            $allCampaigns,
+            $reportService->filtersWithoutStatus($filters)
+        );
+        // All → full month/type scope; Paid/Unpaid → match the table rows.
+        $summaryCampaigns = ($filters['status_selection'] ?? 'unpaid') === 'all'
+            ? $scopeCampaigns
+            : $filteredCampaigns;
+        $summary = $reportService->formatSummaryForCurrency($summaryCampaigns, $client->default_currency);
+        $overallOutstanding = $reportService->formatOverallUnpaidSummary($allCampaigns, $client->default_currency);
+        $statusCounts = $reportService->statusCounts($scopeCampaigns);
         $campaigns = $reportService->paginateCollection($filteredCampaigns, $request, 15);
         $filteredTotal = $filteredCampaigns->count();
         $availableYears = $reportService->availableYears($allCampaigns);
@@ -110,6 +124,8 @@ class LocalClientBillingReportController extends Controller
             'allCampaigns',
             'filteredTotal',
             'summary',
+            'overallOutstanding',
+            'statusCounts',
             'filters',
             'availableYears',
             'exportPdfParams',

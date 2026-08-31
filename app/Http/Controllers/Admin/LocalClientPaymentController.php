@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Admin\Campaign;
+use App\Models\Admin\LocalClientPaymentEvent;
+use App\Models\Admin\ScheduleCampaign;
 use App\Services\LocalClientBillingService;
 use App\Services\LocalClientCampaignInvoiceService;
 use App\Services\LocalClientPaymentService;
@@ -103,16 +105,55 @@ class LocalClientPaymentController extends Controller
 
         $clientId = (int) $campaign->local_client_id;
         $currency = $campaign->billing_currency;
+        $wasPaid = ($campaign->billing_payment_status ?? 'unpaid') === 'paid';
+        $oldTotal = $campaign->billing_total;
+        $oldStatus = $campaign->billing_payment_status;
 
         $billingService->syncClientOnCampaign($campaign, $clientId, $currency);
         $campaign->refresh();
 
-        $formatted = CurrencyFormatter::format(
-            $campaign->billing_total,
-            $campaign->billing_currency ?? 'USD'
-        );
+        $currencyCode = $campaign->billing_currency ?? 'USD';
+        $newFormatted = CurrencyFormatter::format($campaign->billing_total, $currencyCode);
 
-        return back()->with('cus__success', "Billing synced. New total: {$formatted}");
+        if ($wasPaid && $oldTotal !== null && (float) $oldTotal > 0) {
+            $campaign->forceFill([
+                'billing_amount_paid' => number_format((float) $oldTotal, 2, '.', ''),
+            ])->save();
+            $campaign->refresh();
+
+            $due = LocalClientBillingService::balanceDue(
+                $campaign->billing_total,
+                $campaign->billing_amount_paid,
+                $campaign->billing_payment_status,
+            );
+
+            LocalClientPaymentEvent::create([
+                'billable_type' => $campaign::class,
+                'billable_id' => $campaign->id,
+                'local_client_id' => $campaign->local_client_id,
+                'campaign_no' => $campaign->campaign_no ?? null,
+                'old_status' => $oldStatus,
+                'new_status' => 'unpaid',
+                'note' => sprintf(
+                    'Billing synced. Already paid %s. Due now %s.',
+                    CurrencyFormatter::format($campaign->billing_amount_paid, $currencyCode),
+                    CurrencyFormatter::format($due, $currencyCode),
+                ),
+                'admin_id' => $admin->id,
+                'created_at' => now(),
+            ]);
+
+            $message = sprintf(
+                'Billing synced. New total: %s. Already paid: %s. Due now: %s.',
+                $newFormatted,
+                CurrencyFormatter::format($campaign->billing_amount_paid, $currencyCode),
+                CurrencyFormatter::format($due, $currencyCode),
+            );
+
+            return back()->with('cus__success', $message);
+        }
+
+        return back()->with('cus__success', "Billing synced. New total: {$newFormatted}");
     }
 
     public function invoice(
@@ -138,6 +179,16 @@ class LocalClientPaymentController extends Controller
                 abort(404);
             }
             if ($billableType === 'campaign' && $isSticky) {
+                abort(404);
+            }
+        }
+
+        if ($campaign instanceof ScheduleCampaign) {
+            $isSticky = (bool) ($campaign->is_sticky_campaign ?? false);
+            if ($billableType === 'schedule_sticky_campaign' && ! $isSticky) {
+                abort(404);
+            }
+            if ($billableType === 'schedule_campaign' && $isSticky) {
                 abort(404);
             }
         }

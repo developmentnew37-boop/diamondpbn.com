@@ -39,6 +39,11 @@ class BillableCampaignRegistry
             'label' => 'Schedule Post',
             'admin_column' => 'admin_id',
         ],
+        'schedule_sticky_campaign' => [
+            'class' => ScheduleCampaign::class,
+            'label' => 'Schedule Sticky Post',
+            'admin_column' => 'admin_id',
+        ],
         'schedule_sidebar_campaign' => [
             'class' => ScheduleSidebarCampaign::class,
             'label' => 'Schedule Sidebar',
@@ -62,8 +67,12 @@ class BillableCampaignRegistry
             return $model->is_sticky_campaign ? 'sticky_campaign' : 'campaign';
         }
 
+        if ($model instanceof ScheduleCampaign) {
+            return $model->is_sticky_campaign ? 'schedule_sticky_campaign' : 'schedule_campaign';
+        }
+
         foreach (self::TYPES as $key => $entry) {
-            if ($key === 'campaign' || $key === 'sticky_campaign') {
+            if (in_array($key, ['campaign', 'sticky_campaign', 'schedule_campaign', 'schedule_sticky_campaign'], true)) {
                 continue;
             }
             if ($model instanceof $entry['class']) {
@@ -83,7 +92,7 @@ class BillableCampaignRegistry
     {
         return match (self::typeForModel($model)) {
             'campaign', 'schedule_campaign' => BillingCampaignType::Post,
-            'sticky_campaign' => BillingCampaignType::Sticky,
+            'sticky_campaign', 'schedule_sticky_campaign' => BillingCampaignType::Sticky,
             'sidebar_campaign', 'schedule_sidebar_campaign' => BillingCampaignType::Sidebar,
             'hidden_links_campaign' => BillingCampaignType::HiddenLinks,
         };

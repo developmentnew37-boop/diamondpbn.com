@@ -500,6 +500,156 @@
         padding: 1.5rem 1.75rem 1.75rem;
     }
 
+    .billing-overall-outstanding {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 1.25rem;
+        padding: 1.125rem 1.25rem;
+        border-radius: 0.875rem;
+        border: 1px solid #e2e8f0;
+        background: #fff;
+    }
+
+    .billing-overall-outstanding.has-balance {
+        border-color: #fcd34d;
+        background: linear-gradient(135deg, #fffbeb 0%, #fff 100%);
+    }
+
+    .billing-overall-outstanding.is-clear {
+        border-color: #bbf7d0;
+        background: linear-gradient(135deg, #f0fdf4 0%, #fff 100%);
+    }
+
+    .billing-overall-outstanding-main {
+        min-width: 0;
+        flex: 1;
+    }
+
+    .billing-overall-outstanding-label-row {
+        display: flex;
+        align-items: center;
+        gap: 0.375rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .billing-overall-outstanding-label {
+        font-size: 0.8125rem;
+        font-weight: 700;
+        color: #64748b;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+    }
+
+    .billing-overall-info-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.5rem;
+        height: 1.5rem;
+        border: none;
+        border-radius: 9999px;
+        background: #fef3c7;
+        color: #b45309;
+        cursor: pointer;
+        padding: 0;
+    }
+
+    .billing-overall-info-btn:hover {
+        background: #fde68a;
+    }
+
+    .billing-overall-info-btn .material-symbols-outlined {
+        font-size: 1rem;
+    }
+
+    .billing-overall-outstanding-value {
+        font-size: 1.875rem;
+        font-weight: 700;
+        color: #b45309;
+        line-height: 1.15;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .billing-overall-outstanding-value.is-clear {
+        color: #15803d;
+        font-size: 1.5rem;
+    }
+
+    .billing-overall-outstanding-sub {
+        margin-top: 0.35rem;
+        font-size: 0.8125rem;
+        color: #64748b;
+        font-weight: 500;
+    }
+
+    .billing-overall-outstanding-icon {
+        width: 2.75rem;
+        height: 2.75rem;
+        border-radius: 0.75rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        background: #fffbeb;
+        color: #d97706;
+    }
+
+    .billing-overall-outstanding.is-clear .billing-overall-outstanding-icon {
+        background: #ecfdf5;
+        color: #16a34a;
+    }
+
+    .billing-overall-outstanding-icon .material-symbols-outlined {
+        font-size: 1.5rem;
+    }
+
+    .billing-outstanding-breakdown-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.625rem;
+    }
+
+    .billing-outstanding-breakdown-item {
+        display: flex;
+        flex-direction: column;
+        gap: 0.125rem;
+        padding: 0.875rem 1rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.75rem;
+        background: #fff;
+        text-decoration: none;
+        color: inherit;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .billing-outstanding-breakdown-item:hover {
+        border-color: #f59e0b;
+        box-shadow: 0 2px 8px rgba(245, 158, 11, 0.12);
+    }
+
+    .billing-outstanding-breakdown-amount {
+        font-size: 1.125rem;
+        font-weight: 700;
+        color: #b45309;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .billing-outstanding-breakdown-label {
+        font-size: 0.875rem;
+        color: #334155;
+        font-weight: 500;
+    }
+
+    .billing-outstanding-breakdown-meta {
+        font-size: 0.75rem;
+        color: #94a3b8;
+    }
+
     .billing-stats-grid {
         display: grid;
         grid-template-columns: 1fr;
@@ -510,6 +660,10 @@
     @media (min-width: 640px) {
         .billing-stats-grid {
             grid-template-columns: repeat(3, 1fr);
+        }
+
+        .billing-stats-grid.billing-stats-grid-unpaid-only {
+            grid-template-columns: minmax(0, 28rem);
         }
     }
 
@@ -659,6 +813,67 @@
         font-size: 0.9375rem;
         font-weight: 700;
         color: #0f172a;
+    }
+
+    .billing-table-heading-right {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+
+    .billing-status-quick-filters {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.2rem;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.625rem;
+    }
+
+    .billing-status-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        min-height: 1.875rem;
+        padding: 0.25rem 0.625rem;
+        border-radius: 0.45rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #475569;
+        text-decoration: none !important;
+        transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+        white-space: nowrap;
+    }
+
+    .billing-status-chip:hover {
+        background: #f1f5f9;
+        color: #0f172a;
+    }
+
+    .billing-status-chip.is-active {
+        background: linear-gradient(180deg, #ff6a3d 0%, #ff4a17 100%);
+        color: #fff;
+        box-shadow: 0 1px 2px rgba(255, 74, 23, 0.25);
+    }
+
+    .billing-status-chip-count {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 1.25rem;
+        padding: 0.05rem 0.35rem;
+        border-radius: 9999px;
+        font-size: 0.6875rem;
+        font-weight: 700;
+        background: rgba(15, 23, 42, 0.08);
+        color: inherit;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .billing-status-chip.is-active .billing-status-chip-count {
+        background: rgba(255, 255, 255, 0.22);
     }
 
     .billing-table-count {
@@ -813,6 +1028,34 @@
         color: #0f172a;
         font-variant-numeric: tabular-nums;
         letter-spacing: -0.01em;
+    }
+
+    .billing-due-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        margin-top: 0.35rem;
+    }
+
+    .billing-already-paid {
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: #64748b;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .billing-due-now {
+        display: inline-flex;
+        align-items: center;
+        width: fit-content;
+        padding: 0.15rem 0.45rem;
+        font-size: 0.8125rem;
+        font-weight: 700;
+        color: #9a3412;
+        background: #ffedd5;
+        border: 1px solid #fdba74;
+        border-radius: 0.375rem;
+        font-variant-numeric: tabular-nums;
     }
 
     .billing-report-link {

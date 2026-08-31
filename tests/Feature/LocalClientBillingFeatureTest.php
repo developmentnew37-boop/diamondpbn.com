@@ -6,6 +6,7 @@ use App\Models\Admin;
 use App\Models\Admin\Campaign;
 use App\Models\Admin\LocalClient;
 use App\Models\Admin\LocalClientPaymentEvent;
+use App\Models\Admin\ScheduleCampaign;
 use App\Services\LocalClientPaymentService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -85,6 +86,7 @@ class LocalClientBillingFeatureTest extends TestCase
             $table->boolean('is_sticky_campaign')->default(false);
             $table->unsignedBigInteger('local_client_id')->nullable();
             $table->decimal('billing_total', 12, 2)->nullable();
+            $table->decimal('billing_amount_paid', 12, 2)->nullable();
             $table->string('billing_currency', 3)->nullable();
             $table->json('billing_snapshot')->nullable();
             $table->string('billing_payment_status')->nullable();
@@ -102,6 +104,7 @@ class LocalClientBillingFeatureTest extends TestCase
 
     protected function tearDown(): void
     {
+        Schema::dropIfExists('schedule_campaigns');
         Schema::dropIfExists('local_client_payment_events');
         Schema::dropIfExists('local_client_bill_lines');
         Schema::dropIfExists('local_client_domain_category_prices');
@@ -289,6 +292,67 @@ class LocalClientBillingFeatureTest extends TestCase
             ->assertSee($expectedReportUrl, false);
     }
 
+    public function test_public_client_report_shows_schedule_sticky_post_label_and_report_url(): void
+    {
+        Schema::create('schedule_campaigns', function (Blueprint $table) {
+            $table->id();
+            $table->string('campaign_no');
+            $table->string('report_token', 64);
+            $table->unsignedBigInteger('admin_id');
+            $table->unsignedBigInteger('domain_category_id')->nullable();
+            $table->string('status')->default('queued');
+            $table->boolean('is_sticky_campaign')->default(false);
+            $table->unsignedBigInteger('local_client_id')->nullable();
+            $table->decimal('billing_total', 12, 2)->nullable();
+            $table->decimal('billing_amount_paid', 12, 2)->nullable();
+            $table->string('billing_currency', 3)->nullable();
+            $table->json('billing_snapshot')->nullable();
+            $table->string('billing_payment_status')->nullable();
+            $table->timestamp('billing_paid_at')->nullable();
+            $table->unsignedBigInteger('billing_paid_by_admin_id')->nullable();
+            $table->text('billing_payment_note')->nullable();
+            $table->timestamps();
+        });
+
+        $client = LocalClient::create([
+            'name' => 'Client Schedule Sticky',
+            'default_currency' => 'USD',
+            'billing_report_token' => str_repeat('a', 64),
+            'created_by_admin_id' => 1,
+        ]);
+
+        $reportToken = str_repeat('b', 64);
+
+        $campaign = new ScheduleCampaign([
+            'campaign_no' => 'sch-sticky-report-1',
+            'admin_id' => 1,
+            'is_sticky_campaign' => true,
+            'local_client_id' => $client->id,
+            'billing_total' => 75,
+            'billing_currency' => 'USD',
+            'billing_snapshot' => ['total' => '75.00', 'lines' => []],
+            'billing_payment_status' => 'unpaid',
+        ]);
+        $campaign->report_token = $reportToken;
+        $campaign->save();
+
+        $expectedReportUrl = route('admin.schedule.campaign.report', [
+            'campaign_no' => 'sch-sticky-report-1',
+            'token' => $reportToken,
+        ]);
+        $wrongReportUrl = route('admin.campaign.report', [
+            'campaign_no' => 'sch-sticky-report-1',
+            'token' => $reportToken,
+        ]);
+
+        $this->get('/client/billing/'.$client->id.'/'.$client->billing_report_token)
+            ->assertOk()
+            ->assertSee('Schedule Sticky Post', false)
+            ->assertSee('View report')
+            ->assertSee($expectedReportUrl, false)
+            ->assertDontSee($wrongReportUrl, false);
+    }
+
     public function test_sync_billing_recalculates_total_and_marks_paid_unpaid(): void
     {
         Schema::create('domains', function (Blueprint $table) {
@@ -381,6 +445,13 @@ class LocalClientBillingFeatureTest extends TestCase
 
         $campaign->refresh();
         $this->assertSame('20.00', (string) $campaign->billing_total);
+        $this->assertSame('15.00', (string) $campaign->billing_amount_paid);
         $this->assertSame('unpaid', $campaign->billing_payment_status);
+        $this->assertSame(1, LocalClientPaymentEvent::count());
+
+        $this->get('/client/billing/'.$client->id.'/'.$client->billing_report_token)
+            ->assertOk()
+            ->assertSee('Due now', false)
+            ->assertSee('Already paid', false);
     }
 }

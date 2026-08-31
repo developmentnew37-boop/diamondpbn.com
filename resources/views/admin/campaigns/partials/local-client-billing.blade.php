@@ -7,6 +7,15 @@
         $isPaid = ($campaign->billing_payment_status ?? 'unpaid') === 'paid';
         $lineCount = count($snapshot['lines'] ?? []);
         $lcbStorageKey = $billableType.'-'.$campaign->id;
+        $hasBalanceCredit = \App\Services\LocalClientBillingService::hasBalanceCredit(
+            $campaign->billing_amount_paid ?? null,
+            $campaign->billing_payment_status ?? null,
+        );
+        $balanceDue = \App\Services\LocalClientBillingService::balanceDue(
+            $campaign->billing_total,
+            $campaign->billing_amount_paid ?? null,
+            $campaign->billing_payment_status ?? null,
+        );
     @endphp
 
     @once
@@ -108,6 +117,16 @@
                     <span class="lcb-stat-label">Billing total</span>
                     <span class="lcb-stat-value total">{{ \App\Support\CurrencyFormatter::format($campaign->billing_total, $currency) }}</span>
                 </div>
+                @if ($hasBalanceCredit)
+                    <div class="lcb-stat-card">
+                        <span class="lcb-stat-label">Already paid</span>
+                        <span class="lcb-stat-value">{{ \App\Support\CurrencyFormatter::format($campaign->billing_amount_paid, $currency) }}</span>
+                    </div>
+                    <div class="lcb-stat-card">
+                        <span class="lcb-stat-label">Due now</span>
+                        <span class="lcb-stat-value total">{{ \App\Support\CurrencyFormatter::format($balanceDue, $currency) }}</span>
+                    </div>
+                @endif
                 <div class="lcb-stat-card">
                     <span class="lcb-stat-label">Currency</span>
                     <span class="lcb-stat-value">{{ $currency }} · {{ \App\Support\CurrencyFormatter::name($currency) }}</span>

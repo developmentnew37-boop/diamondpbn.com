@@ -120,6 +120,7 @@ class LocalClientBillingService
         $campaign->forceFill([
             'local_client_id' => $client->id,
             'billing_total' => $result->total,
+            'billing_amount_paid' => null,
             'billing_currency' => $currency,
             'billing_snapshot' => $snapshot,
             'billing_payment_status' => 'unpaid',
@@ -228,6 +229,7 @@ class LocalClientBillingService
         $campaign->forceFill([
             'local_client_id' => null,
             'billing_total' => null,
+            'billing_amount_paid' => null,
             'billing_currency' => null,
             'billing_snapshot' => null,
             'billing_payment_status' => 'unpaid',
@@ -235,6 +237,36 @@ class LocalClientBillingService
             'billing_paid_by_admin_id' => null,
             'billing_payment_note' => null,
         ])->save();
+    }
+
+    /**
+     * Amount still owed when an unpaid campaign has a previously-paid credit.
+     */
+    public static function balanceDue(float|string|null $billingTotal, float|string|null $amountPaid, ?string $paymentStatus): float
+    {
+        $total = round((float) ($billingTotal ?? 0), 2);
+
+        if (($paymentStatus ?? 'unpaid') === 'paid') {
+            return 0.0;
+        }
+
+        if ($amountPaid === null || $amountPaid === '') {
+            return $total;
+        }
+
+        return max(0.0, round($total - (float) $amountPaid, 2));
+    }
+
+    /**
+     * Whether the client should see Already paid / Due now on the report.
+     */
+    public static function hasBalanceCredit(float|string|null $amountPaid, ?string $paymentStatus): bool
+    {
+        if (($paymentStatus ?? 'unpaid') === 'paid') {
+            return false;
+        }
+
+        return $amountPaid !== null && $amountPaid !== '' && (float) $amountPaid > 0;
     }
 
     /**

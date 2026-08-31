@@ -10,15 +10,42 @@
     @php
         $filteredTotal = $filteredTotal ?? $campaigns->total();
         $campaignCount = $filteredTotal;
-        $totalCampaignCount = $allCampaigns->count();
+        $statusCounts = $statusCounts ?? ['all' => 0, 'paid' => 0, 'unpaid' => 0];
+        $totalCampaignCount = $statusCounts['all'];
+        $statusSelection = $filters['status_selection'] ?? 'unpaid';
+        $overallOutstanding = $overallOutstanding ?? [
+            'total_unpaid_formatted' => '—',
+            'unpaid_count' => 0,
+            'has_unpaid' => false,
+            'breakdown' => [],
+        ];
         $rowOffset = ($campaigns->currentPage() - 1) * $campaigns->perPage();
-        $paidPercent = $campaignCount > 0
-            ? (int) round(($summary['paid_count'] / $campaignCount) * 100)
+        $paidPercent = $totalCampaignCount > 0
+            ? (int) round(($summary['paid_count'] / $totalCampaignCount) * 100)
             : 0;
         $clearFiltersUrl = route('admin.local-client.billing.report', [
             'id' => $client->id,
             'token' => $client->billing_report_token,
         ]);
+
+        $statusFilterBaseQuery = request()->except(['status', 'page']);
+        $statusFilterUrls = [
+            'all' => route('admin.local-client.billing.report', array_merge(
+                ['id' => $client->id, 'token' => $client->billing_report_token],
+                $statusFilterBaseQuery,
+                ['status' => 'all']
+            )),
+            'paid' => route('admin.local-client.billing.report', array_merge(
+                ['id' => $client->id, 'token' => $client->billing_report_token],
+                $statusFilterBaseQuery,
+                ['status' => 'paid']
+            )),
+            'unpaid' => route('admin.local-client.billing.report', array_merge(
+                ['id' => $client->id, 'token' => $client->billing_report_token],
+                $statusFilterBaseQuery,
+                ['status' => 'unpaid']
+            )),
+        ];
 
         $typeBadgeClass = function (string $type): string {
             return match (true) {
@@ -71,7 +98,7 @@
                                     <span>{{ $client->company_name }}</span>
                                     <span class="text-slate-300">·</span>
                                 @endif
-                                @if ($filters['is_active'] && $filters['label'])
+                                @if ($filters['label'])
                                     <span>{{ $filters['label'] }}</span>
                                 @else
                                     <span>All billed campaigns</span>
@@ -176,9 +203,9 @@
                                     <div class="billing-filter-group">
                                         <label for="billing-filter-status">Payment status</label>
                                         <select id="billing-filter-status" name="status" class="billing-filter-input">
-                                            <option value="">All statuses</option>
+                                            <option value="all" @selected($statusSelection === 'all')>All statuses</option>
                                             @foreach ($statusFilterOptions as $statusValue => $statusLabel)
-                                                <option value="{{ $statusValue }}" @selected(($filters['status'] ?? '') === $statusValue)>
+                                                <option value="{{ $statusValue }}" @selected($statusSelection === $statusValue)>
                                                     {{ $statusLabel }}
                                                 </option>
                                             @endforeach
@@ -225,58 +252,132 @@
                     </details>
 
                     <div class="billing-doc-body">
-                        <div class="billing-stats-grid">
-                            <div class="billing-stat-card total">
-                                <div class="billing-stat-top">
-                                    <div class="billing-stat-label">Total billed</div>
-                                    <div class="billing-stat-icon">
-                                        <span class="material-symbols-outlined">account_balance_wallet</span>
-                                    </div>
+                        <div class="billing-overall-outstanding {{ $overallOutstanding['has_unpaid'] ? 'has-balance' : 'is-clear' }}">
+                            <div class="billing-overall-outstanding-main">
+                                <div class="billing-overall-outstanding-label-row">
+                                    <span class="billing-overall-outstanding-label">Overall outstanding</span>
+                                    @if (! empty($overallOutstanding['breakdown']))
+                                        <button type="button"
+                                            class="billing-overall-info-btn"
+                                            id="billing-outstanding-breakdown-btn"
+                                            aria-haspopup="dialog"
+                                            aria-controls="billing-outstanding-modal"
+                                            aria-label="View unpaid breakdown by month">
+                                            <span class="material-symbols-outlined">info</span>
+                                        </button>
+                                    @endif
                                 </div>
-                                <div class="billing-stat-value">{{ $summary['total_billed'] }}</div>
-                                <div class="billing-stat-sub">{{ $campaignCount }} campaign{{ $campaignCount === 1 ? '' : 's' }}</div>
+                                @if ($overallOutstanding['has_unpaid'])
+                                    <div class="billing-overall-outstanding-value">{{ $overallOutstanding['total_unpaid_formatted'] }}</div>
+                                    <div class="billing-overall-outstanding-sub">
+                                        {{ $overallOutstanding['unpaid_count'] }} unpaid campaign{{ $overallOutstanding['unpaid_count'] === 1 ? '' : 's' }} across all months
+                                    </div>
+                                @else
+                                    <div class="billing-overall-outstanding-value is-clear">All clear</div>
+                                    <div class="billing-overall-outstanding-sub">No outstanding balance on your account</div>
+                                @endif
                             </div>
-                            <div class="billing-stat-card paid">
-                                <div class="billing-stat-top">
-                                    <div class="billing-stat-label">Paid</div>
-                                    <div class="billing-stat-icon">
-                                        <span class="material-symbols-outlined">check_circle</span>
-                                    </div>
-                                </div>
-                                <div class="billing-stat-value">{{ $summary['total_paid'] }}</div>
-                                <div class="billing-stat-sub">{{ $summary['paid_count'] }} settled</div>
-                            </div>
-                            <div class="billing-stat-card unpaid">
-                                <div class="billing-stat-top">
-                                    <div class="billing-stat-label">Outstanding</div>
-                                    <div class="billing-stat-icon">
-                                        <span class="material-symbols-outlined">pending</span>
-                                    </div>
-                                </div>
-                                <div class="billing-stat-value">{{ $summary['total_unpaid'] }}</div>
-                                <div class="billing-stat-sub">{{ $summary['unpaid_count'] }} pending</div>
+                            <div class="billing-overall-outstanding-icon" aria-hidden="true">
+                                <span class="material-symbols-outlined">{{ $overallOutstanding['has_unpaid'] ? 'account_balance' : 'verified' }}</span>
                             </div>
                         </div>
 
-                        @if ($campaignCount > 0)
-                            <div class="billing-progress-wrap">
-                                <div class="billing-progress-head">
-                                    <span>Payment collection</span>
-                                    <span>{{ $paidPercent }}% paid</span>
+                        @if ($statusSelection === 'all')
+                            <div class="billing-stats-grid">
+                                <div class="billing-stat-card total">
+                                    <div class="billing-stat-top">
+                                        <div class="billing-stat-label">Total billed</div>
+                                        <div class="billing-stat-icon">
+                                            <span class="material-symbols-outlined">account_balance_wallet</span>
+                                        </div>
+                                    </div>
+                                    <div class="billing-stat-value">{{ $summary['total_billed'] }}</div>
+                                    <div class="billing-stat-sub">{{ $totalCampaignCount }} campaign{{ $totalCampaignCount === 1 ? '' : 's' }}</div>
                                 </div>
-                                <div class="billing-progress-track">
-                                    <div class="billing-progress-fill" style="width: {{ $paidPercent }}%;"></div>
+                                <div class="billing-stat-card paid">
+                                    <div class="billing-stat-top">
+                                        <div class="billing-stat-label">Paid</div>
+                                        <div class="billing-stat-icon">
+                                            <span class="material-symbols-outlined">check_circle</span>
+                                        </div>
+                                    </div>
+                                    <div class="billing-stat-value">{{ $summary['total_paid'] }}</div>
+                                    <div class="billing-stat-sub">{{ $summary['paid_count'] }} settled</div>
+                                </div>
+                                <div class="billing-stat-card unpaid">
+                                    <div class="billing-stat-top">
+                                        <div class="billing-stat-label">This month outstanding</div>
+                                        <div class="billing-stat-icon">
+                                            <span class="material-symbols-outlined">pending</span>
+                                        </div>
+                                    </div>
+                                    <div class="billing-stat-value">{{ $summary['total_unpaid'] }}</div>
+                                    <div class="billing-stat-sub">{{ $summary['unpaid_count'] }} pending</div>
+                                </div>
+                            </div>
+
+                            @if ($totalCampaignCount > 0)
+                                <div class="billing-progress-wrap">
+                                    <div class="billing-progress-head">
+                                        <span>Payment collection</span>
+                                        <span>{{ $paidPercent }}% paid</span>
+                                    </div>
+                                    <div class="billing-progress-track">
+                                        <div class="billing-progress-fill" style="width: {{ $paidPercent }}%;"></div>
+                                    </div>
+                                </div>
+                            @endif
+                        @elseif ($statusSelection === 'paid')
+                            <div class="billing-stats-grid billing-stats-grid-unpaid-only">
+                                <div class="billing-stat-card paid">
+                                    <div class="billing-stat-top">
+                                        <div class="billing-stat-label">Paid</div>
+                                        <div class="billing-stat-icon">
+                                            <span class="material-symbols-outlined">check_circle</span>
+                                        </div>
+                                    </div>
+                                    <div class="billing-stat-value">{{ $summary['total_paid'] }}</div>
+                                    <div class="billing-stat-sub">{{ $summary['paid_count'] }} paid campaign{{ $summary['paid_count'] === 1 ? '' : 's' }}</div>
+                                </div>
+                            </div>
+                        @else
+                            <div class="billing-stats-grid billing-stats-grid-unpaid-only">
+                                <div class="billing-stat-card unpaid">
+                                    <div class="billing-stat-top">
+                                        <div class="billing-stat-label">This month outstanding</div>
+                                        <div class="billing-stat-icon">
+                                            <span class="material-symbols-outlined">pending</span>
+                                        </div>
+                                    </div>
+                                    <div class="billing-stat-value">{{ $summary['total_unpaid'] }}</div>
+                                    <div class="billing-stat-sub">
+                                        @if ($filters['label'])
+                                            {{ $filters['label'] }} ·
+                                        @endif
+                                        {{ $summary['unpaid_count'] }} unpaid campaign{{ $summary['unpaid_count'] === 1 ? '' : 's' }}
+                                    </div>
                                 </div>
                             </div>
                         @endif
-
                         <div class="billing-table-section">
                             <div class="billing-table-heading">
                                 <div class="billing-table-heading-left">
                                     <span class="material-symbols-outlined text-[var(--primary-color)] !text-xl">list_alt</span>
                                     <h2>Campaign billing history</h2>
                                 </div>
-                                <span class="billing-table-count">{{ $campaignCount }} record{{ $campaignCount === 1 ? '' : 's' }}</span>
+                                <div class="billing-table-heading-right">
+                                    <div class="billing-status-quick-filters" role="group" aria-label="Payment status filter">
+                                        @foreach (['all' => 'All', 'paid' => 'Paid', 'unpaid' => 'Unpaid'] as $statusKey => $statusLabel)
+                                            <a href="{{ $statusFilterUrls[$statusKey] }}"
+                                               class="billing-status-chip {{ $statusSelection === $statusKey ? 'is-active' : '' }}"
+                                               @if ($statusSelection === $statusKey) aria-current="true" @endif>
+                                                {{ $statusLabel }}
+                                                <span class="billing-status-chip-count">{{ $statusCounts[$statusKey] ?? 0 }}</span>
+                                            </a>
+                                        @endforeach
+                                    </div>
+                                    <span class="billing-table-count">{{ $campaignCount }} record{{ $campaignCount === 1 ? '' : 's' }}</span>
+                                </div>
                             </div>
                             <div class="billing-desktop-table overflow-x-auto">
                                 <table class="billing-report-table">
@@ -327,6 +428,16 @@
                                                     <span class="billing-amount">
                                                         {{ \App\Support\CurrencyFormatter::format($row['billing_total'], $row['billing_currency'] ?? $client->default_currency) }}
                                                     </span>
+                                                    @if (! empty($row['billing_has_credit']))
+                                                        <div class="billing-due-meta">
+                                                            <span class="billing-already-paid">
+                                                                Already paid {{ \App\Support\CurrencyFormatter::format($row['billing_amount_paid'], $row['billing_currency'] ?? $client->default_currency) }}
+                                                            </span>
+                                                            <span class="billing-due-now">
+                                                                Due now {{ \App\Support\CurrencyFormatter::format($row['billing_balance_due'], $row['billing_currency'] ?? $client->default_currency) }}
+                                                            </span>
+                                                        </div>
+                                                    @endif
                                                 </td>
                                                 <td>
                                                     @if (($row['billing_payment_status'] ?? '') === 'paid')
@@ -403,6 +514,16 @@
                                                 <span class="billing-amount">
                                                     {{ \App\Support\CurrencyFormatter::format($row['billing_total'], $row['billing_currency'] ?? $client->default_currency) }}
                                                 </span>
+                                                @if (! empty($row['billing_has_credit']))
+                                                    <div class="billing-due-meta">
+                                                        <span class="billing-already-paid">
+                                                            Already paid {{ \App\Support\CurrencyFormatter::format($row['billing_amount_paid'], $row['billing_currency'] ?? $client->default_currency) }}
+                                                        </span>
+                                                        <span class="billing-due-now">
+                                                            Due now {{ \App\Support\CurrencyFormatter::format($row['billing_balance_due'], $row['billing_currency'] ?? $client->default_currency) }}
+                                                        </span>
+                                                    </div>
+                                                @endif
                                             </div>
                                             <div>
                                                 <label>Status</label>
@@ -523,6 +644,44 @@
             </div>
         </div>
     </div>
+
+    <div id="billing-outstanding-modal" class="billing-rates-modal" hidden aria-hidden="true">
+        <div class="billing-rates-modal-backdrop" data-outstanding-close tabindex="-1"></div>
+        <div class="billing-rates-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="billing-outstanding-modal-title">
+            <div class="billing-rates-modal-header">
+                <div class="min-w-0">
+                    <h2 id="billing-outstanding-modal-title" class="billing-rates-modal-title">Outstanding by month</h2>
+                    <p class="billing-rates-modal-subtitle">Unpaid balance across all billing months</p>
+                </div>
+                <button type="button" class="billing-rates-modal-close" data-outstanding-close aria-label="Close">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="billing-rates-modal-body">
+                <ul class="billing-outstanding-breakdown-list">
+                    @foreach ($overallOutstanding['breakdown'] as $monthRow)
+                        <li>
+                            <a href="{{ route('admin.local-client.billing.report', [
+                                'id' => $client->id,
+                                'token' => $client->billing_report_token,
+                                'filter_year' => $monthRow['year'],
+                                'filter_month' => $monthRow['month_num'],
+                                'status' => 'unpaid',
+                            ]) }}"
+                               class="billing-outstanding-breakdown-item">
+                                <span class="billing-outstanding-breakdown-amount">{{ $monthRow['formatted_amount'] }}</span>
+                                <span class="billing-outstanding-breakdown-label">remaining in {{ $monthRow['label'] }}</span>
+                                <span class="billing-outstanding-breakdown-meta">{{ $monthRow['campaign_count'] }} campaign{{ $monthRow['campaign_count'] === 1 ? '' : 's' }}</span>
+                            </a>
+                        </li>
+                    @endforeach
+                </ul>
+                <p class="billing-rates-note">
+                    Tap a month to view unpaid campaigns for that period.
+                </p>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @push('scripts')
@@ -545,37 +704,48 @@
                 syncMonthState();
             }
 
-            const modal = document.getElementById('billing-rates-modal');
-            const openBtn = document.getElementById('billing-view-rates-btn');
-            if (!modal || !openBtn) {
-                return;
-            }
-
-            const dialog = modal.querySelector('.billing-rates-modal-dialog');
-
-            function openRatesModal() {
-                modal.hidden = false;
-                modal.setAttribute('aria-hidden', 'false');
-                document.body.classList.add('billing-rates-modal-open');
-                dialog?.querySelector('.billing-rates-modal-close')?.focus();
-            }
-
-            function closeRatesModal() {
-                modal.hidden = true;
-                modal.setAttribute('aria-hidden', 'true');
-                document.body.classList.remove('billing-rates-modal-open');
-                openBtn.focus();
-            }
-
-            openBtn.addEventListener('click', openRatesModal);
-            modal.querySelectorAll('[data-rates-close]').forEach(function (el) {
-                el.addEventListener('click', closeRatesModal);
-            });
-            document.addEventListener('keydown', function (e) {
-                if (e.key === 'Escape' && !modal.hidden) {
-                    closeRatesModal();
+            function bindModal(modalId, openBtnId, closeAttr, focusReturnBtn) {
+                const modal = document.getElementById(modalId);
+                const openBtn = openBtnId ? document.getElementById(openBtnId) : null;
+                if (!modal) {
+                    return;
                 }
-            });
+
+                const dialog = modal.querySelector('.billing-rates-modal-dialog');
+
+                function openModal() {
+                    modal.hidden = false;
+                    modal.setAttribute('aria-hidden', 'false');
+                    document.body.classList.add('billing-rates-modal-open');
+                    dialog?.querySelector('.billing-rates-modal-close')?.focus();
+                }
+
+                function closeModal() {
+                    modal.hidden = true;
+                    modal.setAttribute('aria-hidden', 'true');
+                    document.body.classList.remove('billing-rates-modal-open');
+                    if (focusReturnBtn) {
+                        focusReturnBtn.focus();
+                    }
+                }
+
+                if (openBtn) {
+                    openBtn.addEventListener('click', openModal);
+                }
+
+                modal.querySelectorAll('[' + closeAttr + ']').forEach(function (el) {
+                    el.addEventListener('click', closeModal);
+                });
+
+                document.addEventListener('keydown', function (e) {
+                    if (e.key === 'Escape' && !modal.hidden) {
+                        closeModal();
+                    }
+                });
+            }
+
+            bindModal('billing-rates-modal', 'billing-view-rates-btn', 'data-rates-close', document.getElementById('billing-view-rates-btn'));
+            bindModal('billing-outstanding-modal', 'billing-outstanding-breakdown-btn', 'data-outstanding-close', document.getElementById('billing-outstanding-breakdown-btn'));
         })();
     </script>
 @endpush

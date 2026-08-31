@@ -91,6 +91,19 @@ class LocalClientBillingServiceTest extends TestCase
             $table->timestamp('created_at')->nullable();
         });
 
+        Schema::create('local_client_payment_events', function (Blueprint $table) {
+            $table->id();
+            $table->string('billable_type');
+            $table->unsignedBigInteger('billable_id');
+            $table->unsignedBigInteger('local_client_id')->nullable();
+            $table->string('campaign_no', 64)->nullable();
+            $table->string('old_status')->nullable();
+            $table->string('new_status');
+            $table->text('note')->nullable();
+            $table->unsignedBigInteger('admin_id');
+            $table->timestamp('created_at')->nullable();
+        });
+
         Schema::create('campaigns', function (Blueprint $table) {
             $table->id();
             $table->string('campaign_no');
@@ -100,6 +113,7 @@ class LocalClientBillingServiceTest extends TestCase
             $table->boolean('is_sticky_campaign')->default(false);
             $table->unsignedBigInteger('local_client_id')->nullable();
             $table->decimal('billing_total', 12, 2)->nullable();
+            $table->decimal('billing_amount_paid', 12, 2)->nullable();
             $table->string('billing_currency', 3)->nullable();
             $table->json('billing_snapshot')->nullable();
             $table->string('billing_payment_status')->nullable();
@@ -143,6 +157,7 @@ class LocalClientBillingServiceTest extends TestCase
     protected function tearDown(): void
     {
         Schema::dropIfExists('local_client_bill_lines');
+        Schema::dropIfExists('local_client_payment_events');
         Schema::dropIfExists('local_client_domain_category_prices');
         Schema::dropIfExists('local_clients');
         Schema::dropIfExists('campaign_domains');
@@ -484,5 +499,56 @@ class LocalClientBillingServiceTest extends TestCase
         $this->assertSame('15.00', (string) $campaign->billing_total);
         $this->assertSame('paid', $campaign->billing_payment_status);
         $this->assertSame(0, LocalClientBillLine::count());
+    }
+
+    public function test_balance_due_helpers(): void
+    {
+        $this->assertSame(5.0, LocalClientBillingService::balanceDue(20, 15, 'unpaid'));
+        $this->assertSame(20.0, LocalClientBillingService::balanceDue(20, null, 'unpaid'));
+        $this->assertSame(0.0, LocalClientBillingService::balanceDue(20, 15, 'paid'));
+        $this->assertTrue(LocalClientBillingService::hasBalanceCredit(15, 'unpaid'));
+        $this->assertFalse(LocalClientBillingService::hasBalanceCredit(null, 'unpaid'));
+        $this->assertFalse(LocalClientBillingService::hasBalanceCredit(15, 'paid'));
+    }
+
+    public function test_mark_paid_clears_billing_amount_paid(): void
+    {
+        $client = LocalClient::create([
+            'name' => 'Clear Credit',
+            'default_currency' => 'USD',
+            'billing_report_token' => str_repeat('r', 64),
+            'created_by_admin_id' => 1,
+        ]);
+
+        LocalClientDomainCategoryPrice::create([
+            'local_client_id' => $client->id,
+            'domain_category_id' => 1,
+            'post_price' => 20,
+        ]);
+
+        $domain = Domain::create(['name' => 'clear-credit.com', 'domain_category_id' => 1, 'admin_id' => 1]);
+        $campaign = Campaign::create([
+            'campaign_no' => 'CMP-CLEAR-CREDIT',
+            'report_token' => str_repeat('s', 64),
+            'admin_id' => 1,
+            'local_client_id' => $client->id,
+            'billing_total' => 20,
+            'billing_amount_paid' => 15,
+            'billing_currency' => 'USD',
+            'billing_snapshot' => ['total' => '20.00', 'lines' => []],
+            'billing_payment_status' => 'unpaid',
+        ]);
+        CampaignDomain::create([
+            'campaign_id' => $campaign->id,
+            'domain_id' => $domain->id,
+            'sort_order' => 0,
+        ]);
+
+        $admin = \App\Models\Admin::find(1);
+        app(\App\Services\LocalClientPaymentService::class)->toggle($campaign, 'paid', $admin);
+
+        $campaign->refresh();
+        $this->assertSame('paid', $campaign->billing_payment_status);
+        $this->assertNull($campaign->billing_amount_paid);
     }
 }

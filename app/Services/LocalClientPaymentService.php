@@ -57,12 +57,18 @@ class LocalClientPaymentService
         $oldStatus = $campaign->billing_payment_status;
 
         return DB::transaction(function () use ($campaign, $newStatus, $admin, $note, $oldStatus) {
-            $campaign->forceFill([
+            $updates = [
                 'billing_payment_status' => $newStatus,
                 'billing_paid_at' => $newStatus === 'paid' ? now() : null,
                 'billing_paid_by_admin_id' => $newStatus === 'paid' ? $admin->id : null,
                 'billing_payment_note' => $note,
-            ])->save();
+            ];
+
+            if ($newStatus === 'paid') {
+                $updates['billing_amount_paid'] = null;
+            }
+
+            $campaign->forceFill($updates)->save();
 
             LocalClientPaymentEvent::create([
                 'billable_type' => $campaign::class,
