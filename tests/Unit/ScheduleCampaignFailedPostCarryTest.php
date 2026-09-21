@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Jobs\BulkRetryScheduleCampaignPostsJob;
+use App\Jobs\PublishScheduledCampaignPostJob;
 use App\Models\Admin;
 use App\Models\Admin\ScheduleCampaign;
 use App\Models\Admin\ScheduleCampaignPost;
@@ -232,6 +233,10 @@ class ScheduleCampaignFailedPostCarryTest extends TestCase
         $post = ScheduleCampaignPost::query()->find($postId);
         $this->assertSame('queued', $post->status);
         $this->assertSame(0, (int) $post->attempt_count);
+        $this->assertSame(1, (int) $post->dispatch_generation);
+        Queue::assertPushed(PublishScheduledCampaignPostJob::class, function ($job) use ($postId) {
+            return $job->postId === $postId && $job->dispatchGeneration === 1;
+        });
     }
 
     private function makeCampaign(

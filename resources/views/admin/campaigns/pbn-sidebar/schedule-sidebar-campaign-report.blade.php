@@ -7,6 +7,7 @@
     <div class="w-full content-card min-w-0 !p-3 sm:!p-4 lg:!p-6">
 
         {{-- Header --}}
+        @include('admin.campaigns.partials.converted-report-notice')
         <div class="w-full flex flex-col gap-3 md:flex-row md:items-center md:justify-between !mb-6 min-w-0">
             <h2
                 class="w-full md:w-auto text-sm sm:text-base md:text-lg capitalize break-words

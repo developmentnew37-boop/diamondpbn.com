@@ -138,6 +138,84 @@
                 flex-shrink: 0;
             }
         }
+
+        .unique-titles-card {
+            border: 1px solid #e5e7eb;
+        }
+
+        .unique-title-switch {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .unique-title-switch.is-readonly {
+            cursor: default;
+        }
+
+        .unique-title-switch input {
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .unique-title-track {
+            position: relative;
+            width: 48px;
+            height: 26px;
+            flex-shrink: 0;
+            background: #d1d5db;
+            border-radius: 999px;
+            transition: background-color 0.2s ease;
+        }
+
+        .unique-title-track::after {
+            content: '';
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 20px;
+            height: 20px;
+            background: #fff;
+            border-radius: 999px;
+            transition: transform 0.2s ease;
+        }
+
+        .unique-title-switch input:checked + .unique-title-track {
+            background: var(--primary-color);
+        }
+
+        .unique-title-switch input:checked + .unique-title-track::after {
+            transform: translateX(22px);
+        }
+
+        .unique-title-switch input:focus-visible + .unique-title-track {
+            box-shadow: 0 0 0 3px rgba(255, 74, 23, 0.22);
+        }
+
+        .unique-title-state {
+            min-width: 2.25rem;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            color: #6b7280;
+        }
+
+        .unique-title-switch input:checked ~ .unique-title-state {
+            color: var(--primary-color);
+        }
+
+        .unique-title-state-on,
+        .unique-title-switch input:checked ~ .unique-title-state .unique-title-state-off {
+            display: none;
+        }
+
+        .unique-title-switch input:checked ~ .unique-title-state .unique-title-state-on {
+            display: inline;
+        }
     </style>
 @endpush
 
@@ -188,6 +266,46 @@
             @endif
         </div>
     @endif
+
+    <div class="w-full content-card unique-titles-card !mb-4">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between !p-4">
+            <div class="min-w-0">
+                <h3 class="text-sm font-semibold text-gray-800">Require unique article titles</h3>
+                <p class="text-sm text-gray-600 !mt-1">
+                    When on, the same title cannot be added again until that article is permanently deleted from trash.
+                </p>
+            </div>
+            @if ($canEditArticleSettings)
+                <form method="POST" action="{{ route('admin.articles.unique-titles.update') }}"
+                    class="flex flex-wrap items-center gap-3 shrink-0">
+                    @csrf
+                    <input type="hidden" name="require_unique_titles" value="0">
+                    <label class="unique-title-switch">
+                        <input type="checkbox" name="require_unique_titles" value="1"
+                            @checked($articleSetting->requiresUniqueTitles())>
+                        <span class="unique-title-track" aria-hidden="true"></span>
+                        <span class="unique-title-state">
+                            <span class="unique-title-state-off">Off</span>
+                            <span class="unique-title-state-on">On</span>
+                        </span>
+                    </label>
+                    <button type="submit"
+                        class="articles-control-btn bg-[var(--sidebar-bg)] hover:bg-[var(--primary-color)] text-white cursor-pointer">
+                        Save
+                    </button>
+                </form>
+            @else
+                <div class="unique-title-switch is-readonly" aria-disabled="true">
+                    <input type="checkbox" disabled @checked($articleSetting->requiresUniqueTitles())>
+                    <span class="unique-title-track" aria-hidden="true"></span>
+                    <span class="unique-title-state">
+                        <span class="unique-title-state-off">Off</span>
+                        <span class="unique-title-state-on">On</span>
+                    </span>
+                </div>
+            @endif
+        </div>
+    </div>
 
     {{-- <h2 class="bg-green-500">Hello this is test section</h2> --}}
 

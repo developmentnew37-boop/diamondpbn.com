@@ -208,6 +208,9 @@
                             {{-- campaign no --}}
                             <td class="border border-gray-200 font-sans !px-2 !py-3">
                                 {{ $campaign->campaign_no }}
+                                @include('admin.campaigns.partials.converted-campaign-badge', [
+                                    'isConverted' => filled($campaign->converted_to_schedule_campaign_id),
+                                ])
                             </td>
 
                             {{-- domain category --}}

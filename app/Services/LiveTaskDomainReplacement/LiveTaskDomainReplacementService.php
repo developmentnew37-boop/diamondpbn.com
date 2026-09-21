@@ -502,6 +502,7 @@ class LiveTaskDomainReplacementService
     private function dispatchCommittedReplacement(LiveTaskReplacementProfile $profile, Model $replacement): Model
     {
         $replacementModel = $profile->replacementModel;
+        $wasDispatchFailed = $replacement->state === 'dispatch_failed';
 
         $claimed = $replacementModel::query()
             ->whereKey($replacement->id)
@@ -522,8 +523,14 @@ class LiveTaskDomainReplacementService
 
         $domainRow = $task?->{$profile->taskDomainRelation};
 
+        if ($task && $wasDispatchFailed) {
+            $task->forceFill([
+                'dispatch_generation' => ((int) $task->dispatch_generation) + 1,
+            ])->save();
+        }
+
         if (! $task
-            || (int) $task->dispatch_generation !== (int) $replacement->dispatch_generation
+            || (! $wasDispatchFailed && (int) $task->dispatch_generation !== (int) $replacement->dispatch_generation)
             || (int) $task->{$profile->taskDomainRowIdColumn} !== (int) $replacement->{$profile->auditDomainRowIdColumn}
             || (int) ($domainRow?->domain_id ?? 0) !== (int) $replacement->new_domain_id) {
             $replacement->forceFill([
@@ -535,7 +542,7 @@ class LiveTaskDomainReplacementService
         }
 
         try {
-            $profile->publishJobClass::dispatch($task->id, $replacement->dispatch_generation)
+            $profile->publishJobClass::dispatch($task->id, (int) $task->dispatch_generation)
                 ->onQueue($profile->queue);
 
             $replacement->forceFill([

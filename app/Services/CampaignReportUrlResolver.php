@@ -92,6 +92,8 @@ class CampaignReportUrlResolver
             return null;
         }
 
+        [$campaign, $configuration, $family] = $this->followConvertedCampaign($campaign, $configuration, $parsed['family']);
+
         $type = $configuration['type'];
         if ($campaign instanceof Campaign && (bool) $campaign->is_sticky_campaign) {
             $type = 'Sticky PBN Post';
@@ -102,14 +104,15 @@ class CampaignReportUrlResolver
         $owner = Admin::query()->find($campaign->admin_id);
         $reportUrl = route($configuration['report_route'], [
             'campaign_no' => $campaign->campaign_no,
-            'token' => $parsed['token'],
+            'token' => $campaign->report_token,
         ]);
 
         $bulkReplaceUrl = app(CampaignBulkReplaceUrlResolver::class)->resolveUrl($campaign, $admin);
+        $destroy = app(CampaignDestructiveActionResolver::class)->resolve($campaign);
 
         return [
             'campaign_id' => (int) $campaign->getKey(),
-            'report_family' => $parsed['family'],
+            'report_family' => $family,
             'type' => $type,
             'campaign_no' => $campaign->campaign_no,
             'status' => $campaign->status,
@@ -122,6 +125,7 @@ class CampaignReportUrlResolver
             'bulk_edit_url' => route($configuration['edit_route'], $campaign->getKey()),
             'report_url' => $reportUrl,
             'bulk_replace_url' => $bulkReplaceUrl,
+            ...$destroy,
         ];
     }
 
@@ -201,6 +205,29 @@ class CampaignReportUrlResolver
         ]);
 
         return in_array($candidate, $allowedOrigins, true);
+    }
+
+    /**
+     * @param  array{model: class-string<Model>, type: string, report_route: string, manage_route: string, edit_route: string}  $configuration
+     * @return array{0: Model, 1: array{model: class-string<Model>, type: string, report_route: string, manage_route: string, edit_route: string}, 2: string}
+     */
+    private function followConvertedCampaign(Model $campaign, array $configuration, string $family): array
+    {
+        if ($campaign instanceof Campaign && filled($campaign->converted_to_schedule_campaign_id)) {
+            $converted = $campaign->convertedScheduleCampaign;
+            if ($converted instanceof ScheduleCampaign) {
+                return [$converted, self::REPORT_TYPES['schedule/campaign/report'], 'schedule/campaign/report'];
+            }
+        }
+
+        if ($campaign instanceof SidebarCampaign && filled($campaign->converted_to_schedule_sidebar_campaign_id)) {
+            $converted = $campaign->convertedScheduleCampaign;
+            if ($converted instanceof ScheduleSidebarCampaign) {
+                return [$converted, self::REPORT_TYPES['schedule/sidebar/campaign/report'], 'schedule/sidebar/campaign/report'];
+            }
+        }
+
+        return [$campaign, $configuration, $family];
     }
 
     /**

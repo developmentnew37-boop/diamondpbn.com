@@ -10,7 +10,6 @@ use App\Models\Admin\CampaignDomain;
 use App\Models\Admin\CampaignDomainReplacement;
 use App\Models\Admin\CampaignPost;
 use App\Models\Admin\Domain;
-use App\Services\LocalClientBillingService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
@@ -569,6 +568,8 @@ class CampaignDomainReplacementService
     private function dispatchCommittedReplacement(
         CampaignDomainReplacement $replacement
     ): CampaignDomainReplacement {
+        $wasDispatchFailed = $replacement->state === 'dispatch_failed';
+
         $claimed = CampaignDomainReplacement::query()
             ->whereKey($replacement->id)
             ->whereIn('state', ['dispatch_pending', 'dispatch_failed'])
@@ -584,8 +585,14 @@ class CampaignDomainReplacementService
 
         $post = CampaignPost::query()->find($replacement->campaign_post_id);
 
+        if ($post && $wasDispatchFailed) {
+            $post->forceFill([
+                'dispatch_generation' => ((int) $post->dispatch_generation) + 1,
+            ])->save();
+        }
+
         if (! $post
-            || (int) $post->dispatch_generation !== (int) $replacement->dispatch_generation
+            || (! $wasDispatchFailed && (int) $post->dispatch_generation !== (int) $replacement->dispatch_generation)
             || (int) $post->campaign_domain_id !== (int) $replacement->campaign_domain_id
             || (int) $post->campaignDomain?->domain_id !== (int) $replacement->new_domain_id) {
             $replacement->forceFill([
@@ -597,7 +604,7 @@ class CampaignDomainReplacementService
         }
 
         try {
-            PublishCampaignPostJob::dispatch($post->id, $replacement->dispatch_generation)
+            PublishCampaignPostJob::dispatch($post->id, (int) $post->dispatch_generation)
                 ->onQueue('campaigns');
 
             $replacement->forceFill([

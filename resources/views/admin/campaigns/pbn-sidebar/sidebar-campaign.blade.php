@@ -83,9 +83,10 @@
             'purgeAction' => route('admin.sidebar.campaign.bulk.purge.local'),
             'retryAction' => route('admin.sidebar.campaign.bulk.retry.failed'),
             'retryLabel' => 'Tasks',
+            'retryButtonText' => 'Bulk retry remaining Tasks',
             'purgeTitle' => 'Remove selected campaigns from this app only; remote blogroll links stay',
-            'retryTitle' => 'Retry all failed tasks in selected campaigns',
-            'helpText' => 'Select campaigns with checkboxes, then retry all failed tasks or remove local records.',
+            'retryTitle' => 'Retry failed and stuck tasks in selected campaigns',
+            'helpText' => 'Select campaigns with checkboxes, then retry remaining (failed, queued, or stuck publishing) tasks or remove local records.',
         ])
 
         <div class="overflow-x-auto !mt-3 w-full max-w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
@@ -170,6 +171,9 @@
 
                             <td class="{{ $clTd }}">
                                 {{ $campaign->campaign_no }}
+                                @include('admin.campaigns.partials.converted-campaign-badge', [
+                                    'isConverted' => filled($campaign->converted_to_schedule_sidebar_campaign_id),
+                                ])
                             </td>
 
                             <td class="{{ $clTd }}">
@@ -285,14 +289,14 @@
                 purgeForm.submit();
             });
 
-            // Bulk retry failed tasks handler
+            // Bulk retry remaining tasks handler
             retryBtn.addEventListener('click', function () {
                 var ids = Array.prototype.slice.call(document.querySelectorAll('.campaign-bulk-cb:checked')).map(function (cb) { return cb.value; });
                 if (ids.length === 0) {
                     alert('Please select at least one campaign.');
                     return;
                 }
-                if (!confirm('Retry all failed tasks in ' + ids.length + ' selected campaign(s)? This will queue all failed tasks for republishing.')) {
+                if (!confirm('Retry remaining tasks in ' + ids.length + ' selected campaign(s)? Failed, queued, and stuck publishing tasks will be re-queued. Successful tasks will not change.')) {
                     return;
                 }
                 Array.prototype.slice.call(retryForm.querySelectorAll('input[name="campaign_ids[]"]')).forEach(function (n) { n.remove(); });

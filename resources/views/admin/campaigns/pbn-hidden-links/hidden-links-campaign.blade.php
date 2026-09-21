@@ -83,11 +83,11 @@
                 </button>
                 <button type="button" id="hidden-links-bulk-retry-failed-btn"
                     class="!px-3 !py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Retry all failed tasks in selected campaigns">
-                    Bulk Retry Failed Tasks
+                    title="Retry failed and stuck tasks in selected campaigns">
+                    Bulk retry remaining Tasks
                 </button>
             </div>
-            <p class="text-sm text-gray-500">Select campaigns with checkboxes, then retry failed tasks, delete (remote + DB), or remove locally only.</p>
+            <p class="text-sm text-gray-500">Select campaigns with checkboxes, then retry remaining (failed, queued, or stuck publishing) tasks, delete (remote + DB), or remove locally only.</p>
         </div>
 
         <div class="overflow-x-auto !mt-3 w-full max-w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
@@ -334,7 +334,7 @@
                         alert('Please select at least one campaign.');
                         return;
                     }
-                    if (!confirm('Retry all failed tasks in ' + ids.length + ' selected campaign(s)? This will queue all failed tasks for republishing.')) {
+                    if (!confirm('Retry remaining tasks in ' + ids.length + ' selected campaign(s)? Failed, queued, and stuck publishing tasks will be re-queued. Successful tasks will not change.')) {
                         return;
                     }
                     fillFormWithCampaignIds(formRetry, ids);

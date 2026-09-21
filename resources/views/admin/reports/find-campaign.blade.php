@@ -218,13 +218,7 @@
                                 </td>
                                 <td class="{{ $clTd }}">{{ $row['owner'] }}</td>
                                 <td class="{{ $clTdActions }}">
-                                    @include('admin.campaigns.partials.campaign-list-actions', [
-                                        'viewUrl' => $row['manage_url'],
-                                        'editUrl' => $row['bulk_edit_url'] ?? null,
-                                        'reportUrl' => $row['report_url'] ?? null,
-                                        'bulkReplaceUrl' => $row['bulk_replace_url'] ?? null,
-                                        'openReportInNewTab' => true,
-                                    ])
+                                    @include('admin.reports.partials.find-campaign-row-actions', ['row' => $row])
                                 </td>
                             </tr>
                         @endforeach
@@ -332,13 +326,7 @@
                                 </td>
                                 <td class="{{ $clTd }}">{{ $result['owner'] }}</td>
                                 <td class="{{ $clTdActions }}">
-                                    @include('admin.campaigns.partials.campaign-list-actions', [
-                                        'viewUrl' => $result['manage_url'],
-                                        'editUrl' => $result['bulk_edit_url'] ?? null,
-                                        'reportUrl' => $result['report_url'] ?? null,
-                                        'bulkReplaceUrl' => $result['bulk_replace_url'] ?? null,
-                                        'openReportInNewTab' => true,
-                                    ])
+                                    @include('admin.reports.partials.find-campaign-row-actions', ['row' => $result])
                                 </td>
                             </tr>
                         </tbody>

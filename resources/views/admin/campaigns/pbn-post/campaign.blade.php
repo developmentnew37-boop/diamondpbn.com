@@ -79,9 +79,10 @@
             'purgeAction' => route('admin.campaign.bulk.purge.local'),
             'retryAction' => route('admin.campaign.bulk.retry.failed'),
             'retryLabel' => 'Posts',
+            'retryButtonText' => 'Bulk retry remaining Posts',
             'purgeTitle' => 'Remove selected campaigns from this app only; remote posts stay',
-            'retryTitle' => 'Retry all failed posts in selected campaigns',
-            'helpText' => 'Select campaigns with checkboxes, then retry all failed posts or remove local records.',
+            'retryTitle' => 'Retry failed and stuck posts in selected campaigns',
+            'helpText' => 'Select campaigns with checkboxes, then retry remaining (failed, queued, or stuck publishing) posts or remove local records.',
         ])
 
         {{-- table code here --}}
@@ -166,6 +167,9 @@
 
                             <td class="{{ $clTd }}">
                                 {{ $campaign->campaign_no }}
+                                @include('admin.campaigns.partials.converted-campaign-badge', [
+                                    'isConverted' => filled($campaign->converted_to_schedule_campaign_id),
+                                ])
                             </td>
 
                             <td class="{{ $clTd }}">
@@ -278,14 +282,14 @@
                 purgeForm.submit();
             });
 
-            // Bulk retry failed posts handler
+            // Bulk retry remaining posts handler
             retryBtn.addEventListener('click', function () {
                 var ids = Array.prototype.slice.call(document.querySelectorAll('.campaign-bulk-cb:checked')).map(function (cb) { return cb.value; });
                 if (ids.length === 0) {
                     alert('Please select at least one campaign.');
                     return;
                 }
-                if (!confirm('Retry all failed posts in ' + ids.length + ' selected campaign(s)? This will queue all failed posts for republishing.')) {
+                if (!confirm('Retry remaining posts in ' + ids.length + ' selected campaign(s)? Failed, queued, and stuck publishing posts will be re-queued. Successful posts will not change.')) {
                     return;
                 }
                 Array.prototype.slice.call(retryForm.querySelectorAll('input[name="campaign_ids[]"]')).forEach(function (n) { n.remove(); });

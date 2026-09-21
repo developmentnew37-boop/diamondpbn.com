@@ -318,6 +318,9 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     /* ** articles routes here ** */
     /* Article Routes Here */
 
+    Route::post('/article/unique-titles', [ArticleController::class, 'updateUniqueTitlesSetting'])
+        ->name('articles.unique-titles.update');
+
     Route::get('/article/opt', [ArticleController::class, 'opt'])->name('articles.opt');
 
     Route::get('/article/upload/docx', [ArticleController::class, 'uploadDocx'])->name('articles.upload.docx');
@@ -438,6 +441,8 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
 
     Route::post('/campaign/bulk-retry-failed', [CampaignController::class, 'bulkRetryFailed'])->name('campaign.bulk.retry.failed');
 
+    Route::post('/campaign/{id}/retry-remaining', [CampaignController::class, 'retryRemainingNow'])->name('campaign.retry.remaining');
+
     Route::resource('/campaign', CampaignController::class);
     /* sidebar campaign */
     Route::get('/sidebar/campaign/retry-task/{id}', [SidebarCampaignController::class, 'retryTask'])->name('sidebar.campaign.retry.task');
@@ -450,6 +455,7 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
 
     Route::post('/sidebar/campaign/bulk-purge-local', [SidebarCampaignController::class, 'bulkPurgeLocal'])->name('sidebar.campaign.bulk.purge.local');
     Route::post('/sidebar/campaign/bulk-retry-failed', [SidebarCampaignController::class, 'bulkRetryFailed'])->name('sidebar.campaign.bulk.retry.failed');
+    Route::post('/sidebar/campaign/{id}/retry-remaining', [SidebarCampaignController::class, 'retryRemainingNow'])->name('sidebar.campaign.retry.remaining');
     Route::get('/sidebar/campaign/extract-domains', [SidebarCampaignController::class, 'extractDomains'])->name('sidebar.campaign.extract.domains');
 
     Route::resource('/sidebar/campaign', SidebarCampaignController::class)->names('sidebar.campaign');
@@ -465,6 +471,8 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     Route::post('/hidden/link/campaign/bulk-purge-local', [HiddenLinkCampaignController::class, 'bulkPurgeLocalCampaigns'])->name('hidden.link.campaign.bulk.purge.local');
 
     Route::post('/hidden/link/campaign/bulk-retry-failed', [HiddenLinkCampaignController::class, 'bulkRetryFailed'])->name('hidden.link.campaign.bulk.retry.failed');
+
+    Route::post('/hidden/link/campaign/{id}/retry-remaining', [HiddenLinkCampaignController::class, 'retryRemainingNow'])->name('hidden.link.campaign.retry.remaining');
 
     Route::post('/hidden/link/campaign/{id}/purge-local', [HiddenLinkCampaignController::class, 'purgeLocalOnly'])->name('hidden.link.campaign.purge.local');
 
@@ -531,6 +539,7 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     Route::post('/campaign/post/schedule/{id}/purge-local', [ScheduleCampaignController::class, 'purgeLocalOnly'])->name('schedule.campaign.purge.local');
 
     Route::post('/campaign/post/schedule/{id}/publish-remaining', [ScheduleCampaignController::class, 'publishRemainingNow'])->name('schedule.campaign.publish.remaining');
+    Route::post('/campaign/post/schedule/{id}/retry-remaining', [ScheduleCampaignController::class, 'retryRemainingNow'])->name('schedule.campaign.retry.remaining');
 
     Route::post('/campaign/post/schedule/bulk-purge-local', [ScheduleCampaignController::class, 'bulkPurgeLocal'])->name('schedule.campaign.bulk.purge.local');
 
@@ -551,6 +560,8 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
 
     Route::post('/campaign/post/wp-schedule/{id}/purge-local', [WpScheduledCampaignController::class, 'purgeLocalOnly'])->name('wp.schedule.campaign.purge.local');
 
+    Route::post('/campaign/post/wp-schedule/{id}/retry-remaining', [WpScheduledCampaignController::class, 'retryRemainingNow'])->name('wp.schedule.campaign.retry.remaining');
+
     Route::post('/campaign/post/wp-schedule/bulk-purge-local', [WpScheduledCampaignController::class, 'bulkPurgeLocal'])->name('wp.schedule.campaign.bulk.purge.local');
 
     Route::resource('/campaign/post/wp-schedule', WpScheduledCampaignController::class)->names('wp.schedule.campaign');
@@ -563,6 +574,9 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     Route::post('/campaign/sidebar/schedule/delete-task/{id}', [ScheduleSidebarCampaignController::class, 'deleteTask'])->name('schedule.sidebar.campaign.delete.task');
 
     Route::post('/campaign/sidebar/schedule/{id}/purge-local', [ScheduleSidebarCampaignController::class, 'purgeLocalOnly'])->name('schedule.sidebar.campaign.purge.local');
+
+    Route::post('/campaign/sidebar/schedule/{id}/publish-remaining', [ScheduleSidebarCampaignController::class, 'publishRemainingNow'])->name('schedule.sidebar.campaign.publish.remaining');
+    Route::post('/campaign/sidebar/schedule/{id}/retry-remaining', [ScheduleSidebarCampaignController::class, 'retryRemainingNow'])->name('schedule.sidebar.campaign.retry.remaining');
 
     Route::post('/campaign/sidebar/schedule/bulk-purge-local', [ScheduleSidebarCampaignController::class, 'bulkPurgeLocal'])->name('schedule.sidebar.campaign.bulk.purge.local');
 

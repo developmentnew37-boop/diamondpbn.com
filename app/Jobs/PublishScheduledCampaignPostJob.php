@@ -7,6 +7,7 @@ use App\Models\Admin\ScheduleCampaign;
 use App\Models\Admin\ScheduleCampaignArticle;
 use App\Models\Admin\ScheduleCampaignPost;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -17,15 +18,22 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Throwable;
 
-class PublishScheduledCampaignPostJob implements ShouldQueue
+class PublishScheduledCampaignPostJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 1;
 
+    public int $uniqueFor = 3600;
+
     public function __construct(public int $postId, public int $dispatchGeneration = 0)
     {
         $this->onQueue('scheduled_campaigns');
+    }
+
+    public function uniqueId(): string
+    {
+        return $this->postId.':'.$this->dispatchGeneration;
     }
 
     public function handle(): void
@@ -120,11 +128,12 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
                 'language' => $post->campaignArticle?->article?->language?->name,
             ]);
 
-            // 🌐 STEP 3: Publish to WordPress
+            // 🌐 STEP 3: Publish to WordPress (create, or update when remote_id already exists)
+            $isUpdate = filled($post->remote_id);
             $remote = $this->postToWordPress($post, $title, $content);
 
             // ✅ STEP 4: Mark success or fail with clear reason
-            DB::transaction(function () use ($post, $remote, $title) {
+            DB::transaction(function () use ($post, $remote, $title, $isUpdate) {
 
                 $fresh = ScheduleCampaignPost::lockForUpdate()->find($post->id);
                 if (! $fresh || $fresh->lock_token !== $post->lock_token) {
@@ -133,23 +142,31 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
 
                 $json = $remote['json'];
                 $remoteStatus = $json['status'] ?? null;
-                // Post created on remote is success whether published now or scheduled (future)
-                $isSuccess = in_array($remoteStatus, ['publish', 'future'], true);
+                $isSuccess = $isUpdate
+                    ? $this->remoteUpdateSucceeded($remote)
+                    : in_array($remoteStatus, ['publish', 'future'], true);
 
                 $fresh->status = $isSuccess ? 'success' : 'failed';
-                $fresh->remote_id = $json['post_id'] ?? null;
-                $fresh->remote_status = $remoteStatus;
+                if (isset($json['post_id']) && $json['post_id'] !== null && $json['post_id'] !== '') {
+                    $fresh->remote_id = $json['post_id'];
+                }
+                if ($remoteStatus !== null && $remoteStatus !== '') {
+                    $fresh->remote_status = $remoteStatus;
+                }
                 $fresh->http_status = $remote['http_status'];
                 $fresh->remote_title = $title;
-                // No schedule in payload → API returns slug permalink
-                $fresh->remote_url = $json['remote_url'] ?? $json['link'] ?? $json['permalink'] ?? $json['url'] ?? null;
+                $permalink = $json['remote_url'] ?? $json['link'] ?? $json['permalink'] ?? $json['url'] ?? null;
+                if (filled($permalink)) {
+                    $fresh->remote_url = $permalink;
+                }
 
                 $fresh->remote_response = safeJsonEncode($json);
-                $fresh->published_at = ($fresh->remote_status === 'publish') ? now() : null;
+                $fresh->published_at = ($fresh->remote_status === 'publish') ? now() : ($isUpdate ? $fresh->published_at : null);
 
-                // When we mark failed (e.g. remote returned draft/other), store reason so UI shows it
                 $fresh->last_error = $isSuccess ? null : (
-                    'Remote post status was: "'.($remoteStatus ?? 'unknown').'" (expected publish or future).'
+                    $isUpdate
+                        ? 'Remote post update failed (HTTP '.$remote['http_status'].').'
+                        : 'Remote post status was: "'.($remoteStatus ?? 'unknown').'" (expected publish or future).'
                 );
                 $fresh->next_retry_at = null;
                 $fresh->locked_at = null;
@@ -542,6 +559,50 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
         return min($pos, $len);
     }
 
+    /**
+     * Create a new remote post, or update the existing one when remote_id is already known.
+     */
+    public static function wordpressWriteUrl(string $domain, mixed $remoteId): string
+    {
+        $domain = trim($domain);
+        if (! preg_match('~^https?://~i', $domain)) {
+            $domain = 'https://'.$domain;
+        }
+
+        $base = rtrim($domain, '/');
+        if (filled($remoteId)) {
+            return $base.'/wp-json/external/v1/posts/update/'.$remoteId;
+        }
+
+        return $base.'/wp-json/external/v1/posts/create';
+    }
+
+    /**
+     * @param  array{json: mixed, http_status: int}  $remote
+     */
+    private function remoteUpdateSucceeded(array $remote): bool
+    {
+        $http = (int) ($remote['http_status'] ?? 0);
+        if ($http < 200 || $http >= 300) {
+            return false;
+        }
+
+        $json = $remote['json'] ?? [];
+        if (! is_array($json)) {
+            return false;
+        }
+
+        if (array_key_exists('success', $json) && ! $json['success']) {
+            return false;
+        }
+
+        if (! empty($json['code']) && in_array($json['code'], ['bad_key', 'not_found', 'missing_dep'], true)) {
+            return false;
+        }
+
+        return true;
+    }
+
     private function postToWordPress(ScheduleCampaignPost $post, string $title, string $content): array
     {
 
@@ -551,13 +612,11 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
         ]);
 
         $domain = trim((string) $post->campaignDomain->domain->name);
-
-        // ✅ Ensure scheme
-        if (! preg_match('~^https?://~i', $domain)) {
-            $domain = 'https://'.$domain;
+        $endpoint = self::wordpressWriteUrl($domain, $post->remote_id);
+        $apiKey = (string) $post->campaignDomain->domain->api_key;
+        if (filled($post->remote_id)) {
+            $endpoint .= (str_contains($endpoint, '?') ? '&' : '?').'api_key='.urlencode($apiKey);
         }
-
-        $endpoint = rtrim($domain, '/').'/wp-json/external/v1/posts/create';
 
         // Our scheduler runs the job by schedule_at; when job runs we publish immediately (no WP scheduling).
         $payload = [
@@ -565,7 +624,7 @@ class PublishScheduledCampaignPostJob implements ShouldQueue
             'content' => $content,
             'status' => 'publish',
             'post_type' => 'post',
-            'api_key' => (string) $post->campaignDomain->domain->api_key,
+            'api_key' => $apiKey,
             'is_sticky' => (bool) ($post->campaign?->is_sticky_campaign ?? false),
         ];
 

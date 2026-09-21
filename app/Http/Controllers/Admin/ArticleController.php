@@ -9,6 +9,7 @@ use App\Models\Admin;
 use App\Models\Admin\Article;
 use App\Models\Admin\ArticleCategory;
 use App\Models\Admin\ArticleLanguage;
+use App\Models\Admin\ArticleSetting;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -68,11 +69,40 @@ class ArticleController extends Controller
         $articles = $query->paginate($limit)->appends($request->query());
 
         $offset = ($articles->currentPage() - 1) * $limit;
+        $articleSetting = ArticleSetting::current();
+        $canEditArticleSettings = $admin->isSuperAdmin();
 
         return view(
             'admin.article.articles',
-            compact('categories', 'languages', 'articles', 'offset')
+            compact('categories', 'languages', 'articles', 'offset', 'articleSetting', 'canEditArticleSettings')
         );
+    }
+
+    public function updateUniqueTitlesSetting(Request $request)
+    {
+        $admin = Auth::guard('admin')->user();
+
+        if (! $admin?->isSuperAdmin()) {
+            abort(403);
+        }
+
+        $request->validate([
+            'require_unique_titles' => 'required|boolean',
+        ]);
+
+        $setting = ArticleSetting::current();
+        $setting->update([
+            'require_unique_titles' => $request->boolean('require_unique_titles'),
+            'updated_by_admin_id' => $admin->id,
+        ]);
+
+        $message = $setting->requiresUniqueTitles()
+            ? 'Unique article titles are now required. The same title cannot be added again until the existing article is permanently deleted.'
+            : 'Unique article titles are now optional. Duplicate titles can be added.';
+
+        return redirect()
+            ->route('admin.article.index')
+            ->with('cus__success', $message);
     }
 
     /**
@@ -637,10 +667,12 @@ class ArticleController extends Controller
         // ✅ Validation
         $validated = $request->validate([
             'name' => 'required|string|max:255',   // title required
-            'description' => 'nullable|string',           // HTML + emojis allowed
+            'description' => Article::descriptionValidationRules(),
             'category' => 'required|integer|exists:article_categories,id',           // adjust rule if needed
             'language' => 'required|integer|exists:article_languages,id',        // adjust rule if needed
             'type' => 'required|integer|in:0,1,2',
+        ], [
+            'description.required' => Article::missingContentMessage(),
         ]);
 
         if (function_exists('set_time_limit')) {
@@ -663,6 +695,12 @@ class ArticleController extends Controller
             'context' => 'article_store',
             'field' => 'description',
         ]);
+
+        if (Article::titleIsTaken($validated['name'])) {
+            return back()
+                ->withInput()
+                ->with('cus__error', Article::duplicateTitleMessage());
+        }
 
         $admin_id = Auth::guard('admin')->user()->id;
         // ✅ Store article
@@ -721,9 +759,11 @@ class ArticleController extends Controller
         // ✅ Validation
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'description' => 'nullable|string',
+            'description' => Article::descriptionValidationRules(),
             'category' => 'required|integer|exists:article_categories,id',
             'language' => 'required|integer|exists:article_languages,id',
+        ], [
+            'description.required' => Article::missingContentMessage(),
         ]);
 
         if (function_exists('set_time_limit')) {
@@ -753,6 +793,12 @@ class ArticleController extends Controller
             'article_id' => $id,
             'field' => 'description',
         ]);
+
+        if (Article::titleIsTaken($validated['name'], (int) $article->id)) {
+            return back()
+                ->withInput()
+                ->with('cus__error', Article::duplicateTitleMessage());
+        }
 
         // ✅ Update article
         $article->update([
@@ -1099,11 +1145,18 @@ class ArticleController extends Controller
         $rawHtml = file_get_contents($htmlPath);
 
         /* -------------------------------------------------
-     | 3️⃣ Preload EXISTING TITLES (GLOBAL)
+     | 3️⃣ Preload EXISTING TITLES (GLOBAL, including trash)
      |--------------------------------------------------*/
+        $enforceUniqueTitles = ArticleSetting::current()->requiresUniqueTitles();
         $existingTitles = [];
-        foreach (Article::query()->select('name')->cursor() as $row) {
-            $existingTitles[mb_strtolower(trim($row->name))] = true;
+
+        if ($enforceUniqueTitles) {
+            foreach (Article::withTrashed()->select('name', 'name_normalized')->cursor() as $row) {
+                $normalized = $row->name_normalized ?: Article::normalizeName((string) $row->name);
+                if ($normalized !== '') {
+                    $existingTitles[$normalized] = true;
+                }
+            }
         }
 
         /* -------------------------------------------------
@@ -1141,12 +1194,12 @@ class ArticleController extends Controller
                 'log' => false, // Don't log every article during bulk import
             ]);
 
-            $normalizedTitle = mb_strtolower($title);
+            $normalizedTitle = Article::normalizeName($title);
 
             /* -------------------------------------------------
-         | 🚫 GLOBAL DUPLICATE CHECK
+         | 🚫 GLOBAL DUPLICATE CHECK (when unique titles are required)
          |--------------------------------------------------*/
-            if (isset($existingTitles[$normalizedTitle])) {
+            if ($enforceUniqueTitles && isset($existingTitles[$normalizedTitle])) {
                 $duplicates++;
                 $duplicateTitles[] = $title;
 
@@ -1194,10 +1247,11 @@ class ArticleController extends Controller
                 'admin_id' => $admin->id,
             ]);
 
-            // Prevent same-file duplicates
-            $existingTitles[$normalizedTitle] = true;
-
             $created++;
+
+            if ($enforceUniqueTitles) {
+                $existingTitles[$normalizedTitle] = true;
+            }
         }
 
         @unlink($htmlPath);

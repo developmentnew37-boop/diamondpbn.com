@@ -6,6 +6,7 @@ use App\Exceptions\InsufficientCampaignArticlesException;
 use App\Http\Controllers\Admin\Concerns\AppliesSuperAdminCampaignOwnerFilter;
 use App\Http\Controllers\Admin\Concerns\ValidatesBulkCampaignIds;
 use App\Http\Controllers\Controller;
+use App\Jobs\BulkRetryWpScheduledCampaignPostsJob;
 use App\Jobs\BulkUpdateWpScheduledPostsJob;
 use App\Jobs\DeleteWpScheduledCampaignJob;
 use App\Jobs\PublishWpScheduledPostJob;
@@ -750,7 +751,14 @@ class WpScheduledCampaignController extends Controller
             ->orderBy('id')
             ->paginate(50);
 
-        return view('admin.campaigns.wp-scheduled.show', compact('campaign', 'posts'));
+        $remainingRetryCount = BulkRetryWpScheduledCampaignPostsJob::retryableQuery((int) $campaign->id, true)->count();
+        $canRetryRemaining = $remainingRetryCount > 0
+            && ! in_array((string) $campaign->status, ['paused', 'cancelled'], true);
+
+        return view(
+            'admin.campaigns.wp-scheduled.show',
+            compact('campaign', 'posts', 'remainingRetryCount', 'canRetryRemaining')
+        );
     }
 
     private function authorizeCampaign(WpScheduledCampaign $campaign): void
@@ -854,6 +862,31 @@ class WpScheduledCampaignController extends Controller
         PublishWpScheduledPostJob::dispatch($post->id)->onQueue('wp_scheduled_campaigns');
 
         return back()->with('cus__success', 'Post queued for retry.');
+    }
+
+    /**
+     * Retry remaining (failed + stuck queued/publishing) posts for this WP scheduled campaign.
+     */
+    public function retryRemainingNow(string $id)
+    {
+        $campaign = WpScheduledCampaign::findOrFail($id);
+        $this->authorizeCampaign($campaign);
+
+        if (in_array((string) $campaign->status, ['paused', 'cancelled'], true)) {
+            return back()->with('cus__error', 'Cannot retry while the campaign is paused or cancelled.');
+        }
+
+        $remaining = BulkRetryWpScheduledCampaignPostsJob::retryableQuery((int) $campaign->id, true)->count();
+        if ($remaining < 1) {
+            return back()->with('cus__error', 'No remaining posts to retry.');
+        }
+
+        BulkRetryWpScheduledCampaignPostsJob::dispatch((int) $campaign->id, true);
+
+        return back()->with(
+            'cus__success',
+            $remaining.' remaining post(s) queued for retry. Run the wp_scheduled_campaigns queue worker to process them.'
+        );
     }
 
     /**

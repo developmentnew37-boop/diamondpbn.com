@@ -9,9 +9,14 @@
     <div class="w-full flex flex-col gap-3">
         <div class="flex items-center justify-between gap-3 min-w-0">
             <h2 class="page-title !mb-0 min-w-0 shrink leading-tight">Dashboards</h2>
-            <a href="javascript:void(0)" onclick="history.back()"
-                class="inline-flex items-center justify-center gap-2 shrink-0 !px-3 !py-2 rounded bg-gray-200 hover:bg-gray-300 text-sm whitespace-nowrap"
-                aria-label="Go back">
+            <div class="flex items-center gap-2 shrink-0">
+                @include('admin.campaigns.partials.campaign-view-retry-remaining', [
+                    'retryAction' => route('admin.hidden.link.campaign.retry.remaining', $campaign->id),
+                    'retryNoun' => 'task(s)',
+                ])
+                <a href="javascript:void(0)" onclick="history.back()"
+                    class="inline-flex items-center justify-center gap-2 shrink-0 !px-3 !py-2 rounded bg-gray-200 hover:bg-gray-300 text-sm whitespace-nowrap"
+                    aria-label="Go back">
                 <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" fill="none"
                     viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -19,6 +24,7 @@
                 </svg>
                 Back
             </a>
+            </div>
         </div>
         <nav class="flex flex-wrap items-baseline gap-x-1.5 gap-y-2 text-sm text-gray-600 w-full min-w-0 leading-snug"
             aria-label="Breadcrumb">

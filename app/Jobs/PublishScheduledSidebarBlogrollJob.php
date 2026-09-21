@@ -53,9 +53,10 @@ class PublishScheduledSidebarBlogrollJob implements ShouldQueue
                 return null;
             }
 
-            if ($t->schedule_at->isFuture()) {
-                return null;
-            }
+            // Scheduler only dispatches due tasks; Publish remaining now / retry may run immediately.
+            // if ($t->schedule_at && $t->schedule_at->isFuture()) {
+            //     return null;
+            // }
 
             if ($t->locked_at && $t->locked_at->gt(now()->subSeconds($lockTtlSec))) {
                 return null;

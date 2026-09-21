@@ -76,7 +76,7 @@
                 <label for="category_title"
                     class="text-[16px] flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">Title
                 </label>
-                <input type="text" name="name" value="{{ $article->name }}" placeholder="Add category title here"
+                <input type="text" name="name" value="{{ old('name', $article->name) }}" placeholder="Add category title here"
                     id="category_title"
                     class="bg-gray-100 border border-gray-200 !p-3 text-sm w-full rounded outline-none focus:border-orange-600">
 
@@ -86,7 +86,11 @@
                 <label for="category_title"
                     class="text-[16px] flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">Description
                 </label>
-                <textarea name="description" id="update-editor" rows="20">{!! $article->description !!}</textarea>
+                <p id="article-content-error" @class([
+                    'text-red-400 bg-red-100 text-sm !p-2 rounded',
+                    'hidden' => ! $errors->has('description'),
+                ])>{{ $errors->first('description') }}</p>
+                <textarea name="description" id="update-editor" rows="20">{!! old('description', $article->description) !!}</textarea>
 
             </div>
         </div>

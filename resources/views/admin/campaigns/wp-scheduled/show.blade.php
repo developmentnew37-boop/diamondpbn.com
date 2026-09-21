@@ -20,6 +20,10 @@
                 </div>
             </div>
             <div class="w-1/2 flex justify-end items-center gap-2 flex-wrap">
+                @include('admin.campaigns.partials.campaign-view-retry-remaining', [
+                    'retryAction' => route('admin.wp.schedule.campaign.retry.remaining', $campaign->id),
+                    'retryNoun' => 'post(s)',
+                ])
                 <a href="{{ route('admin.wp.schedule.campaign.edit', $campaign->id) }}"
                     class="inline-flex items-center gap-1.5 !px-3 !py-2 rounded bg-yellow-500 text-white text-sm hover:bg-yellow-600"
                     title="Edit campaign (batch keyword/URL)">

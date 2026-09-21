@@ -29,6 +29,10 @@
         </div>
 
         <div class="w-1/2 flex justify-end items-center gap-2 flex-wrap">
+            @include('admin.campaigns.partials.campaign-view-retry-remaining', [
+                'retryAction' => route('admin.schedule.campaign.retry.remaining', $campaign->id),
+                'retryNoun' => 'post(s)',
+            ])
             @if ($canPublishRemaining ?? false)
                 <form action="{{ route('admin.schedule.campaign.publish.remaining', $campaign->id) }}" method="post" class="inline"
                       onsubmit="return confirm('Publish {{ (int) ($remainingPublishableCount ?? 0) }} remaining post(s) immediately?\n\nScheduled dates on this page and the report will stay as assigned (they will not change to today).');">

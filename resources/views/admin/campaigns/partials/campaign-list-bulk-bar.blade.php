@@ -6,6 +6,7 @@
     $purgeAction = $purgeAction ?? '#';
     $retryAction = $retryAction ?? '#';
     $retryLabel = $retryLabel ?? 'Posts';
+    $retryButtonText = $retryButtonText ?? ('Bulk Retry Failed '.$retryLabel);
     $purgeTitle = $purgeTitle ?? 'Remove selected campaigns from this app only';
     $retryTitle = $retryTitle ?? 'Retry all failed items in selected campaigns';
     $helpText = $helpText ?? 'Select campaigns with checkboxes, then retry failed ' . strtolower($retryLabel) . ' or remove local records.';
@@ -23,7 +24,7 @@
         <button type="button" id="{{ $retryBtnId }}"
             class="!px-3 !py-2 rounded bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             title="{{ $retryTitle }}">
-            Bulk Retry Failed {{ $retryLabel }}
+            {{ $retryButtonText }}
         </button>
     </div>
     <p class="text-sm text-gray-500">{{ $helpText }}</p>

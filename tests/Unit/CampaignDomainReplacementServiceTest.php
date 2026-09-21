@@ -585,10 +585,11 @@ class CampaignDomainReplacementServiceTest extends TestCase
 
         $this->assertSame($replacement->id, $retried->id);
         $this->assertSame('completed', $retried->state);
+        $this->assertSame(4, (int) DB::table('campaign_posts')->find($records['post']->id)->dispatch_generation);
         Bus::assertDispatched(
             PublishCampaignPostJob::class,
             fn (PublishCampaignPostJob $job) => $job->campaignPostId === $records['post']->id
-                && $job->dispatchGeneration === 3
+                && $job->dispatchGeneration === 4
         );
     }
 

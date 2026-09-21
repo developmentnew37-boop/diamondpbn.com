@@ -231,10 +231,11 @@
                     <label for="editor"
                         class="text-[16px] flex items-center after:content-['*'] after:mt-1 after:ml-1 after:text-[var(--primary-color)]">Description
                     </label>
-                    <textarea name="description" id="editor" rows="20"></textarea>
-                    @error('description')
-                        <p class="text-red-400 bg-red-100 !p-2 text-sm">{{ $message }}</p>
-                    @enderror
+                    <p id="article-content-error" @class([
+                        'text-red-400 bg-red-100 !p-2 text-sm',
+                        'hidden' => ! $errors->has('description'),
+                    ])>{{ $errors->first('description') }}</p>
+                    <textarea name="description" id="editor" rows="20">{{ old('description') }}</textarea>
                 </div>
                 <div class="w-full flex flex-col gap-3 p-2 !mt-3 items-start" id="article-container">
                     {{-- article language we using article set  --}}

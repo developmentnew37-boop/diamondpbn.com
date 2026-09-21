@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Admin\SidebarCampaign;
 use App\Models\Admin\SidebarCampaignTask;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -14,15 +15,58 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Throwable;
 
-class PublishSidebarBlogrollJob implements ShouldQueue
+class PublishSidebarBlogrollJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 1;
 
+    public int $uniqueFor = 3600;
+
     public function __construct(public int $taskId, public int $dispatchGeneration = 0)
     {
         $this->onQueue('sidebar_campaigns');
+    }
+
+    public function uniqueId(): string
+    {
+        return $this->taskId.':'.$this->dispatchGeneration;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function remoteIdsList(mixed $remoteId): array
+    {
+        if (! filled($remoteId)) {
+            return [];
+        }
+
+        $raw = trim((string) $remoteId);
+        $decoded = json_decode($raw, true);
+        if (is_array($decoded)) {
+            return array_values(array_map(
+                static fn ($id) => (string) $id,
+                array_filter($decoded, static fn ($id) => filled($id))
+            ));
+        }
+
+        return [$raw];
+    }
+
+    public static function blogrollWriteUrl(string $domain, mixed $remoteId): string
+    {
+        $domain = trim($domain);
+        if (! preg_match('~^https?://~i', $domain)) {
+            $domain = 'https://'.$domain;
+        }
+
+        $base = rtrim($domain, '/');
+        if (filled($remoteId)) {
+            return $base.'/wp-json/external/v1/blogroll/update/'.rawurlencode((string) $remoteId);
+        }
+
+        return $base.'/wp-json/external/v1/blogroll/add';
     }
 
     public function handle(): void
@@ -106,7 +150,7 @@ class PublishSidebarBlogrollJob implements ShouldQueue
                 $base = 'https://'.$base;
             }
 
-            $endpoint = rtrim($base, '/').'/wp-json/external/v1/blogroll/add';
+            $existingRemoteIds = self::remoteIdsList($task->remote_id);
 
             // ✅ Always read boolean fields (needed for payload)
             $nofollow = (bool) ($link->nofollow ?? false);
@@ -172,6 +216,8 @@ class PublishSidebarBlogrollJob implements ShouldQueue
             for ($i = 0; $i < $pairCount; $i++) {
                 $targetUrl = $urls[$i] ?? $urls[0] ?? '';
                 $keyword = $keywords[$i] ?? $keywords[0] ?? '';
+                $pairRemoteId = $existingRemoteIds[$i] ?? null;
+                $endpoint = self::blogrollWriteUrl($base, $pairRemoteId);
 
                 // ✅ UTF-8 Sanitization - clean malformed bytes
                 $keyword = cleanUtf8((string) $keyword, [
@@ -230,6 +276,9 @@ class PublishSidebarBlogrollJob implements ShouldQueue
                     && isset($json['data'][0]['id'])
                 ) {
                     $remoteId = (string) $json['data'][0]['id'];
+                }
+                if (filled($pairRemoteId) && ! filled($remoteId)) {
+                    $remoteId = (string) $pairRemoteId;
                 }
                 if (! is_array($json)) {
                     $json = ['raw' => $res->body()];

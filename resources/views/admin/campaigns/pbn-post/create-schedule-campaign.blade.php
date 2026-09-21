@@ -450,6 +450,13 @@
                         id="schedule-to-date">
                 </div>
 
+                @include('admin.campaigns.partials.schedule-per-day-generate', [
+                    'unitLabel' => 'posts',
+                    'perDayId' => 'sch-per-day',
+                    'offsetId' => 'sch-day-offset',
+                    'perDayBtnId' => 'sch-generate-per-day',
+                ])
+
                 {{-- Date distribution: quantity per date (like WP Scheduled) --}}
                 <div class="w-full flex flex-col gap-3 !mt-4">
                     <label class="text-sm font-medium text-gray-700">Date distribution (optional)</label>
@@ -1831,87 +1838,26 @@
 @push('scripts')
     <script src="{{ asset('js/updated_dynamic_dropdown.js') }}"></script>
     <script type="module" src="{{ asset('js/create-schedule-campaign.js') }}"></script>
+    <script src="{{ asset('js/schedule-date-distribution.js') }}"></script>
 
     {{-- Schedule Campaign: date distribution table (quantity per date) --}}
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            var btn = document.getElementById('sch-generate-dates');
-            if (!btn || btn._schDateBound) return;
-            var fromInp = document.getElementById('schedule-from-date');
-            var toInp = document.getElementById('schedule-to-date');
-            var qtyInp = document.getElementById('post-quantity');
-            var distDiv = document.getElementById('sch-date-distribution');
-            var tbody = document.getElementById('sch-date-tbody');
-            var sumEl = document.getElementById('sch-date-sum');
-            var dateQuantitiesInp = document.getElementById('date_quantities');
-            if (!fromInp || !toInp || !distDiv || !tbody || !sumEl || !dateQuantitiesInp) return;
-
-            function parseD(s) {
-                if (!s || typeof s !== 'string') return null;
-                var p = s.trim().split('-');
-                return p.length === 3 ? new Date(parseInt(p[0],10), parseInt(p[1],10)-1, parseInt(p[2],10)) : null;
-            }
-            function fmtD(d) {
-                var y = d.getFullYear(), m = ('0'+(d.getMonth()+1)).slice(-2), day = ('0'+d.getDate()).slice(-2);
-                return y+'-'+m+'-'+day;
-            }
-            function updateSum() {
-                var inputs = tbody.querySelectorAll('.sch-date-qty');
-                var sum = 0, arr = [];
-                inputs.forEach(function(inp) {
-                    var v = parseInt(inp.value,10)||0;
-                    sum += v;
-                    arr.push({ date: inp.getAttribute('data-date'), quantity: v });
-                });
-                sumEl.textContent = sum;
-                dateQuantitiesInp.value = JSON.stringify(arr);
-                if (qtyInp) qtyInp.value = sum;
-            }
-            function build() {
-                var fromStr = (fromInp.value || '').trim(), toStr = (toInp.value || '').trim();
-                if (!fromStr || !toStr) { alert('Please select both From date and To date.'); return; }
-                var from = parseD(fromStr), to = parseD(toStr);
-                if (!from || !to) { alert('Invalid date format.'); return; }
-                if (to < from) { alert('To date must be on or after From date.'); return; }
-                distDiv.style.display = 'block';
-                tbody.innerHTML = '';
-                var cur = new Date(from.getTime());
-                while (cur <= to) {
-                    var dateStr = fmtD(cur);
-                    var tr = document.createElement('tr');
-                    tr.className = 'hover:bg-gray-50';
-                    tr.innerHTML = '<td class="border !px-2 !py-2">'+dateStr+'</td><td class="border !px-2 !py-2"><input type="number" min="0" class="sch-date-qty border border-gray-300 rounded !px-2 !py-1 w-24" data-date="'+dateStr+'" value="0"></td>';
-                    tbody.appendChild(tr);
-                    cur.setDate(cur.getDate()+1);
-                }
-                tbody.querySelectorAll('.sch-date-qty').forEach(function(inp) {
-                    inp.addEventListener('input', updateSum);
-                    inp.addEventListener('change', updateSum);
-                });
-                updateSum();
-            }
-            btn.addEventListener('click', build);
-            btn._schDateBound = true;
-
-            function syncToMin() {
-                var v = (fromInp.value || '').trim();
-                if (v) toInp.setAttribute('min', v);
-            }
-            fromInp.addEventListener('change', syncToMin);
-            fromInp.addEventListener('input', syncToMin);
-            syncToMin();
-
-            var f = document.getElementById('campaign-form');
-            if (f) f.addEventListener('submit', function() {
-                var rows = tbody.querySelectorAll('.sch-date-qty');
-                if (rows.length) {
-                    var arr = [];
-                    rows.forEach(function(inp) {
-                        arr.push({ date: inp.getAttribute('data-date'), quantity: parseInt(inp.value,10)||0 });
-                    });
-                    dateQuantitiesInp.value = JSON.stringify(arr);
-                    if (qtyInp) qtyInp.value = arr.reduce(function(s, r) { return s + r.quantity; }, 0);
-                }
+        document.addEventListener('DOMContentLoaded', function () {
+            if (!window.ScheduleDateDistribution) return;
+            ScheduleDateDistribution.bind({
+                generateBtn: document.getElementById('sch-generate-dates'),
+                perDayBtn: document.getElementById('sch-generate-per-day'),
+                fromInp: document.getElementById('schedule-from-date'),
+                toInp: document.getElementById('schedule-to-date'),
+                qtyInp: document.getElementById('post-quantity'),
+                distDiv: document.getElementById('sch-date-distribution'),
+                tbody: document.getElementById('sch-date-tbody'),
+                sumEl: document.getElementById('sch-date-sum'),
+                dateQuantitiesInp: document.getElementById('date_quantities'),
+                qtyClass: 'sch-date-qty',
+                perDayInp: document.getElementById('sch-per-day'),
+                offsetInp: document.getElementById('sch-day-offset'),
+                form: document.getElementById('campaign-form'),
             });
         });
     </script>

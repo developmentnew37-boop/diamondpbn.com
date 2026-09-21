@@ -26,6 +26,7 @@ use App\Services\CampaignArticleReservationService;
 use App\Services\CampaignBulkDomainReplacementService;
 use App\Services\CampaignDomainReplacementService;
 use App\Services\CampaignKeywordPairValidator;
+use App\Services\ConvertedCampaignReportRedirector;
 use App\Services\LocalClientBillingService;
 use App\Services\PurgeLocalCampaignDataService;
 use App\Support\CampaignTaskStatusFilter;
@@ -540,7 +541,7 @@ class CampaignController extends Controller
     public function show(Request $request, string $id)
     {
         // Fetch campaign (fail-safe)
-        $campaign = Campaign::with('localClient')->findOrFail($id);
+        $campaign = Campaign::with('localClient', 'convertedScheduleCampaign')->findOrFail($id);
         $this->authorizeCampaignAccess($campaign);
 
         // Pagination limit
@@ -575,9 +576,22 @@ class CampaignController extends Controller
             ->limit(10)
             ->get();
 
+        $remainingRetryCount = BulkRetryCampaignPostsJob::retryableQuery((int) $campaign->id, true)->count();
+        $canRetryRemaining = $remainingRetryCount > 0
+            && ! in_array((string) $campaign->status, ['paused', 'cancelled'], true);
+
         return view(
             'admin.campaigns.pbn-post.view-campaign',
-            compact('campaign', 'campaignPost', 'offset', 'recentReplacements', 'statusFilter', 'statusCounts')
+            compact(
+                'campaign',
+                'campaignPost',
+                'offset',
+                'recentReplacements',
+                'statusFilter',
+                'statusCounts',
+                'remainingRetryCount',
+                'canRetryRemaining',
+            )
         );
     }
 
@@ -587,6 +601,10 @@ class CampaignController extends Controller
         $campaign = Campaign::where('campaign_no', $campaign_no)
             ->where('report_token', $token)
             ->firstOrFail();
+
+        if ($converted = app(ConvertedCampaignReportRedirector::class)->respond($campaign)) {
+            return $converted;
+        }
 
         // 2️⃣ Aggregate stats (single source of truth)
         $stats = CampaignPost::where('campaign_id', $campaign->id)
@@ -665,6 +683,10 @@ class CampaignController extends Controller
         $campaign = Campaign::where('campaign_no', $campaign_no)
             ->where('report_token', $token)
             ->firstOrFail();
+
+        if ($converted = app(ConvertedCampaignReportRedirector::class)->respond($campaign, true)) {
+            return $converted;
+        }
 
         // 📦 Fetch posts
         $posts = CampaignPost::with([
@@ -1672,6 +1694,8 @@ class CampaignController extends Controller
             return back()->with('cus__error', 'Cannot safely retry: '.$reason);
         }
 
+        $generation = (int) ($retryPost->dispatch_generation ?? 0) + 1;
+
         $retryPost->update([
             'status' => 'queued',
             'attempt_count' => 0,
@@ -1679,10 +1703,11 @@ class CampaignController extends Controller
             'locked_at' => null,
             'lock_token' => null,
             'last_error' => null,
+            'dispatch_generation' => $generation,
         ]);
 
         try {
-            PublishCampaignPostJob::dispatch($retryPost->id, $retryPost->dispatch_generation)
+            PublishCampaignPostJob::dispatch($retryPost->id, $generation)
                 ->onQueue('campaigns');
         } catch (\Throwable $exception) {
             report($exception);
@@ -1764,7 +1789,7 @@ class CampaignController extends Controller
     }
 
     /**
-     * Bulk retry all failed posts across selected campaigns.
+     * Bulk retry remaining (failed + stuck queued/publishing) posts across selected campaigns.
      */
     public function bulkRetryFailed(Request $request)
     {
@@ -1778,12 +1803,41 @@ class CampaignController extends Controller
             return back()->with('cus__error', 'No campaigns found or you do not have permission.');
         }
 
-        BulkRetryCampaignPostsJob::dispatch($allowed);
+        BulkRetryCampaignPostsJob::dispatch($allowed, true);
 
         $n = count($allowed);
 
         return redirect()
             ->route('admin.campaign.index')
-            ->with('cus__success', 'Bulk retry queued for '.$n.' campaign(s). All failed posts will be retried in the background. Run the queue worker to process them.');
+            ->with('cus__success', 'Bulk retry queued for '.$n.' campaign(s). Failed and stuck posts will be retried in the background. Run the queue worker to process them.');
+    }
+
+    /**
+     * Retry remaining (failed + stuck queued/publishing) posts for this campaign.
+     */
+    public function retryRemainingNow(string $id)
+    {
+        $campaign = Campaign::find($id);
+        if (! $campaign) {
+            return back()->with('cus__error', 'Campaign not found');
+        }
+
+        $this->authorizeCampaignAccess($campaign);
+
+        if (in_array((string) $campaign->status, ['paused', 'cancelled'], true)) {
+            return back()->with('cus__error', 'Cannot retry while the campaign is paused or cancelled.');
+        }
+
+        $remaining = BulkRetryCampaignPostsJob::retryableQuery((int) $campaign->id, true)->count();
+        if ($remaining < 1) {
+            return back()->with('cus__error', 'No remaining posts to retry.');
+        }
+
+        BulkRetryCampaignPostsJob::dispatch([(int) $campaign->id], true);
+
+        return back()->with(
+            'cus__success',
+            $remaining.' remaining post(s) queued for retry. Run the campaigns queue worker to process them.'
+        );
     }
 }

@@ -20,6 +20,7 @@ use App\Models\Admin\SidebarCampaignDomain;
 use App\Models\Admin\SidebarCampaignLink;
 use App\Models\Admin\SidebarCampaignTask;
 use App\Services\BlogrollApiService;
+use App\Services\ConvertedCampaignReportRedirector;
 use App\Services\LiveTaskDomainReplacement\LiveTaskBulkDomainReplacementService;
 use App\Services\LiveTaskDomainReplacement\LiveTaskReplacementProfile;
 use App\Services\LocalClientBillingService;
@@ -90,6 +91,7 @@ class SidebarCampaignController extends Controller
                 'last_bulk_updated_at',
                 'created_at',
                 'report_token',
+                'converted_to_schedule_sidebar_campaign_id',
             ])
             ->with(['domainCategory:id,name'])
             ->withCount([
@@ -510,8 +512,8 @@ class SidebarCampaignController extends Controller
     {
         // ✅ Fetch only fields needed by this page
         $campaign = SidebarCampaign::query()
-            ->with('localClient')
-            ->select(['id', 'campaign_no', 'last_bulk_updated_at', 'local_client_id', 'billing_total', 'billing_currency', 'billing_snapshot', 'billing_payment_status', 'billing_payment_note', 'billing_paid_at', 'admin_id'])
+            ->with(['localClient', 'convertedScheduleCampaign'])
+            ->select(['id', 'campaign_no', 'last_bulk_updated_at', 'local_client_id', 'billing_total', 'billing_currency', 'billing_snapshot', 'billing_payment_status', 'billing_payment_note', 'billing_paid_at', 'admin_id', 'converted_to_schedule_sidebar_campaign_id'])
             ->findOrFail($id);
 
         // Pagination
@@ -557,9 +559,22 @@ class SidebarCampaignController extends Controller
         // Offset
         $offset = ($campaignTasks->currentPage() - 1) * $limit;
 
+        $remainingRetryCount = BulkRetrySidebarCampaignTasksJob::retryableQuery((int) $campaign->id, true)->count();
+        $canRetryRemaining = $remainingRetryCount > 0
+            && ! in_array((string) $campaign->status, ['paused', 'cancelled'], true);
+
         return view(
             'admin.campaigns.pbn-sidebar.view-campaign',
-            compact('campaign', 'campaignTasks', 'offset', 'hasPublishedLinks', 'statusFilter', 'statusCounts')
+            compact(
+                'campaign',
+                'campaignTasks',
+                'offset',
+                'hasPublishedLinks',
+                'statusFilter',
+                'statusCounts',
+                'remainingRetryCount',
+                'canRetryRemaining',
+            )
         );
     }
 
@@ -571,6 +586,10 @@ class SidebarCampaignController extends Controller
         $campaign = SidebarCampaign::where('campaign_no', $campaign_no)
             ->where('report_token', $token)
             ->firstOrFail();
+
+        if ($converted = app(ConvertedCampaignReportRedirector::class)->respond($campaign)) {
+            return $converted;
+        }
 
         // 2️⃣ Aggregate stats (single source of truth)
         $stats = SidebarCampaignTask::where('sidebar_campaign_id', $campaign->id)
@@ -694,6 +713,10 @@ class SidebarCampaignController extends Controller
             ->where('report_token', $token)
             ->firstOrFail();
 
+        if ($converted = app(ConvertedCampaignReportRedirector::class)->respond($campaign, true)) {
+            return $converted;
+        }
+
         // 📦 Fetch sidebar tasks
         $baseTaskQuery = SidebarCampaignTask::query()
             ->where('sidebar_campaign_id', $campaign->id);
@@ -792,6 +815,8 @@ class SidebarCampaignController extends Controller
             return back()->with('cus__error', 'Cannot retry: campaign is paused or cancelled');
         }
 
+        $generation = (int) ($task->dispatch_generation ?? 0) + 1;
+
         $task->update([
             'status' => 'queued',
             'attempt_count' => 0,
@@ -799,9 +824,10 @@ class SidebarCampaignController extends Controller
             'locked_at' => null,
             'lock_token' => null,
             'last_error' => null,
+            'dispatch_generation' => $generation,
         ]);
 
-        PublishSidebarBlogrollJob::dispatch($task->id)->onQueue('sidebar_campaigns');
+        PublishSidebarBlogrollJob::dispatch($task->id, $generation)->onQueue('sidebar_campaigns');
 
         return back()->with('cus__success', 'Sidebar task retry queued and will run from first.');
     }
@@ -991,7 +1017,7 @@ class SidebarCampaignController extends Controller
     }
 
     /**
-     * Bulk retry all failed tasks across selected sidebar campaigns.
+     * Bulk retry remaining (failed + stuck queued/publishing) tasks across selected sidebar campaigns.
      */
     public function bulkRetryFailed(Request $request)
     {
@@ -1005,13 +1031,42 @@ class SidebarCampaignController extends Controller
             return back()->with('cus__error', 'No campaigns found or you do not have permission.');
         }
 
-        BulkRetrySidebarCampaignTasksJob::dispatch($allowed);
+        BulkRetrySidebarCampaignTasksJob::dispatch($allowed, true);
 
         $n = count($allowed);
 
         return redirect()
             ->route('admin.sidebar.campaign.index')
-            ->with('cus__success', 'Bulk retry queued for '.$n.' sidebar campaign(s). All failed tasks will be retried in the background. Run the queue worker to process them.');
+            ->with('cus__success', 'Bulk retry queued for '.$n.' sidebar campaign(s). Failed and stuck tasks will be retried in the background. Run the queue worker to process them.');
+    }
+
+    /**
+     * Retry remaining (failed + stuck queued/publishing) tasks for this campaign.
+     */
+    public function retryRemainingNow(string $id)
+    {
+        $campaign = SidebarCampaign::find($id);
+        if (! $campaign) {
+            return back()->with('cus__error', 'Campaign not found');
+        }
+
+        $this->authorizeCampaignAccess($campaign);
+
+        if (in_array((string) $campaign->status, ['paused', 'cancelled'], true)) {
+            return back()->with('cus__error', 'Cannot retry while the campaign is paused or cancelled.');
+        }
+
+        $remaining = BulkRetrySidebarCampaignTasksJob::retryableQuery((int) $campaign->id, true)->count();
+        if ($remaining < 1) {
+            return back()->with('cus__error', 'No remaining tasks to retry.');
+        }
+
+        BulkRetrySidebarCampaignTasksJob::dispatch([(int) $campaign->id], true);
+
+        return back()->with(
+            'cus__success',
+            $remaining.' remaining task(s) queued for retry. Run the sidebar_campaigns queue worker to process them.'
+        );
     }
 
     /**

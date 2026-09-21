@@ -20,12 +20,11 @@
 
                     </div>
                 </div>
-                <div class="w-1/2 flex flex-wrap justify-end items-center">
-                    {{-- <a href="{{ url()->previous() }}"
-                        class="flex !p-2  text-[16px] font-normal w-fit justify-center duration:300 bg-black 
-                        whitespace-nowrap hover:bg-[var(--primary-color)] text-white rounded transition-all duration">
-                        Back</a> --}}
-                    {{-- <a href="{{ url()->previous() ?: route('admin.sidebar.campaign.index') }}" --}}
+                <div class="w-1/2 flex flex-wrap justify-end items-center gap-2">
+                    @include('admin.campaigns.partials.campaign-view-retry-remaining', [
+                        'retryAction' => route('admin.sidebar.campaign.retry.remaining', $campaign->id),
+                        'retryNoun' => 'task(s)',
+                    ])
                     <a href="javascript:void(0)" onclick="history.back()"
                         class="inline-flex items-center gap-2 !px-3 !py-2 rounded bg-gray-200 duration-400 hover:bg-gray-300 text-sm">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"
@@ -68,6 +67,13 @@
 
 
         {{-- ******************* Ends here  ***************** --}}
+
+        @include('admin.campaigns.partials.converted-campaign-inactive-banner', [
+            'campaign' => $campaign,
+            'convertedShowRoute' => $campaign->convertedScheduleCampaign
+                ? route('admin.schedule.sidebar.campaign.show', $campaign->convertedScheduleCampaign->id)
+                : null,
+        ])
 
         <div class="w-full flex flex-wrap justify-between items-start content-card">
             @csrf

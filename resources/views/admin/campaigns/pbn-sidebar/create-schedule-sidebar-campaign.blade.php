@@ -340,6 +340,13 @@
                         id="schedule-to-date">
                 </div>
 
+                @include('admin.campaigns.partials.schedule-per-day-generate', [
+                    'unitLabel' => 'sidebar links',
+                    'perDayId' => 'ssc-per-day',
+                    'offsetId' => 'ssc-day-offset',
+                    'perDayBtnId' => 'ssc-generate-per-day',
+                ])
+
                 {{-- Date distribution: quantity per date (optional; past dates allowed) --}}
                 <div class="w-full flex flex-col gap-3 !mt-4">
                     <label class="text-sm font-medium text-gray-700">Date distribution (optional)</label>
@@ -1035,87 +1042,26 @@
     @push('scripts')
         <script src="{{ asset('js/updated_dynamic_dropdown.js') }}"></script>
         <script type="module" src="{{ asset('js/create-schedule-sidebar-campaign.js') }}"></script>
+        <script src="{{ asset('js/schedule-date-distribution.js') }}"></script>
 
         {{-- Schedule Sidebar: date distribution table (quantity per date; past dates allowed) --}}
         <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            var btn = document.getElementById('ssc-generate-dates');
-            if (!btn || btn._sscDateBound) return;
-            var fromInp = document.getElementById('schedule-from-date');
-            var toInp = document.getElementById('schedule-to-date');
-            var qtyInp = document.getElementById('sidebar-quantity');
-            var distDiv = document.getElementById('ssc-date-distribution');
-            var tbody = document.getElementById('ssc-date-tbody');
-            var sumEl = document.getElementById('ssc-date-sum');
-            var dateQuantitiesInp = document.getElementById('date_quantities');
-            if (!fromInp || !toInp || !distDiv || !tbody || !sumEl || !dateQuantitiesInp) return;
-
-            function parseD(s) {
-                if (!s || typeof s !== 'string') return null;
-                var p = s.trim().split('-');
-                return p.length === 3 ? new Date(parseInt(p[0],10), parseInt(p[1],10)-1, parseInt(p[2],10)) : null;
-            }
-            function fmtD(d) {
-                var y = d.getFullYear(), m = ('0'+(d.getMonth()+1)).slice(-2), day = ('0'+d.getDate()).slice(-2);
-                return y+'-'+m+'-'+day;
-            }
-            function updateSum() {
-                var inputs = tbody.querySelectorAll('.ssc-date-qty');
-                var sum = 0, arr = [];
-                inputs.forEach(function(inp) {
-                    var v = parseInt(inp.value,10)||0;
-                    sum += v;
-                    arr.push({ date: inp.getAttribute('data-date'), quantity: v });
-                });
-                sumEl.textContent = sum;
-                dateQuantitiesInp.value = JSON.stringify(arr);
-                if (qtyInp) qtyInp.value = sum;
-            }
-            function build() {
-                var fromStr = (fromInp.value || '').trim(), toStr = (toInp.value || '').trim();
-                if (!fromStr || !toStr) { alert('Please select both From date and To date.'); return; }
-                var from = parseD(fromStr), to = parseD(toStr);
-                if (!from || !to) { alert('Invalid date format.'); return; }
-                if (to < from) { alert('To date must be on or after From date.'); return; }
-                distDiv.style.display = 'block';
-                tbody.innerHTML = '';
-                var cur = new Date(from.getTime());
-                while (cur <= to) {
-                    var dateStr = fmtD(cur);
-                    var tr = document.createElement('tr');
-                    tr.className = 'hover:bg-gray-50';
-                    tr.innerHTML = '<td class="border !px-2 !py-2">'+dateStr+'</td><td class="border !px-2 !py-2"><input type="number" min="0" class="ssc-date-qty border border-gray-300 rounded !px-2 !py-1 w-24" data-date="'+dateStr+'" value="0"></td>';
-                    tbody.appendChild(tr);
-                    cur.setDate(cur.getDate()+1);
-                }
-                tbody.querySelectorAll('.ssc-date-qty').forEach(function(inp) {
-                    inp.addEventListener('input', updateSum);
-                    inp.addEventListener('change', updateSum);
-                });
-                updateSum();
-            }
-            btn.addEventListener('click', build);
-            btn._sscDateBound = true;
-
-            function syncToMin() {
-                var v = (fromInp.value || '').trim();
-                if (v) toInp.setAttribute('min', v);
-            }
-            fromInp.addEventListener('change', syncToMin);
-            fromInp.addEventListener('input', syncToMin);
-            syncToMin();
-
-            var f = document.getElementById('sidebar-campaign');
-            if (f) f.addEventListener('submit', function() {
-                var rows = tbody.querySelectorAll('.ssc-date-qty');
-                if (rows.length) {
-                    var arr = [];
-                    rows.forEach(function(inp) {
-                        arr.push({ date: inp.getAttribute('data-date'), quantity: parseInt(inp.value,10)||0 });
-                    });
-                    dateQuantitiesInp.value = JSON.stringify(arr);
-                    if (qtyInp) qtyInp.value = arr.reduce(function(s, r) { return s + r.quantity; }, 0);
-                }
+        document.addEventListener('DOMContentLoaded', function () {
+            if (!window.ScheduleDateDistribution) return;
+            ScheduleDateDistribution.bind({
+                generateBtn: document.getElementById('ssc-generate-dates'),
+                perDayBtn: document.getElementById('ssc-generate-per-day'),
+                fromInp: document.getElementById('schedule-from-date'),
+                toInp: document.getElementById('schedule-to-date'),
+                qtyInp: document.getElementById('sidebar-quantity'),
+                distDiv: document.getElementById('ssc-date-distribution'),
+                tbody: document.getElementById('ssc-date-tbody'),
+                sumEl: document.getElementById('ssc-date-sum'),
+                dateQuantitiesInp: document.getElementById('date_quantities'),
+                qtyClass: 'ssc-date-qty',
+                perDayInp: document.getElementById('ssc-per-day'),
+                offsetInp: document.getElementById('ssc-day-offset'),
+                form: document.getElementById('sidebar-campaign'),
             });
         });
         </script>

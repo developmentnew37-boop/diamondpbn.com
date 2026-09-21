@@ -2,13 +2,11 @@
 
 namespace App\Models\Admin;
 
+use App\Models\Admin;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Support\Str;
-use App\Models\Admin;
-use App\Models\Admin\ArticleCategory;
-use App\Models\Admin\ArticleLanguage;
 
 class Article extends Model
 {
@@ -19,18 +17,20 @@ class Article extends Model
      |--------------------------------*/
     protected $table = 'articles';
 
-
     /* --------------------------------
      | Constants (Clean code)
      |--------------------------------*/
     const TYPE_MANUAL = 0;
-    const TYPE_FILE   = 1;
-    const TYPE_AI     = 2;
 
-    const STATUS_UNUSED   = 0;
-    const STATUS_USED     = 1;
+    const TYPE_FILE = 1;
+
+    const TYPE_AI = 2;
+
+    const STATUS_UNUSED = 0;
+
+    const STATUS_USED = 1;
+
     const STATUS_ARCHIVED = 2;
-
 
     /* --------------------------------
      | Mass Assignment
@@ -51,7 +51,6 @@ class Article extends Model
         'expires_at',
         'admin_id',
     ];
-
 
     /* --------------------------------
      | Model Events
@@ -118,6 +117,77 @@ class Article extends Model
         });
     }
 
+    public static function normalizeName(string $name): string
+    {
+        return mb_strtolower(trim($name));
+    }
+
+    public static function existsWithNormalizedName(string $name, ?int $ignoreId = null): bool
+    {
+        $normalized = static::normalizeName($name);
+
+        if ($normalized === '') {
+            return false;
+        }
+
+        return static::query()
+            ->withTrashed()
+            ->where(function ($query) use ($normalized) {
+                $query->where('name_normalized', $normalized)
+                    ->orWhereRaw('LOWER(TRIM(name)) = ?', [$normalized]);
+            })
+            ->when($ignoreId, fn ($query) => $query->where('id', '!=', $ignoreId))
+            ->exists();
+    }
+
+    public static function titleIsTaken(string $name, ?int $ignoreId = null): bool
+    {
+        if (! ArticleSetting::current()->requiresUniqueTitles()) {
+            return false;
+        }
+
+        return static::existsWithNormalizedName($name, $ignoreId);
+    }
+
+    public static function duplicateTitleMessage(): string
+    {
+        return 'An article with this title already exists.';
+    }
+
+    public static function missingContentMessage(): string
+    {
+        return 'Article content is required.';
+    }
+
+    public static function hasMeaningfulContent(?string $html): bool
+    {
+        if ($html === null || trim($html) === '') {
+            return false;
+        }
+
+        $text = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = str_replace("\xC2\xA0", ' ', $text);
+        $text = preg_replace('/\s+/u', ' ', $text) ?? $text;
+
+        return trim($text) !== '';
+    }
+
+    /**
+     * @return array<int, mixed>
+     */
+    public static function descriptionValidationRules(): array
+    {
+        return [
+            'required',
+            'string',
+            function (string $attribute, mixed $value, \Closure $fail): void {
+                if (! static::hasMeaningfulContent(is_string($value) ? $value : null)) {
+                    $fail(static::missingContentMessage());
+                }
+            },
+        ];
+    }
+
     /* --------------------------------
      | Slug Helpers
      |--------------------------------*/
@@ -136,14 +206,14 @@ class Article extends Model
         }
 
         if ($baseSlug === '') {
-            $baseSlug = 't-' . substr(bin2hex(hash('sha256', $cleanTitle, true)), 0, 12);
+            $baseSlug = 't-'.substr(bin2hex(hash('sha256', $cleanTitle, true)), 0, 12);
         }
 
         $slug = $baseSlug;
         $counter = 1;
 
         while (static::slugExists($slug, $ignoreId)) {
-            $slug = $baseSlug . '-' . $counter;
+            $slug = $baseSlug.'-'.$counter;
             $counter++;
         }
 
@@ -153,7 +223,7 @@ class Article extends Model
     protected static function slugExists(string $slug, $ignoreId = null): bool
     {
         return static::where('slug', $slug)
-            ->when($ignoreId, fn($q) => $q->where('id', '!=', $ignoreId))
+            ->when($ignoreId, fn ($q) => $q->where('id', '!=', $ignoreId))
             ->exists();
     }
 
@@ -161,19 +231,19 @@ class Article extends Model
     {
         return preg_replace('/[\x{1F300}-\x{1FAFF}]/u', '', $text);
     }
+
     /* --------------------------------
      | Search Helper
      |--------------------------------*/
     protected static function makeSearchText(string $title, ?string $html = null): string
     {
-        $text = $title . ' ' . ($html ?? '');
+        $text = $title.' '.($html ?? '');
 
         return Str::of(strip_tags($text))
             ->replaceMatches('/\s+/', ' ')
             ->lower()
             ->trim();
     }
-
 
     /* --------------------------------
      | Relationships
@@ -216,15 +286,14 @@ class Article extends Model
      | Casting
      |--------------------------------*/
     protected $casts = [
-        'type'       => 'integer',
-        'status'     => 'integer',
-        'lock_at'    => 'datetime',
+        'type' => 'integer',
+        'status' => 'integer',
+        'lock_at' => 'datetime',
         'expires_at' => 'datetime',
     ];
 
-
     /* --------------------------------
-     | Many to many relationship    
+     | Many to many relationship
      |--------------------------------*/
 
     public function articleSet()

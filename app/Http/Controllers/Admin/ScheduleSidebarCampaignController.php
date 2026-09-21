@@ -11,6 +11,7 @@ use App\Http\Controllers\Controller;
 use App\Jobs\BulkRetryScheduleSidebarCampaignTasksJob;
 use App\Jobs\BulkUpdateScheduleSidebarBlogrollJob;
 use App\Jobs\DeleteScheduleSidebarCampaignJob;
+use App\Jobs\PublishRemainingScheduleSidebarCampaignTasksJob;
 use App\Jobs\PublishScheduledSidebarBlogrollJob;
 use App\Jobs\SyncConvertedSidebarCampaignRemoteStatusJob;
 use App\Models\Admin\Domain;
@@ -838,9 +839,38 @@ class ScheduleSidebarCampaignController extends Controller
                 ->get();
         }
 
+        $remainingPublishableCount = 0;
+        if (! $isConvertedLiveCampaign) {
+            $remainingPublishableCount = ScheduleSidebarCampaignTask::query()
+                ->where('schedule_sidebar_campaign_id', $campaign->id)
+                ->whereIn('status', ['queued', 'failed', 'publishing'])
+                ->where(function ($q) {
+                    $q->where('is_converted_live', false)->orWhereNull('is_converted_live');
+                })
+                ->count();
+        }
+
+        $canPublishRemaining = $remainingPublishableCount > 0
+            && ! in_array((string) $campaign->status, ['paused', 'cancelled'], true);
+
+        $remainingRetryCount = $remainingPublishableCount;
+        $canRetryRemaining = $canPublishRemaining;
+
         return view(
             'admin.campaigns.pbn-sidebar.view-schedule-campaign',
-            compact('campaign', 'campaignTasks', 'offset', 'statusFilter', 'statusCounts', 'isConvertedLiveCampaign', 'recentReplacements')
+            compact(
+                'campaign',
+                'campaignTasks',
+                'offset',
+                'statusFilter',
+                'statusCounts',
+                'isConvertedLiveCampaign',
+                'recentReplacements',
+                'remainingPublishableCount',
+                'canPublishRemaining',
+                'remainingRetryCount',
+                'canRetryRemaining',
+            )
         );
     }
 
@@ -1218,6 +1248,72 @@ class ScheduleSidebarCampaignController extends Controller
     }
 
     /**
+     * Immediately queue all remaining (non-success) tasks for publish.
+     * schedule_at is left unchanged so details/report keep original dates.
+     */
+    public function publishRemainingNow(string $id)
+    {
+        $campaign = ScheduleSidebarCampaign::find($id);
+        if (! $campaign) {
+            return back()->with('cus__error', 'Campaign not found');
+        }
+
+        $this->authorizeCampaignAccess($campaign);
+
+        if (in_array((string) $campaign->status, ['paused', 'cancelled'], true)) {
+            return back()->with('cus__error', 'Cannot publish remaining tasks while the campaign is paused or cancelled.');
+        }
+
+        $remaining = ScheduleSidebarCampaignTask::query()
+            ->where('schedule_sidebar_campaign_id', $campaign->id)
+            ->whereIn('status', ['queued', 'failed', 'publishing'])
+            ->where(function ($q) {
+                $q->where('is_converted_live', false)->orWhereNull('is_converted_live');
+            })
+            ->count();
+
+        if ($remaining < 1) {
+            return back()->with('cus__error', 'No remaining tasks to publish.');
+        }
+
+        PublishRemainingScheduleSidebarCampaignTasksJob::dispatch((int) $campaign->id);
+
+        return back()->with(
+            'cus__success',
+            $remaining.' remaining task(s) queued for immediate publish. Scheduled dates on this page and the report stay as assigned. Run the scheduled_sidebar_campaigns queue worker to process them.'
+        );
+    }
+
+    /**
+     * Retry remaining (failed + stuck queued/publishing) tasks for this campaign.
+     */
+    public function retryRemainingNow(string $id)
+    {
+        $campaign = ScheduleSidebarCampaign::find($id);
+        if (! $campaign) {
+            return back()->with('cus__error', 'Campaign not found');
+        }
+
+        $this->authorizeCampaignAccess($campaign);
+
+        if (in_array((string) $campaign->status, ['paused', 'cancelled'], true)) {
+            return back()->with('cus__error', 'Cannot retry while the campaign is paused or cancelled.');
+        }
+
+        $remaining = BulkRetryScheduleSidebarCampaignTasksJob::retryableQuery((int) $campaign->id, true)->count();
+        if ($remaining < 1) {
+            return back()->with('cus__error', 'No remaining tasks to retry.');
+        }
+
+        BulkRetryScheduleSidebarCampaignTasksJob::dispatch([(int) $campaign->id], true);
+
+        return back()->with(
+            'cus__success',
+            $remaining.' remaining task(s) queued for retry. Run the scheduled_sidebar_campaigns queue worker to process them.'
+        );
+    }
+
+    /**
      * Bulk retry all failed tasks across selected schedule sidebar campaigns.
      */
     public function bulkRetryFailed(Request $request)
@@ -1262,12 +1358,16 @@ class ScheduleSidebarCampaignController extends Controller
         $wasFailed = $task->status === 'failed';
         $campaign = $task->campaign;
 
+        $generation = (int) ($task->dispatch_generation ?? 0) + 1;
+
         $task->update([
             'status' => 'queued',
+            'attempt_count' => 0,
             'last_error' => null,
             'next_retry_at' => null,
             'locked_at' => null,
             'lock_token' => null,
+            'dispatch_generation' => $generation,
         ]);
 
         if ($campaign) {
@@ -1278,7 +1378,7 @@ class ScheduleSidebarCampaignController extends Controller
             $counters->syncCampaignFromTasks($campaign->fresh());
         }
 
-        PublishScheduledSidebarBlogrollJob::dispatch($task->id, (int) ($task->dispatch_generation ?? 0))->onQueue('scheduled_sidebar_campaigns');
+        PublishScheduledSidebarBlogrollJob::dispatch($task->id, $generation)->onQueue('scheduled_sidebar_campaigns');
 
         return back()->with('cus__success', 'Task queued for retry.');
     }

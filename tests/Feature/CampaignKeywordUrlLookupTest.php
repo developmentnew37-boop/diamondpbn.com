@@ -195,7 +195,15 @@ class CampaignKeywordUrlLookupTest extends TestCase
             ->assertSee('Promo')
             ->assertSee('Hidden KW')
             ->assertSee('Edit campaign', false)
-            ->assertSee(route('admin.campaign.edit', $pbn->id), false);
+            ->assertSee('Delete campaign', false)
+            ->assertSee(route('admin.campaign.edit', $pbn->id), false)
+            ->assertSee(route('admin.campaign.destroy', $pbn->id), false)
+            ->assertSee(route('admin.sidebar.campaign.destroy', $sidebar->id), false)
+            ->assertSee(route('admin.hidden.link.campaign.bulk.delete'), false)
+            ->assertSee('name="campaign_ids[]"', false)
+            ->assertSee((string) $hidden->id, false)
+            ->assertSee(route('admin.schedule.campaign.destroy', $schedule->id), false)
+            ->assertSee(route('admin.schedule.sidebar.campaign.destroy', $scheduleSidebar->id), false);
     }
 
     public function test_admin_cannot_see_other_users_campaigns_by_keyword_url(): void

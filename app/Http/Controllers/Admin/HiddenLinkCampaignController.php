@@ -382,9 +382,21 @@ class HiddenLinkCampaignController extends Controller
 
         $offset = ($campaignTasks->currentPage() - 1) * $limit;
 
+        $remainingRetryCount = BulkRetryHiddenLinksCampaignTasksJob::retryableQuery((int) $campaign->id, true)->count();
+        $canRetryRemaining = $remainingRetryCount > 0
+            && ! in_array((string) $campaign->status, ['paused', 'cancelled'], true);
+
         return view(
             'admin.campaigns.pbn-hidden-links.view-campaign',
-            compact('campaign', 'campaignTasks', 'offset', 'statusFilter', 'statusCounts')
+            compact(
+                'campaign',
+                'campaignTasks',
+                'offset',
+                'statusFilter',
+                'statusCounts',
+                'remainingRetryCount',
+                'canRetryRemaining',
+            )
         );
     }
 
@@ -767,11 +779,15 @@ class HiddenLinkCampaignController extends Controller
             return back()->with('cus__error', 'Cannot retry: campaign is paused or cancelled.');
         }
 
-        DB::transaction(function () use ($task) {
+        $generation = 0;
+        $queued = false;
+
+        DB::transaction(function () use ($task, &$generation, &$queued) {
             $fresh = HiddenLinksCampaignTasks::lockForUpdate()->find($task->id);
             if (! $fresh || $fresh->status !== 'failed') {
                 return;
             }
+            $generation = (int) ($fresh->dispatch_generation ?? 0) + 1;
             $fresh->status = 'queued';
             $fresh->attempt_count = 0;
             $fresh->last_error = null;
@@ -779,10 +795,16 @@ class HiddenLinkCampaignController extends Controller
             $fresh->locked_at = null;
             $fresh->lock_token = null;
             $fresh->finished_at = null;
+            $fresh->dispatch_generation = $generation;
             $fresh->save();
+            $queued = true;
         });
 
-        PublishHiddenLinksJob::dispatch($task->id)->onQueue('hidden_links_campaigns');
+        if (! $queued) {
+            return back()->with('cus__error', 'Only failed tasks can be retried.');
+        }
+
+        PublishHiddenLinksJob::dispatch($task->id, $generation)->onQueue('hidden_links_campaigns');
 
         return back()->with('cus__success', 'Task queued for retry.');
     }
@@ -949,7 +971,7 @@ class HiddenLinkCampaignController extends Controller
     }
 
     /**
-     * Bulk retry all failed tasks across selected hidden links campaigns.
+     * Bulk retry remaining (failed + stuck queued/publishing) tasks across selected hidden links campaigns.
      */
     public function bulkRetryFailed(Request $request)
     {
@@ -963,13 +985,42 @@ class HiddenLinkCampaignController extends Controller
             return back()->with('cus__error', 'No campaigns found or you do not have permission.');
         }
 
-        BulkRetryHiddenLinksCampaignTasksJob::dispatch($allowed);
+        BulkRetryHiddenLinksCampaignTasksJob::dispatch($allowed, true);
 
         $n = count($allowed);
 
         return redirect()
             ->route('admin.hidden.link.campaign.index')
-            ->with('cus__success', 'Bulk retry queued for '.$n.' hidden links campaign(s). All failed tasks will be retried in the background. Run the queue worker to process them.');
+            ->with('cus__success', 'Bulk retry queued for '.$n.' hidden links campaign(s). Failed and stuck tasks will be retried in the background. Run the queue worker to process them.');
+    }
+
+    /**
+     * Retry remaining (failed + stuck queued/publishing) tasks for this campaign.
+     */
+    public function retryRemainingNow(string $id)
+    {
+        $campaign = HiddenLinksCampaign::find($id);
+        if (! $campaign) {
+            return back()->with('cus__error', 'Campaign not found');
+        }
+
+        $this->authorizeCampaignAccess($campaign);
+
+        if (in_array((string) $campaign->status, ['paused', 'cancelled'], true)) {
+            return back()->with('cus__error', 'Cannot retry while the campaign is paused or cancelled.');
+        }
+
+        $remaining = BulkRetryHiddenLinksCampaignTasksJob::retryableQuery((int) $campaign->id, true)->count();
+        if ($remaining < 1) {
+            return back()->with('cus__error', 'No remaining tasks to retry.');
+        }
+
+        BulkRetryHiddenLinksCampaignTasksJob::dispatch([(int) $campaign->id], true);
+
+        return back()->with(
+            'cus__success',
+            $remaining.' remaining task(s) queued for retry. Run the hidden_links_campaigns queue worker to process them.'
+        );
     }
 
     /**

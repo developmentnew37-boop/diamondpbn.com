@@ -22,7 +22,22 @@
                 </div>
             </div>
 
-            <div class="w-1/2 flex justify-end items-center gap-2">
+            <div class="w-1/2 flex justify-end items-center gap-2 flex-wrap">
+                @include('admin.campaigns.partials.campaign-view-retry-remaining', [
+                    'retryAction' => route('admin.schedule.sidebar.campaign.retry.remaining', $campaign->id),
+                    'retryNoun' => 'task(s)',
+                ])
+                @if ($canPublishRemaining ?? false)
+                    <form action="{{ route('admin.schedule.sidebar.campaign.publish.remaining', $campaign->id) }}" method="post" class="inline"
+                          onsubmit="return confirm('Publish {{ (int) ($remainingPublishableCount ?? 0) }} remaining task(s) immediately?\n\nScheduled dates on this page and the report will stay as assigned (they will not change to today).');">
+                        @csrf
+                        <button type="submit"
+                                class="inline-flex items-center gap-2 !px-3 !py-2 rounded bg-emerald-600 text-white hover:bg-emerald-700 text-sm"
+                                title="Queue remaining tasks for immediate publish without changing schedule dates">
+                            Publish remaining now ({{ (int) $remainingPublishableCount }})
+                        </button>
+                    </form>
+                @endif
                 <a href="{{ route('admin.schedule.sidebar.campaign.edit', $campaign->id) }}"
                     class="inline-flex items-center gap-2 !px-3 !py-2 rounded bg-[var(--primary-color)] text-white hover:opacity-90 text-sm">
                     Edit campaign
@@ -92,10 +107,45 @@
 
     @include('admin.campaigns.partials.schedule-domain-replacements')
 
-    <div class="content-card w-full">
+    {{-- ===================== CAMPAIGN SUMMARY ===================== --}}
+    <div class="content-card !mt-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+        <div class="flex flex-col gap-2">
+            <div class="text-gray-500">Campaign No</div>
+            <div class="font-semibold">{{ $campaign->campaign_no }}</div>
+        </div>
+
+        <div class="flex flex-col gap-2">
+            <div class="text-gray-500">Schedule Range</div>
+            <div class="font-semibold">
+                {{ $campaign->schedule_from_date?->format('d M Y') ?? '-' }}
+                →
+                {{ $campaign->schedule_to_date?->format('d M Y') ?? '-' }}
+            </div>
+        </div>
+
+        <div class="flex flex-col gap-2 justify-start">
+            <div class="text-gray-500">Status</div>
+            <span class="!px-2 !py-1 rounded text-xs font-semibold w-fit
+                {{ $campaign->status === 'completed' ? 'bg-green-100 text-green-700' :
+                   ($campaign->status === 'running' ? 'bg-yellow-100 text-yellow-700' :
+                   ($campaign->status === 'failed' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700')) }}">
+                {{ ucfirst($campaign->status) }}
+            </span>
+        </div>
+
+        <div class="flex flex-col gap-2">
+            <div class="text-gray-500">Progress</div>
+            <div class="font-semibold">
+                {{ $campaign->completed_targets }} /
+                {{ $campaign->total_targets }}
+            </div>
+        </div>
+    </div>
+
+    <div class="content-card w-full !mt-4">
 
         <h2 class="text-lg !mb-4 bg-[var(--primary-color)] text-white !px-4 !py-2 rounded w-fit">
-            {{ $campaign->campaign_no }} — Scheduled Sidebar Campaign
+            Scheduled Sidebar
         </h2>
 
         @include('admin.campaigns.partials.post-status-filters', [

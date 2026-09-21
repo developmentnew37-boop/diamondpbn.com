@@ -12,6 +12,7 @@
         @csrf
 
         {{-- HEADER --}}
+        @include('admin.campaigns.partials.converted-report-notice')
         <div class="w-full flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4 min-w-0">
             <div class="w-full sm:flex-1 sm:min-w-0 flex justify-center sm:justify-start">
                 <h2 class="md:text-lg text-sm capitalize bg-[var(--primary-color)] text-white text-center sm:text-left w-full sm:w-fit max-w-full !p-3 rounded break-words">

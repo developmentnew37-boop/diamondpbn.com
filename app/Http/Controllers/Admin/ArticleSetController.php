@@ -4,16 +4,17 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
+use App\Models\Admin\Article;
 use App\Models\Admin\ArticleLanguage;
 use App\Models\Admin\ArticleSet;
+use App\Models\Admin\ArticleSetting;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
-use Mews\Purifier\Facades\Purifier;
-use App\Models\Admin\Article;
 use Illuminate\Support\Facades\Auth;
-use PhpOffice\PhpWord\IOFactory;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Mews\Purifier\Facades\Purifier;
+use PhpOffice\PhpWord\IOFactory;
 
 class ArticleSetController extends Controller
 {
@@ -41,15 +42,15 @@ class ArticleSetController extends Controller
         $user = Auth::guard('admin')->user();
 
         // ✅ read filters from query string
-        $filterUser     = $request->query('user');      // admin_id
+        $filterUser = $request->query('user');      // admin_id
         $filterLanguage = $request->query('language');  // article_language_id
-        $search         = $request->query('search');    // set name / slug etc.
+        $search = $request->query('search');    // set name / slug etc.
 
         $articleSets = ArticleSet::query()
             ->withCount('articles')
 
             // ✅ permission: non-super admin sees only own sets
-            ->when((int) $user->type !== 0, fn($q) => $q->where('admin_id', $user->id))
+            ->when((int) $user->type !== 0, fn ($q) => $q->where('admin_id', $user->id))
 
             // ✅ filter: selected user (only if super admin)
             ->when((int) $user->type === 0 && filled($filterUser), function ($q) use ($filterUser) {
@@ -86,11 +87,10 @@ class ArticleSetController extends Controller
     /**
      * showing options to create and add articles sets
      */
-
     public function option(Request $request)
     {
         $validated = $request->validate([
-            'id' => 'required|exists:article_sets,id'
+            'id' => 'required|exists:article_sets,id',
         ]);
 
         $articleSet = ArticleSet::with('articles')->findOrFail($validated['id']);
@@ -98,7 +98,6 @@ class ArticleSetController extends Controller
         $articles = $articleSet->articles()
             ->orderBy('articles.id', 'desc')
             ->get();
-
 
         return view(
             'admin.article.article-set.article-set-option',
@@ -108,23 +107,23 @@ class ArticleSetController extends Controller
 
     /* add articles in article set controller */
 
-
-
     public function createArticles(Request $request)
     {
         // 1️⃣ Validate input
         $validator = Validator::make($request->all(), [
-            'id'          => 'required|integer|exists:article_sets,id',
-            'name'        => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'language'    => 'required|integer|exists:article_languages,id',
-            'type'        => 'required|integer|in:0,1,2',
+            'id' => 'required|integer|exists:article_sets,id',
+            'name' => 'required|string|max:255',
+            'description' => Article::descriptionValidationRules(),
+            'language' => 'required|integer|exists:article_languages,id',
+            'type' => 'required|integer|in:0,1,2',
+        ], [
+            'description.required' => Article::missingContentMessage(),
         ]);
 
         if ($validator->fails()) {
             return redirect()
                 ->route('admin.articles.set.create.options', [
-                    'id'   => $request->input('id'),
+                    'id' => $request->input('id'),
                     'type' => match ((int) $request->input('type')) {
                         0 => 'manual',
                         1 => 'file',
@@ -138,7 +137,7 @@ class ArticleSetController extends Controller
 
         // 2️⃣ Get validated data
         $validated = $validator->validated();
-        $adminId   = Auth::guard('admin')->id();
+        $adminId = Auth::guard('admin')->id();
 
         if (function_exists('set_time_limit')) {
             @set_time_limit(0);
@@ -150,23 +149,41 @@ class ArticleSetController extends Controller
             : null;
 
         // 4️⃣ Check for existing article (duplicate prevention)
-        $normalizedName = mb_strtolower(trim($validated['name']));
+        $normalizedName = Article::normalizeName($validated['name']);
+        $enforceUniqueTitles = ArticleSetting::current()->requiresUniqueTitles();
 
-        $article = Article::where('admin_id', $adminId)
-            ->where('article_language_id', $validated['language'])
-            ->where('name_normalized', $normalizedName)
-            ->first();
-
+        $article = null;
         $isDuplicateArticle = false;
 
+        if ($enforceUniqueTitles) {
+            $article = Article::query()
+                ->withTrashed()
+                ->where('name_normalized', $normalizedName)
+                ->first();
+
+            if ($article && $article->trashed()) {
+                return redirect()
+                    ->route('admin.articles.set.create.options', [
+                        'id' => $validated['id'],
+                        'type' => match ((int) $validated['type']) {
+                            0 => 'manual',
+                            1 => 'file',
+                            2 => 'ai',
+                        },
+                    ])
+                    ->withInput()
+                    ->with('cus__error', Article::duplicateTitleMessage());
+            }
+        }
+
         // 5️⃣ Create article only if not exists
-        if (!$article) {
+        if (! $article) {
             $article = Article::create([
-                'name'                => trim($validated['name']),
-                'description'         => $description,
+                'name' => trim($validated['name']),
+                'description' => $description,
                 'article_language_id' => $validated['language'],
-                'type'                => $validated['type'],
-                'admin_id'            => $adminId,
+                'type' => $validated['type'],
+                'admin_id' => $adminId,
                 'lock_at' => now(),
             ]);
         } else {
@@ -197,7 +214,7 @@ class ArticleSetController extends Controller
         // 8️⃣ Redirect with BOTH messages
         return redirect()
             ->route('admin.articles.set.create.options', [
-                'id'   => $validated['id'],
+                'id' => $validated['id'],
                 'type' => match ((int) $validated['type']) {
                     0 => 'manual',
                     1 => 'file',
@@ -207,9 +224,6 @@ class ArticleSetController extends Controller
             ->with('cus__success', $mainMessage)
             ->with('manual_success', 'Manual article process completed successfully.');
     }
-
-
-
 
     /**
      * Show the form for creating a new resource.
@@ -237,6 +251,7 @@ class ArticleSetController extends Controller
         $articles = $articleSet->articles()
             ->orderBy('articles.id', 'desc')
             ->get();
+
         return view('admin.article.article-set.articleset-articles', compact('articles', 'articleSet'));
     }
 
@@ -274,13 +289,13 @@ class ArticleSetController extends Controller
             $articleSet->delete();
 
             // ✅ delete only those articles which are not linked to ANY other set
-            if (!empty($articleIds)) {
+            if (! empty($articleIds)) {
                 $deletableIds = Article::whereIn('id', $articleIds)
                     ->whereDoesntHave('articleSets') // no more relations
                     ->pluck('id')
                     ->all();
 
-                if (!empty($deletableIds)) {
+                if (! empty($deletableIds)) {
                     Article::whereIn('id', $deletableIds)->delete();
                 }
             }
@@ -440,16 +455,16 @@ class ArticleSetController extends Controller
     public function deleteSetArticles(Request $request)
     {
         $validated = $request->validate([
-            'actions'        => 'required|integer|in:1',
-            'bulk_ids'       => 'required|string',
+            'actions' => 'required|integer|in:1',
+            'bulk_ids' => 'required|string',
             'article_set_id' => 'required|integer|exists:article_sets,id',
         ]);
 
         $admin = Auth::guard('admin')->user();
 
         $ids = collect(explode(',', $validated['bulk_ids']))
-            ->map(fn($v) => (int) trim($v))
-            ->filter(fn($v) => $v > 0)
+            ->map(fn ($v) => (int) trim($v))
+            ->filter(fn ($v) => $v > 0)
             ->unique()
             ->values()
             ->all();
@@ -487,7 +502,7 @@ class ArticleSetController extends Controller
             ->pluck('id')
             ->all();
 
-        if (!empty($orphanIds)) {
+        if (! empty($orphanIds)) {
 
             // 🔓 Unlock
             Article::whereIn('id', $orphanIds)
@@ -504,9 +519,7 @@ class ArticleSetController extends Controller
         );
     }
 
-
-
-    /*xxxxxxxxxxxxxxxxxxxx --- xxxxxxxxxxxxxxxxxxxxxxxxxxxxx*/
+    /* xxxxxxxxxxxxxxxxxxxx --- xxxxxxxxxxxxxxxxxxxxxxxxxxxxx */
 
     // public function import(Request $request)
     // {
@@ -822,16 +835,16 @@ class ArticleSetController extends Controller
 
         // ✅ Validation
         $validator = Validator::make($request->all(), [
-            'id'        => 'required|integer|exists:article_sets,id',
-            'docx'      => 'required|file|mimes:docx|max:20480',
-            'language'  => 'required|integer|exists:article_languages,id',
-            'type'      => 'required|integer|in:0,1,2',
+            'id' => 'required|integer|exists:article_sets,id',
+            'docx' => 'required|file|mimes:docx|max:20480',
+            'language' => 'required|integer|exists:article_languages,id',
+            'type' => 'required|integer|in:0,1,2',
         ]);
 
         if ($validator->fails()) {
             return redirect()
                 ->route('admin.articles.set.create.options', [
-                    'id'   => $request->input('id'),
+                    'id' => $request->input('id'),
                     'type' => $popupType,
                 ])
                 ->withErrors($validator)
@@ -841,7 +854,7 @@ class ArticleSetController extends Controller
         }
 
         $admin = auth('admin')->user();
-        abort_if(!$admin, 403);
+        abort_if(! $admin, 403);
 
         // DOCX + Purifier + DOM per article can exceed default PHP/proxy limits; avoid premature timeout.
         if (function_exists('set_time_limit')) {
@@ -853,18 +866,30 @@ class ArticleSetController extends Controller
 
         // ✅ Load DOCX
         $docxPath = $request->file('docx')->getRealPath();
-        if (!file_exists($docxPath)) {
+        if (! file_exists($docxPath)) {
             return back()->with('cus__error', 'Invalid DOCX file.');
         }
 
         // ✅ DOCX → HTML
         $phpWord = IOFactory::load($docxPath);
-        $writer  = IOFactory::createWriter($phpWord, 'HTML');
+        $writer = IOFactory::createWriter($phpWord, 'HTML');
 
-        $htmlPath = storage_path('app/docx_preview_' . uniqid() . '.html');
+        $htmlPath = storage_path('app/docx_preview_'.uniqid().'.html');
         $writer->save($htmlPath);
 
         $rawHtml = file_get_contents($htmlPath);
+
+        $enforceUniqueTitles = ArticleSetting::current()->requiresUniqueTitles();
+        $existingTitles = [];
+
+        if ($enforceUniqueTitles) {
+            foreach (Article::withTrashed()->select('name', 'name_normalized')->cursor() as $row) {
+                $normalized = $row->name_normalized ?: Article::normalizeName((string) $row->name);
+                if ($normalized !== '') {
+                    $existingTitles[$normalized] = true;
+                }
+            }
+        }
 
         /* -------------------------------------------------
      | 🔒 PRELOAD SLUG COUNTS (INCLUDING SOFT-DELETED)
@@ -884,12 +909,12 @@ class ArticleSetController extends Controller
         // ✅ Split articles
         $chunks = preg_split('/\*\*\s*article starts\s*\*\*/i', $rawHtml);
 
-        $created    = 0;
+        $created = 0;
         $duplicates = 0;
 
         foreach ($chunks as $chunk) {
 
-            if (!str_contains(strtolower($chunk), '** title **')) {
+            if (! str_contains(strtolower($chunk), '** title **')) {
                 continue;
             }
 
@@ -902,7 +927,15 @@ class ArticleSetController extends Controller
 
             $title = trim(strip_tags($titleMatch[1] ?? ''));
 
-            if (!$title) {
+            if (! $title) {
+                continue;
+            }
+
+            $normalizedTitle = Article::normalizeName($title);
+
+            if ($enforceUniqueTitles && isset($existingTitles[$normalizedTitle])) {
+                $duplicates++;
+
                 continue;
             }
 
@@ -910,6 +943,7 @@ class ArticleSetController extends Controller
 
             if ($baseSlug === '') {
                 $duplicates++;
+
                 continue;
             }
 
@@ -918,6 +952,7 @@ class ArticleSetController extends Controller
          |--------------------------------------------------*/
             if (isset($activeSlugLookup[$baseSlug])) {
                 $duplicates++;
+
                 continue;
             }
 
@@ -927,7 +962,7 @@ class ArticleSetController extends Controller
             $finalSlug = $baseSlug;
 
             if (isset($slugStats[$baseSlug])) {
-                $finalSlug = $baseSlug . '-' . $slugStats[$baseSlug];
+                $finalSlug = $baseSlug.'-'.$slugStats[$baseSlug];
             }
 
             // increment slug usage
@@ -942,8 +977,7 @@ class ArticleSetController extends Controller
 
             // ✅ Clean HTML
             $cleanHtml = clean($descriptionHtml, [
-                'HTML.Allowed' =>
-                'p,h1,h2,h3,h4,h5,h6,ul,ol,li,table,thead,tbody,tr,th,td,a,strong,em,br'
+                'HTML.Allowed' => 'p,h1,h2,h3,h4,h5,h6,ul,ol,li,table,thead,tbody,tr,th,td,a,strong,em,br',
             ]);
 
             // Normalize DOCX HTML
@@ -953,14 +987,14 @@ class ArticleSetController extends Controller
 
             // ✅ CREATE ARTICLE
             $article = Article::create([
-                'name'                => $title,
-                'slug'                => $finalSlug, // 🔥 explicit
-                'description'         => $cleanHtml,
+                'name' => $title,
+                'slug' => $finalSlug, // 🔥 explicit
+                'description' => $cleanHtml,
                 'article_language_id' => $validated['language'],
-                'type'                => $validated['type'],
-                'status'              => 0,
-                'lock_at'             => now(),
-                'admin_id'            => $admin->id,
+                'type' => $validated['type'],
+                'status' => 0,
+                'lock_at' => now(),
+                'admin_id' => $admin->id,
             ]);
 
             // ✅ Attach to set
@@ -969,6 +1003,10 @@ class ArticleSetController extends Controller
             $activeSlugLookup[$finalSlug] = true;
 
             $created++;
+
+            if ($enforceUniqueTitles) {
+                $existingTitles[$normalizedTitle] = true;
+            }
         }
 
         @unlink($htmlPath);
@@ -984,14 +1022,12 @@ class ArticleSetController extends Controller
 
         return redirect()
             ->route('admin.articles.set.create.options', [
-                'id'   => $validated['id'],
+                'id' => $validated['id'],
                 'type' => $popupType,
             ])
             ->with('cus__success', $message)
             ->with('bulk__success', 'Article import completed.');
     }
-
-
 
     /* =====================================================
      | 🧼 NORMALIZATION HELPERS
@@ -1021,24 +1057,24 @@ class ArticleSetController extends Controller
     {
         $dom = new \DOMDocument('1.0', 'UTF-8');
         libxml_use_internal_errors(true);
-        $dom->loadHTML('<?xml encoding="UTF-8">' . $html);
+        $dom->loadHTML('<?xml encoding="UTF-8">'.$html);
         libxml_clear_errors();
 
         $paragraphs = iterator_to_array($dom->getElementsByTagName('p'));
 
         for ($i = 0; $i < count($paragraphs) - 1; $i++) {
             $current = $paragraphs[$i];
-            $next    = $paragraphs[$i + 1];
+            $next = $paragraphs[$i + 1];
 
             $currentText = trim($current->textContent);
-            $nextText    = trim($next->textContent);
+            $nextText = trim($next->textContent);
 
             // Merge if sentence is broken
             if (
-                !preg_match('/[.!?]$/', $currentText) &&
+                ! preg_match('/[.!?]$/', $currentText) &&
                 strlen($currentText) < 120
             ) {
-                $current->nodeValue = $currentText . ' ' . $nextText;
+                $current->nodeValue = $currentText.' '.$nextText;
                 $next->parentNode->removeChild($next);
             }
         }
@@ -1056,9 +1092,9 @@ class ArticleSetController extends Controller
                 // Heuristic: looks like a heading
                 if (
                     preg_match('/^[A-Z].*$/', $text) &&
-                    !preg_match('/[.!?]$/', $text)
+                    ! preg_match('/[.!?]$/', $text)
                 ) {
-                    return '<h2>' . e($text) . '</h2>';
+                    return '<h2>'.e($text).'</h2>';
                 }
 
                 return $match[0];

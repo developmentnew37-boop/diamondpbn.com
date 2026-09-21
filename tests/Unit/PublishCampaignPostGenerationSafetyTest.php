@@ -197,7 +197,7 @@ class PublishCampaignPostGenerationSafetyTest extends TestCase
         $this->assertSame('dns_resolution_failed', $post->last_failure_code);
     }
 
-    public function test_bulk_retry_skips_failed_posts_with_uncertain_remote_delivery(): void
+    public function test_bulk_retry_retries_failed_posts_with_uncertain_remote_delivery(): void
     {
         Queue::fake();
         $postId = $this->records(5);
@@ -211,9 +211,108 @@ class PublishCampaignPostGenerationSafetyTest extends TestCase
         (new BulkRetryCampaignPostsJob([$post->campaign_id]))->handle();
 
         $post->refresh();
-        $this->assertSame('failed', $post->status);
-        $this->assertSame(2, $post->attempt_count);
+        $this->assertSame('queued', $post->status);
+        $this->assertSame(0, $post->attempt_count);
+        $this->assertSame(6, (int) $post->dispatch_generation);
+        Queue::assertPushed(PublishCampaignPostJob::class, function ($job) use ($postId) {
+            return $job->campaignPostId === $postId && $job->dispatchGeneration === 6;
+        });
+    }
+
+    public function test_bulk_retry_failed_only_does_not_retry_queued(): void
+    {
+        Queue::fake();
+        $postId = $this->records(1);
+        $post = CampaignPost::findOrFail($postId);
+
+        (new BulkRetryCampaignPostsJob([$post->campaign_id], false))->handle();
+
         Queue::assertNothingPushed();
+        $this->assertSame('queued', $post->fresh()->status);
+        $this->assertSame(1, (int) $post->fresh()->dispatch_generation);
+    }
+
+    public function test_bulk_retry_include_stuck_retries_queued_and_bumps_generation(): void
+    {
+        Queue::fake();
+        $postId = $this->records(1);
+        $post = CampaignPost::findOrFail($postId);
+
+        (new BulkRetryCampaignPostsJob([$post->campaign_id], true))->handle();
+
+        $post->refresh();
+        $this->assertSame('queued', $post->status);
+        $this->assertSame(2, (int) $post->dispatch_generation);
+        Queue::assertPushed(PublishCampaignPostJob::class, function ($job) use ($postId) {
+            return $job->campaignPostId === $postId && $job->dispatchGeneration === 2;
+        });
+    }
+
+    public function test_bulk_retry_failed_only_bumps_generation(): void
+    {
+        Queue::fake();
+        $postId = $this->records(3);
+        $post = CampaignPost::findOrFail($postId);
+        $post->forceFill([
+            'status' => 'failed',
+            'attempt_count' => 4,
+        ])->save();
+
+        (new BulkRetryCampaignPostsJob([$post->campaign_id], false))->handle();
+
+        $post->refresh();
+        $this->assertSame('queued', $post->status);
+        $this->assertSame(0, $post->attempt_count);
+        $this->assertSame(4, (int) $post->dispatch_generation);
+        Queue::assertPushed(PublishCampaignPostJob::class, function ($job) use ($postId) {
+            return $job->campaignPostId === $postId && $job->dispatchGeneration === 4;
+        });
+    }
+
+    public function test_bulk_retry_include_stuck_retries_uncertain_failed(): void
+    {
+        Queue::fake();
+        $postId = $this->records(5);
+        $post = CampaignPost::findOrFail($postId);
+        $post->forceFill([
+            'status' => 'failed',
+            'attempt_count' => 2,
+            'delivery_state' => CampaignPost::DELIVERY_REMOTE_UNKNOWN,
+        ])->save();
+
+        (new BulkRetryCampaignPostsJob([$post->campaign_id], true))->handle();
+
+        $post->refresh();
+        $this->assertSame('queued', $post->status);
+        $this->assertSame(0, $post->attempt_count);
+        $this->assertSame(6, (int) $post->dispatch_generation);
+        Queue::assertPushed(PublishCampaignPostJob::class, function ($job) use ($postId) {
+            return $job->campaignPostId === $postId && $job->dispatchGeneration === 6;
+        });
+    }
+
+    public function test_unique_id_is_post_and_generation(): void
+    {
+        $job = new PublishCampaignPostJob(42, 7);
+
+        $this->assertInstanceOf(\Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing::class, $job);
+        $this->assertSame('42:7', $job->uniqueId());
+    }
+
+    public function test_wordpress_write_url_creates_when_remote_id_missing(): void
+    {
+        $this->assertSame(
+            'https://example.com/wp-json/external/v1/posts/create',
+            PublishCampaignPostJob::wordpressWriteUrl('example.com', null)
+        );
+    }
+
+    public function test_wordpress_write_url_updates_when_remote_id_present(): void
+    {
+        $this->assertSame(
+            'https://example.com/wp-json/external/v1/posts/update/99',
+            PublishCampaignPostJob::wordpressWriteUrl('example.com', '99')
+        );
     }
 
     private function records(int $generation): int

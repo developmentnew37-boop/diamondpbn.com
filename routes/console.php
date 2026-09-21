@@ -39,6 +39,10 @@ Schedule::call(function () {
             $q->whereNull('locked_at')
                 ->orWhere('locked_at', '<', now()->subMinutes(5));
         })
+        ->where(function ($q) {
+            $q->whereNull('next_retry_at')
+                ->orWhere('next_retry_at', '<=', now());
+        })
         ->limit(50)
         ->get(['id', 'dispatch_generation']);
 

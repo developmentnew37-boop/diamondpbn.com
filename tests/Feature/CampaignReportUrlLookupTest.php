@@ -68,6 +68,18 @@ class CampaignReportUrlLookupTest extends TestCase
                 if (in_array($tableName, ['campaigns', 'schedule_campaigns'], true)) {
                     $table->boolean('is_sticky_campaign')->default(false);
                 }
+                if ($tableName === 'campaigns') {
+                    $table->unsignedBigInteger('converted_to_schedule_campaign_id')->nullable();
+                }
+                if ($tableName === 'sidebar_campaigns') {
+                    $table->unsignedBigInteger('converted_to_schedule_sidebar_campaign_id')->nullable();
+                }
+                if ($tableName === 'schedule_campaigns') {
+                    $table->unsignedBigInteger('converted_from_campaign_id')->nullable();
+                }
+                if ($tableName === 'schedule_sidebar_campaigns') {
+                    $table->unsignedBigInteger('converted_from_sidebar_campaign_id')->nullable();
+                }
                 $table->timestamps();
             });
         }
@@ -129,6 +141,7 @@ class CampaignReportUrlLookupTest extends TestCase
                 ->assertSee('2')
                 ->assertSee('Campaign found')
                 ->assertSee('Edit campaign', false)
+                ->assertSee('Delete campaign', false)
                 ->assertSee(url("/{$path}/{$campaignNo}/".self::TOKEN), false)
                 ->assertDontSee("{$campaignNo}/".self::TOKEN.'/export', false);
         }
@@ -204,6 +217,25 @@ class CampaignReportUrlLookupTest extends TestCase
         $this->post(route('admin.reports.find-campaign.lookup'), [
             'report_url' => '/campaign/report/anything/'.self::TOKEN,
         ])->assertRedirect(route('admin.dashboard'));
+    }
+
+    public function test_lookup_of_converted_live_url_returns_schedule_report(): void
+    {
+        $admin = $this->createAdmin(Admin::ADMIN, 'converted-owner@example.test');
+        $live = $this->createCampaign(Campaign::class, 'old-live', $admin->id, self::TOKEN);
+        $schedule = $this->createCampaign(ScheduleCampaign::class, 'new-drip', $admin->id, str_repeat('C', 64));
+        $live->forceFill(['converted_to_schedule_campaign_id' => $schedule->id])->save();
+        $schedule->forceFill(['converted_from_campaign_id' => $live->id])->save();
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.reports.find-campaign.lookup'), [
+                'report_url' => '/campaign/report/old-live/'.self::TOKEN,
+            ])
+            ->assertOk()
+            ->assertSee('Scheduled PBN Post')
+            ->assertSee('new-drip')
+            ->assertSee(url('/schedule/campaign/report/new-drip/'.str_repeat('C', 64)), false)
+            ->assertDontSee(url('/campaign/report/old-live/'.self::TOKEN), false);
     }
 
     private function createAdmin(int $type, string $email): Admin

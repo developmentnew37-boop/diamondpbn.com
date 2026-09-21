@@ -6,6 +6,7 @@ use App\Models\Admin\HiddenLinksCampaign;
 use App\Models\Admin\HiddenLinksCampaignTasks;
 use App\Services\HiddenLinksApiService;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -16,15 +17,37 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Throwable;
 
-class PublishHiddenLinksJob implements ShouldQueue
+class PublishHiddenLinksJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 1;
 
+    public int $uniqueFor = 3600;
+
     public function __construct(public int $taskId, public int $dispatchGeneration = 0)
     {
         $this->onQueue('hidden_links_campaigns');
+    }
+
+    public function uniqueId(): string
+    {
+        return $this->taskId.':'.$this->dispatchGeneration;
+    }
+
+    public static function hiddenLinksWriteUrl(string $domain, mixed $remoteId): string
+    {
+        $domain = trim($domain);
+        if (! preg_match('~^https?://~i', $domain)) {
+            $domain = 'https://'.$domain;
+        }
+
+        $base = rtrim($domain, '/');
+        if (filled($remoteId)) {
+            return $base.'/wp-json/external/v1/hidden-links/update/'.rawurlencode((string) $remoteId);
+        }
+
+        return $base.'/wp-json/external/v1/hidden-links/add';
     }
 
     /** Backoff in seconds when the job throws (e.g. DB/connection errors). */
@@ -123,7 +146,8 @@ class PublishHiddenLinksJob implements ShouldQueue
             }
 
             // ✅ Hidden Links endpoint
-            $endpoint = rtrim($base, '/').'/wp-json/external/v1/hidden-links/add';
+            $endpoint = self::hiddenLinksWriteUrl($base, $task->remote_id);
+            $isUpdate = filled($task->remote_id);
 
             // Always read boolean fields (for backward compatibility and payload)
             $nofollow = (bool) ($link->nofollow ?? false);
@@ -210,13 +234,16 @@ class PublishHiddenLinksJob implements ShouldQueue
             ) {
                 $remoteId = (string) $json['data'][0]['id'];
             }
+            if ($isUpdate && ! filled($remoteId)) {
+                $remoteId = (string) $task->remote_id;
+            }
             if (! is_array($json)) {
                 $json = ['raw' => $res->body()];
             }
 
             // Some remote implementations ignore rel on ADD.
             // Force rel persistence via UPDATE when we have a remote id.
-            if ($remoteId && count($rel) > 0) {
+            if (! $isUpdate && $remoteId && count($rel) > 0) {
                 $syncRes = HiddenLinksApiService::updateEntry(
                     $domain->name,
                     (string) $apiKey,

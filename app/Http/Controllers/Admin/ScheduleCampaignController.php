@@ -879,6 +879,9 @@ class ScheduleCampaignController extends Controller
         $canPublishRemaining = $remainingPublishableCount > 0
             && ! in_array((string) $campaign->status, ['paused', 'cancelled'], true);
 
+        $remainingRetryCount = $remainingPublishableCount;
+        $canRetryRemaining = $canPublishRemaining;
+
         return view(
             'admin.campaigns.pbn-post.view-schedule-campaign',
             compact(
@@ -891,6 +894,8 @@ class ScheduleCampaignController extends Controller
                 'recentReplacements',
                 'remainingPublishableCount',
                 'canPublishRemaining',
+                'remainingRetryCount',
+                'canRetryRemaining',
             )
         );
     }
@@ -1624,6 +1629,35 @@ class ScheduleCampaignController extends Controller
     }
 
     /**
+     * Retry remaining (failed + stuck queued/publishing) posts for this campaign.
+     */
+    public function retryRemainingNow(string $id)
+    {
+        $campaign = ScheduleCampaign::find($id);
+        if (! $campaign) {
+            return back()->with('cus__error', 'Campaign not found');
+        }
+
+        $this->authorizeCampaignAccess($campaign);
+
+        if (in_array((string) $campaign->status, ['paused', 'cancelled'], true)) {
+            return back()->with('cus__error', 'Cannot retry while the campaign is paused or cancelled.');
+        }
+
+        $remaining = BulkRetryScheduleCampaignPostsJob::retryableQuery((int) $campaign->id, true)->count();
+        if ($remaining < 1) {
+            return back()->with('cus__error', 'No remaining posts to retry.');
+        }
+
+        BulkRetryScheduleCampaignPostsJob::dispatch([(int) $campaign->id], true);
+
+        return back()->with(
+            'cus__success',
+            $remaining.' remaining post(s) queued for retry. Run the scheduled_campaigns queue worker to process them.'
+        );
+    }
+
+    /**
      * Bulk retry all failed posts across selected schedule campaigns.
      */
     public function bulkRetryFailed(Request $request)
@@ -1667,6 +1701,7 @@ class ScheduleCampaignController extends Controller
 
         $wasFailed = $post->status === 'failed';
         $campaign = $post->campaign;
+        $generation = (int) ($post->dispatch_generation ?? 0) + 1;
 
         $post->update([
             'status' => 'queued',
@@ -1675,6 +1710,7 @@ class ScheduleCampaignController extends Controller
             'next_retry_at' => null,
             'locked_at' => null,
             'lock_token' => null,
+            'dispatch_generation' => $generation,
         ]);
 
         if ($campaign) {
@@ -1685,7 +1721,7 @@ class ScheduleCampaignController extends Controller
             $counters->syncCampaignFromPosts($campaign->fresh());
         }
 
-        PublishScheduledCampaignPostJob::dispatch($post->id, (int) ($post->dispatch_generation ?? 0))->onQueue('scheduled_campaigns');
+        PublishScheduledCampaignPostJob::dispatch($post->id, $generation)->onQueue('scheduled_campaigns');
 
         return back()->with('cus__success', 'Post queued for retry.');
     }

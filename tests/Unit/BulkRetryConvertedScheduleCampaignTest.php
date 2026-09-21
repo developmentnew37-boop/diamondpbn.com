@@ -91,6 +91,7 @@ class BulkRetryConvertedScheduleCampaignTest extends TestCase
             $table->timestamp('next_retry_at')->nullable();
             $table->timestamp('locked_at')->nullable();
             $table->string('lock_token')->nullable();
+            $table->string('remote_id')->nullable();
             $table->timestamps();
         });
     }
@@ -229,7 +230,149 @@ class BulkRetryConvertedScheduleCampaignTest extends TestCase
         (new BulkRetryScheduleCampaignPostsJob([$campaign->id]))->handle($this->counters);
 
         $this->assertSame('queued', ScheduleCampaignPost::query()->find($postId)->status);
+        $this->assertSame(1, (int) ScheduleCampaignPost::query()->find($postId)->dispatch_generation);
+        Queue::assertPushed(PublishScheduledCampaignPostJob::class, function ($job) use ($postId) {
+            return $job->postId === $postId && $job->dispatchGeneration === 1;
+        });
+        Queue::assertNotPushed(DraftConvertedLivePostsJob::class);
+    }
+
+    public function test_bulk_retry_with_remote_id_still_dispatches_publish_job(): void
+    {
+        Queue::fake();
+
+        $campaign = ScheduleCampaign::query()->create([
+            'campaign_no' => 'SC-REMOTE-RETRY',
+            'admin_id' => $this->adminId(),
+            'status' => 'semi_failed',
+            'total_targets' => 1,
+            'completed_targets' => 0,
+            'failed_targets' => 1,
+            'converted_from_campaign_id' => null,
+            'report_token' => Str::random(64),
+        ]);
+
+        $postId = (int) ScheduleCampaignPost::query()->insertGetId([
+            'schedule_campaign_id' => $campaign->id,
+            'status' => 'failed',
+            'attempt_count' => 5,
+            'dispatch_generation' => 2,
+            'is_converted_live' => false,
+            'remote_id' => '123',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        (new BulkRetryScheduleCampaignPostsJob([$campaign->id]))->handle($this->counters);
+
+        $post = ScheduleCampaignPost::query()->find($postId);
+        $this->assertSame('queued', $post->status);
+        $this->assertSame('123', (string) $post->remote_id);
+        $this->assertSame(3, (int) $post->dispatch_generation);
+        Queue::assertPushed(PublishScheduledCampaignPostJob::class, function ($job) use ($postId) {
+            return $job->postId === $postId && $job->dispatchGeneration === 3;
+        });
+    }
+
+    public function test_failed_only_does_not_retry_queued_posts(): void
+    {
+        Queue::fake();
+
+        $campaign = ScheduleCampaign::query()->create([
+            'campaign_no' => 'SC-FAILED-ONLY',
+            'admin_id' => $this->adminId(),
+            'status' => 'semi_failed',
+            'total_targets' => 3,
+            'completed_targets' => 1,
+            'failed_targets' => 1,
+            'converted_from_campaign_id' => null,
+            'report_token' => Str::random(64),
+        ]);
+
+        $queuedId = (int) ScheduleCampaignPost::query()->insertGetId([
+            'schedule_campaign_id' => $campaign->id,
+            'status' => 'queued',
+            'dispatch_generation' => 2,
+            'is_converted_live' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $failedId = (int) ScheduleCampaignPost::query()->insertGetId([
+            'schedule_campaign_id' => $campaign->id,
+            'status' => 'failed',
+            'dispatch_generation' => 3,
+            'is_converted_live' => false,
+            'last_error' => 'down',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->assertSame(1, BulkRetryScheduleCampaignPostsJob::retryableQuery((int) $campaign->id, false)->count());
+        $this->assertSame(2, BulkRetryScheduleCampaignPostsJob::retryableQuery((int) $campaign->id, true)->count());
+
+        (new BulkRetryScheduleCampaignPostsJob([$campaign->id]))->handle($this->counters);
+
+        $this->assertSame(2, (int) ScheduleCampaignPost::query()->find($queuedId)->dispatch_generation);
+        $this->assertSame(4, (int) ScheduleCampaignPost::query()->find($failedId)->dispatch_generation);
         Queue::assertPushed(PublishScheduledCampaignPostJob::class, 1);
+    }
+
+    public function test_include_stuck_retries_queued_and_failed_and_skips_converted_live(): void
+    {
+        Queue::fake();
+
+        $campaign = ScheduleCampaign::query()->create([
+            'campaign_no' => 'SC-INCLUDE-STUCK',
+            'admin_id' => $this->adminId(),
+            'status' => 'semi_failed',
+            'total_targets' => 4,
+            'completed_targets' => 1,
+            'failed_targets' => 1,
+            'converted_from_campaign_id' => null,
+            'report_token' => Str::random(64),
+        ]);
+
+        $successId = (int) ScheduleCampaignPost::query()->insertGetId([
+            'schedule_campaign_id' => $campaign->id,
+            'status' => 'success',
+            'dispatch_generation' => 1,
+            'is_converted_live' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $queuedId = (int) ScheduleCampaignPost::query()->insertGetId([
+            'schedule_campaign_id' => $campaign->id,
+            'status' => 'queued',
+            'dispatch_generation' => 4,
+            'is_converted_live' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $failedId = (int) ScheduleCampaignPost::query()->insertGetId([
+            'schedule_campaign_id' => $campaign->id,
+            'status' => 'failed',
+            'dispatch_generation' => 5,
+            'is_converted_live' => false,
+            'last_error' => 'down',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $convertedId = (int) ScheduleCampaignPost::query()->insertGetId([
+            'schedule_campaign_id' => $campaign->id,
+            'status' => 'queued',
+            'dispatch_generation' => 9,
+            'is_converted_live' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        (new BulkRetryScheduleCampaignPostsJob([$campaign->id], true))->handle($this->counters);
+
+        $this->assertSame('success', ScheduleCampaignPost::query()->find($successId)->status);
+        $this->assertSame(5, (int) ScheduleCampaignPost::query()->find($queuedId)->dispatch_generation);
+        $this->assertSame(6, (int) ScheduleCampaignPost::query()->find($failedId)->dispatch_generation);
+        $this->assertSame(9, (int) ScheduleCampaignPost::query()->find($convertedId)->dispatch_generation);
+        Queue::assertPushed(PublishScheduledCampaignPostJob::class, 2);
         Queue::assertNotPushed(DraftConvertedLivePostsJob::class);
     }
 

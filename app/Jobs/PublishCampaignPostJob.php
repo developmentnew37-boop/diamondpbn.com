@@ -9,6 +9,7 @@ use App\Models\Admin\CampaignDomain;
 use App\Models\Admin\CampaignPost;
 use App\Services\CampaignPostContentBuilder;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Http\Client\ConnectionException;
@@ -19,11 +20,13 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Throwable;
 
-class PublishCampaignPostJob implements ShouldQueue
+class PublishCampaignPostJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 1;
+
+    public int $uniqueFor = 3600;
 
     public int $dispatchGeneration = 0;
 
@@ -33,6 +36,11 @@ class PublishCampaignPostJob implements ShouldQueue
     ) {
         $this->dispatchGeneration = $dispatchGeneration;
         $this->onQueue('campaigns');
+    }
+
+    public function uniqueId(): string
+    {
+        return $this->campaignPostId.':'.$this->dispatchGeneration;
     }
 
     public function handle(): void
@@ -55,7 +63,7 @@ class PublishCampaignPostJob implements ShouldQueue
                 return null;
             }
 
-            if ($p->dispatch_generation !== $this->dispatchGeneration) {
+            if ((int) $p->dispatch_generation !== $this->dispatchGeneration) {
                 return null;
             }
             if (in_array($p->status, ['success', 'failed'], true)) {
@@ -768,7 +776,7 @@ class PublishCampaignPostJob implements ShouldQueue
     {
         return $fresh !== null
             && $fresh->lock_token === $claimed->lock_token
-            && $fresh->dispatch_generation === $this->dispatchGeneration;
+            && (int) $fresh->dispatch_generation === $this->dispatchGeneration;
     }
 
     /**
@@ -818,16 +826,58 @@ class PublishCampaignPostJob implements ShouldQueue
         return self::classifyDeliveryFailure($exception);
     }
 
-    private function postToWordPress(CampaignPost $post, string $title, string $content): array
+    /**
+     * Create a new remote post, or update the existing one when remote_id is already known.
+     */
+    public static function wordpressWriteUrl(string $domain, mixed $remoteId): string
     {
-        $domain = trim((string) $post->campaignDomain->domain->name);
-
-        // ✅ Ensure scheme
+        $domain = trim($domain);
         if (! preg_match('~^https?://~i', $domain)) {
             $domain = 'https://'.$domain;
         }
 
-        $endpoint = rtrim($domain, '/').'/wp-json/external/v1/posts/create';
+        $base = rtrim($domain, '/');
+        if (filled($remoteId)) {
+            return $base.'/wp-json/external/v1/posts/update/'.$remoteId;
+        }
+
+        return $base.'/wp-json/external/v1/posts/create';
+    }
+
+    /**
+     * @param  array{json: mixed, http_status: int}  $remote
+     */
+    private function remoteUpdateSucceeded(array $remote): bool
+    {
+        $http = (int) ($remote['http_status'] ?? 0);
+        if ($http < 200 || $http >= 300) {
+            return false;
+        }
+
+        $json = $remote['json'] ?? [];
+        if (! is_array($json)) {
+            return false;
+        }
+
+        if (array_key_exists('success', $json) && ! $json['success']) {
+            return false;
+        }
+
+        if (! empty($json['code']) && in_array($json['code'], ['bad_key', 'not_found', 'missing_dep'], true)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private function postToWordPress(CampaignPost $post, string $title, string $content): array
+    {
+        $domain = trim((string) $post->campaignDomain->domain->name);
+        $endpoint = self::wordpressWriteUrl($domain, $post->remote_id);
+        $apiKey = (string) $post->campaignDomain->domain->api_key;
+        if (filled($post->remote_id)) {
+            $endpoint .= (str_contains($endpoint, '?') ? '&' : '?').'api_key='.urlencode($apiKey);
+        }
 
         $payload = [
             'title' => $title,
@@ -835,7 +885,7 @@ class PublishCampaignPostJob implements ShouldQueue
             'status' => 'publish',
             'post_type' => 'post',
             'is_sticky' => $post->is_sticky,
-            'api_key' => (string) $post->campaignDomain->domain->api_key,
+            'api_key' => $apiKey,
         ];
 
         // ✅ UTF-8 Safe: Use proper headers and ensure payload is clean
@@ -853,6 +903,20 @@ class PublishCampaignPostJob implements ShouldQueue
         $json = $res->json();
         if (! is_array($json)) {
             throw new \Exception('WP API returned non-JSON response: '.$res->body());
+        }
+
+        if (filled($post->remote_id)) {
+            if (! $this->remoteUpdateSucceeded(['json' => $json, 'http_status' => $res->status()])) {
+                throw new \Exception('WP API update failed ('.$res->status().'): '.$res->body());
+            }
+            if (! isset($json['post_id']) || $json['post_id'] === null || $json['post_id'] === '') {
+                $json['post_id'] = $post->remote_id;
+            }
+            if (empty($json['remote_url']) && filled($post->remote_url)) {
+                $json['remote_url'] = $post->remote_url;
+            }
+
+            return $json;
         }
 
         if (! isset($json['post_id']) || (array_key_exists('success', $json) && $json['success'] !== true)) {

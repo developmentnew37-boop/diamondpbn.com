@@ -174,6 +174,7 @@ class CampaignKeywordUrlLookupService
             $token = (string) ($campaign->report_token ?? '');
 
             $bulkReplaceUrl = app(CampaignBulkReplaceUrlResolver::class)->resolveUrl($campaign, $admin);
+            $destroy = app(CampaignDestructiveActionResolver::class)->resolve($campaign);
 
             $matches[] = [
                 'type' => $type,
@@ -196,6 +197,7 @@ class CampaignKeywordUrlLookupService
                     ])
                     : null,
                 'bulk_replace_url' => $bulkReplaceUrl,
+                ...$destroy,
             ];
         }
 
