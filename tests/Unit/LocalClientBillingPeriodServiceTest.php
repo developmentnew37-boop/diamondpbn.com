@@ -95,6 +95,7 @@ class LocalClientBillingPeriodServiceTest extends TestCase
             $table->boolean('is_sticky_campaign')->default(false);
             $table->unsignedBigInteger('local_client_id')->nullable();
             $table->decimal('billing_total', 12, 2)->nullable();
+            $table->decimal('billing_amount_paid', 12, 2)->nullable();
             $table->string('billing_currency', 3)->nullable();
             $table->json('billing_snapshot')->nullable();
             $table->string('billing_payment_status')->nullable();
@@ -375,5 +376,33 @@ class LocalClientBillingPeriodServiceTest extends TestCase
         $campaign->delete();
 
         $this->assertSame(0, \App\Models\Admin\LocalClientBillLine::count());
+    }
+
+    public function test_open_period_uses_balance_due_for_semi_paid_campaigns(): void
+    {
+        $client = LocalClient::create([
+            'name' => 'Client A',
+            'default_currency' => 'USD',
+            'billing_report_token' => str_repeat('p', 64),
+            'created_by_admin_id' => 1,
+        ]);
+
+        Campaign::create([
+            'campaign_no' => 'cmp-semi',
+            'report_token' => str_repeat('q', 64),
+            'admin_id' => 1,
+            'local_client_id' => $client->id,
+            'billing_total' => 140,
+            'billing_amount_paid' => 100,
+            'billing_currency' => 'USD',
+            'billing_snapshot' => ['total' => '140.00', 'lines' => []],
+            'billing_payment_status' => 'semi_paid',
+        ]);
+
+        $periods = app(LocalClientBillingPeriodService::class)->periodsForClient($client);
+
+        $this->assertCount(1, $periods);
+        $this->assertTrue($periods->first()['is_open']);
+        $this->assertSame(40.0, $periods->first()['total_amount']);
     }
 }

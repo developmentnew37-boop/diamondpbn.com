@@ -440,17 +440,10 @@
                                                     @endif
                                                 </td>
                                                 <td>
-                                                    @if (($row['billing_payment_status'] ?? '') === 'paid')
-                                                        <span class="billing-status-badge paid">
-                                                            <span class="billing-status-dot"></span>
-                                                            Paid
-                                                        </span>
-                                                    @else
-                                                        <span class="billing-status-badge unpaid">
-                                                            <span class="billing-status-dot"></span>
-                                                            Unpaid
-                                                        </span>
-                                                    @endif
+                                                    <span class="billing-status-badge {{ \App\Services\LocalClientBillingService::paymentStatusClass($row['billing_payment_status'] ?? null) }}">
+                                                        <span class="billing-status-dot"></span>
+                                                        {{ \App\Services\LocalClientBillingService::paymentStatusLabel($row['billing_payment_status'] ?? null) }}
+                                                    </span>
                                                 </td>
                                                 <td>
                                                     @if (! empty($row['report_url']))
@@ -527,17 +520,10 @@
                                             </div>
                                             <div>
                                                 <label>Status</label>
-                                                @if (($row['billing_payment_status'] ?? '') === 'paid')
-                                                    <span class="billing-status-badge paid">
-                                                        <span class="billing-status-dot"></span>
-                                                        Paid
-                                                    </span>
-                                                @else
-                                                    <span class="billing-status-badge unpaid">
-                                                        <span class="billing-status-dot"></span>
-                                                        Unpaid
-                                                    </span>
-                                                @endif
+                                                <span class="billing-status-badge {{ \App\Services\LocalClientBillingService::paymentStatusClass($row['billing_payment_status'] ?? null) }}">
+                                                    <span class="billing-status-dot"></span>
+                                                    {{ \App\Services\LocalClientBillingService::paymentStatusLabel($row['billing_payment_status'] ?? null) }}
+                                                </span>
                                             </div>
                                         </div>
                                         @if (! empty($row['report_url']))

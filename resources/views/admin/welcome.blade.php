@@ -3,6 +3,7 @@
 @section('title', 'Dashboard - Diamond PBN')
 
 @push('style')
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <style>
         .dashboard-stat-card {
             transition: box-shadow 0.2s ease, transform 0.2s ease;
@@ -146,7 +147,7 @@
         </section>
 
         {{-- PBN Analytics: compact horizontal cards, tight gaps --}}
-        <section class="rounded-2xl border border-gray-200/80 bg-white !p-4 sm:!p-5 shadow-sm">
+        <section id="pbn-analytics-section" class="rounded-2xl border border-gray-200/80 bg-white !p-4 sm:!p-5 shadow-sm {{ !empty($loadAnalytics) ? 'opacity-80' : '' }}">
             <div class="!mb-3 sm:!mb-4">
                 <h2 class="text-lg font-semibold text-gray-900">PBN Analytics</h2>
                 <p class="text-sm text-gray-500 !mt-0.5">
@@ -171,7 +172,7 @@
                                 </svg>
                             </div>
                             <div class="min-w-0 flex-1">
-                                <p class="text-lg sm:text-xl font-bold tabular-nums leading-tight text-gray-900">
+                                <p class="dashboard-stat-count text-lg sm:text-xl font-bold tabular-nums leading-tight text-gray-900">
                                     {{ number_format($stat['count']) }}</p>
                                 <p class="text-[11px] sm:text-xs text-gray-600 leading-snug line-clamp-2">{{ $stat['label'] }}</p>
                             </div>
@@ -264,8 +265,8 @@
                                 <span class="material-symbols-outlined text-emerald-800">admin_panel_settings</span>
                             </div>
                             <div>
-                                <p class="text-2xl font-bold text-emerald-800">
-                                    {{ \App\Models\Admin::where('type', 0)->count() }}</p>
+                                <p id="user-stat-super" class="text-2xl font-bold text-emerald-800">
+                                    {{ number_format($userRoleCounts['super'] ?? 0) }}</p>
                                 <p class="text-xs font-medium text-emerald-700">Super Admins</p>
                             </div>
                         </div>
@@ -274,8 +275,8 @@
                                 <span class="material-symbols-outlined text-blue-800">shield_person</span>
                             </div>
                             <div>
-                                <p class="text-2xl font-bold text-blue-800">
-                                    {{ \App\Models\Admin::where('type', 1)->count() }}</p>
+                                <p id="user-stat-admin" class="text-2xl font-bold text-blue-800">
+                                    {{ number_format($userRoleCounts['admin'] ?? 0) }}</p>
                                 <p class="text-xs font-medium text-blue-700">Admins</p>
                             </div>
                         </div>
@@ -284,8 +285,8 @@
                                 <span class="material-symbols-outlined text-purple-800">group</span>
                             </div>
                             <div>
-                                <p class="text-2xl font-bold text-purple-800">
-                                    {{ \App\Models\Admin::where('type', 2)->count() }}</p>
+                                <p id="user-stat-member" class="text-2xl font-bold text-purple-800">
+                                    {{ number_format($userRoleCounts['member'] ?? 0) }}</p>
                                 <p class="text-xs font-medium text-purple-700">Members</p>
                             </div>
                         </div>
@@ -299,11 +300,12 @@
                     <a href="{{ route('admin.articles.language.index') }}"
                         class="text-sm font-medium text-blue-600 hover:underline shrink-0">Manage languages</a>
                 </div>
+                <div id="articles-by-language-body">
                 @if (count($articlesByLanguage['labels']) > 0)
                     <div class="flex flex-col !gap-4 lg:flex-row lg:items-center">
                         <div id="articlesByLanguageChart" class="w-full lg:w-1/2 !mx-auto min-w-0" style="min-height: 260px;"></div>
                         <div class="w-full lg:w-1/2 min-w-0">
-                            <div class="grid grid-cols-1 sm:grid-cols-2 !gap-2 sm:!gap-2 max-h-[280px] overflow-y-auto !pr-1">
+                            <div id="articles-by-language-list" class="grid grid-cols-1 sm:grid-cols-2 !gap-2 sm:!gap-2 max-h-[280px] overflow-y-auto !pr-1">
                                 @foreach ($articlesByLanguage['labels'] as $index => $language)
                                     <div
                                         class="flex items-center !gap-2 rounded-xl border border-gray-100 bg-gray-50/80 !p-2.5 sm:!p-3">
@@ -322,9 +324,10 @@
                 @else
                     <div class="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 py-10 text-center text-gray-500">
                         <span class="material-symbols-outlined text-4xl mb-2 opacity-60">article</span>
-                        <p class="text-sm">No articles found. Create articles to see language distribution.</p>
+                        <p class="text-sm">{{ !empty($loadAnalytics) ? 'Loading language distribution…' : 'No articles found. Create articles to see language distribution.' }}</p>
                     </div>
                 @endif
+                </div>
             </section>
         </div>
 
@@ -408,7 +411,7 @@
                                 @endforeach
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="domain-categories-table-body">
                             @forelse ($domainCategories as $index => $domain)
                                 <tr class="border-b border-gray-100 hover:bg-gray-50/80">
                                     <td class="!px-2 !py-3">{{ $index + 1 }}</td>
@@ -507,162 +510,111 @@
 @endsection
 
 @push('scripts')
-    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts" defer></script>
     <script>
-        // Chart data from server
-        const chartData = @json($chartData);
-        const articleUsage = @json($articleUsage);
-
-        // PBN Campaigns Chart
-        const categories = chartData.categories;
-        const pbnPostCampaigns = chartData.pbnPostCampaigns;
-        const pbnBlogrollCampaigns = chartData.pbnBlogrollCampaigns;
-        const pbnStickyCampaigns = chartData.pbnStickyCampaigns;
+        let chartData = @json($chartData);
+        let articleUsage = @json($articleUsage);
+        let articlesByLanguage = @json($articlesByLanguage);
+        const loadDashboardAnalytics = @json(!empty($loadAnalytics));
+        const dashboardAnalyticsUrl = @json(route('admin.dashboard.analytics'));
+        const dashboardCampaignsUrl = @json(route('admin.dashboard.campaigns'));
+        const domainIndexBaseUrl = @json(route('admin.domain.index'));
 
         const kFmt = (val) => (val === 0 ? "0" : val < 1000 ? val.toString() : `${Math.round(val/1000)}K`);
+        const numFmt = (val) => Number(val || 0).toLocaleString();
+        const escapeHtml = (value) => String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
 
-        const options = {
+        let mainChart = null;
+        let usageChart = null;
+        let languageChart = null;
+
+        const mainChartOptions = () => ({
             chart: {
                 width: "100%",
                 height: 340,
                 type: "line",
-                toolbar: {
-                    show: false
-                },
+                toolbar: { show: false },
                 foreColor: "#64748b",
                 fontFamily: "Outfit, sans-serif",
             },
             series: [{
                     name: "PBN Posts",
                     type: "column",
-                    data: pbnPostCampaigns,
+                    data: chartData.pbnPostCampaigns,
                     color: "#ff4a17"
                 },
                 {
                     name: "PBN Blogroll",
                     type: "column",
-                    data: pbnBlogrollCampaigns,
+                    data: chartData.pbnBlogrollCampaigns,
                     color: "#cbd5e1"
                 },
                 {
                     name: "PBN Hidden Links",
                     type: "line",
-                    data: pbnStickyCampaigns,
+                    data: chartData.pbnStickyCampaigns,
                     color: "#ff4a17"
                 },
             ],
-            stroke: {
-                width: [0, 0, 3],
-                curve: "smooth"
-            },
-            dataLabels: {
-                enabled: false
-            },
-            markers: {
-                size: [0, 0, 3],
-                strokeWidth: 0
-            },
+            stroke: { width: [0, 0, 3], curve: "smooth" },
+            dataLabels: { enabled: false },
+            markers: { size: [0, 0, 3], strokeWidth: 0 },
             grid: {
                 borderColor: "#e2e8f0",
                 strokeDashArray: 4,
-                padding: {
-                    left: 8,
-                    right: 8
-                },
+                padding: { left: 8, right: 8 },
             },
             xaxis: {
-                categories,
-                axisBorder: {
-                    show: false
-                },
-                axisTicks: {
-                    show: false
-                },
+                categories: chartData.categories,
+                axisBorder: { show: false },
+                axisTicks: { show: false },
                 labels: {
                     minHeight: 22,
-                    style: {
-                        fontSize: "12px",
-                        fontFamily: "Outfit, sans-serif"
-                    }
+                    style: { fontSize: "12px", fontFamily: "Outfit, sans-serif" }
                 },
             },
             yaxis: {
                 min: 0,
                 tickAmount: 7,
                 labels: {
-                    style: {
-                        fontFamily: "Outfit, sans-serif"
-                    },
+                    style: { fontFamily: "Outfit, sans-serif" },
                     formatter: (val) => kFmt(Math.round(val)),
                 },
             },
-            plotOptions: {
-                bar: {
-                    columnWidth: "26%",
-                    borderRadius: 6
-                }
-            },
+            plotOptions: { bar: { columnWidth: "26%", borderRadius: 6 } },
             tooltip: {
                 shared: true,
                 intersect: false,
-                style: {
-                    fontFamily: "Outfit, sans-serif"
-                },
-                y: {
-                    formatter: (val) => val
-                },
+                style: { fontFamily: "Outfit, sans-serif" },
+                y: { formatter: (val) => val },
             },
-            legend: {
-                show: false,
-                fontFamily: "Outfit, sans-serif"
-            },
+            legend: { show: false, fontFamily: "Outfit, sans-serif" },
             responsive: [{
                     breakpoint: 1024,
-                    options: {
-                        plotOptions: {
-                            bar: {
-                                columnWidth: "32%"
-                            }
-                        }
-                    },
+                    options: { plotOptions: { bar: { columnWidth: "32%" } } },
                 },
                 {
                     breakpoint: 640,
                     options: {
-                        chart: {
-                            height: 280,
-                        },
-                        yaxis: {
-                            tickAmount: 5
-                        },
-                        grid: {
-                            padding: {
-                                left: 0,
-                                right: 0
-                            }
-                        },
-                        plotOptions: {
-                            bar: {
-                                columnWidth: "38%",
-                                borderRadius: 5
-                            }
-                        },
-                        markers: {
-                            size: [0, 0, 2.5]
-                        },
+                        chart: { height: 280 },
+                        yaxis: { tickAmount: 5 },
+                        grid: { padding: { left: 0, right: 0 } },
+                        plotOptions: { bar: { columnWidth: "38%", borderRadius: 5 } },
+                        markers: { size: [0, 0, 2.5] },
                     },
                 },
             ],
-        };
+        });
 
-        // Articles Usage Chart
-        const options2 = {
+        const usageChartOptions = () => ({
             chart: {
                 type: "radialBar",
                 height: 220,
-                toolbar: {
-                    show: false
-                },
+                toolbar: { show: false },
                 fontFamily: "Outfit, sans-serif",
             },
             series: [articleUsage.percentage],
@@ -680,18 +632,10 @@
                 radialBar: {
                     startAngle: -90,
                     endAngle: 90,
-                    hollow: {
-                        size: "60%"
-                    },
-                    track: {
-                        background: "#e2e8f0",
-                        strokeWidth: "90%",
-                        margin: 4,
-                    },
+                    hollow: { size: "60%" },
+                    track: { background: "#e2e8f0", strokeWidth: "90%", margin: 4 },
                     dataLabels: {
-                        name: {
-                            show: false
-                        },
+                        name: { show: false },
                         value: {
                             show: true,
                             fontSize: "24px",
@@ -703,24 +647,15 @@
                     },
                 },
             },
-            stroke: {
-                lineCap: "round"
-            },
+            stroke: { lineCap: "round" },
             tooltip: {
                 enabled: true,
-                y: {
-                    formatter: (val) => `${val}%`
-                },
-                style: {
-                    fontFamily: "Outfit, sans-serif"
-                },
+                y: { formatter: (val) => `${val}%` },
+                style: { fontFamily: "Outfit, sans-serif" },
             },
-        };
+        });
 
-        // Articles by Language Chart
-        const articlesByLanguage = @json($articlesByLanguage);
-
-        const languageChartOptions = {
+        const languageChartOptions = () => ({
             chart: {
                 type: 'donut',
                 height: 300,
@@ -744,45 +679,164 @@
                     }
                 }
             },
-            legend: {
-                show: false
-            },
+            legend: { show: false },
             dataLabels: {
                 enabled: true,
-                formatter: (val, opts) => {
-                    return opts.w.config.series[opts.seriesIndex];
-                }
+                formatter: (val, opts) => opts.w.config.series[opts.seriesIndex],
             },
             tooltip: {
-                y: {
-                    formatter: (val) => val.toLocaleString() + ' articles'
+                y: { formatter: (val) => val.toLocaleString() + ' articles' }
+            }
+        });
+
+        function renderMainCharts() {
+            const mainChartEl = document.querySelector("#pbncampaigns-data");
+            if (mainChartEl && window.ApexCharts) {
+                if (mainChart) {
+                    mainChart.updateOptions(mainChartOptions());
+                } else {
+                    mainChart = new ApexCharts(mainChartEl, mainChartOptions());
+                    mainChart.render();
                 }
             }
-        };
+
+            const articlesChartEl = document.querySelector("#articlesChart");
+            if (articlesChartEl && window.ApexCharts) {
+                if (usageChart) {
+                    usageChart.updateOptions(usageChartOptions());
+                } else {
+                    usageChart = new ApexCharts(articlesChartEl, usageChartOptions());
+                    usageChart.render();
+                }
+            }
+        }
+
+        function renderLanguageChart() {
+            const langChartEl = document.querySelector("#articlesByLanguageChart");
+            if (!langChartEl || !window.ApexCharts || !articlesByLanguage.data.length) {
+                return;
+            }
+            if (languageChart) {
+                languageChart.updateOptions(languageChartOptions());
+                return;
+            }
+            languageChart = new ApexCharts(langChartEl, languageChartOptions());
+            languageChart.render();
+        }
+
+        function applyDashboardData(data) {
+            if (!data) return;
+
+            chartData = data.chartData || chartData;
+            articleUsage = data.articleUsage || articleUsage;
+            articlesByLanguage = data.articlesByLanguage || articlesByLanguage;
+
+            const visibleStats = (data.stats || []).filter((stat) => stat.visible !== false);
+            document.querySelectorAll('.dashboard-stat-count').forEach((el, index) => {
+                if (visibleStats[index]) {
+                    el.textContent = numFmt(visibleStats[index].count);
+                }
+            });
+
+            const totalEl = document.getElementById('TotalCount');
+            const usedEl = document.getElementById('usedCount');
+            const remainingEl = document.getElementById('remainingCount');
+            const usageMsg = document.getElementById('usageMsg');
+            if (totalEl) totalEl.textContent = numFmt(articleUsage.total);
+            if (usedEl) usedEl.textContent = numFmt(articleUsage.used);
+            if (remainingEl) remainingEl.textContent = numFmt(articleUsage.remaining);
+            if (usageMsg) {
+                usageMsg.innerHTML = `You've used <strong>${articleUsage.percentage}%</strong> of your articles.
+                        <strong>${numFmt(articleUsage.remaining)}</strong> remain available.`;
+            }
+
+            const superEl = document.getElementById('user-stat-super');
+            const adminEl = document.getElementById('user-stat-admin');
+            const memberEl = document.getElementById('user-stat-member');
+            if (data.userRoleCounts) {
+                if (superEl) superEl.textContent = numFmt(data.userRoleCounts.super);
+                if (adminEl) adminEl.textContent = numFmt(data.userRoleCounts.admin);
+                if (memberEl) memberEl.textContent = numFmt(data.userRoleCounts.member);
+            }
+
+            renderLanguageSection(articlesByLanguage);
+            if (typeof window.renderCampaigns === 'function') {
+                window.renderCampaigns(data.campaigns || [], '/admin/campaign/');
+            }
+            renderDomainCategories(data.domainCategories || []);
+            renderMainCharts();
+            renderLanguageChart();
+
+            document.getElementById('pbn-analytics-section')?.classList.remove('opacity-80');
+        }
+
+        function renderLanguageSection(languageData) {
+            const body = document.getElementById('articles-by-language-body');
+            if (!body) return;
+
+            if (!languageData.labels || languageData.labels.length === 0) {
+                body.innerHTML = `
+                    <div class="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 py-10 text-center text-gray-500">
+                        <span class="material-symbols-outlined text-4xl mb-2 opacity-60">article</span>
+                        <p class="text-sm">No articles found. Create articles to see language distribution.</p>
+                    </div>`;
+                languageChart = null;
+                return;
+            }
+
+            const list = languageData.labels.map((language, index) => `
+                <div class="flex items-center !gap-2 rounded-xl border border-gray-100 bg-gray-50/80 !p-2.5 sm:!p-3">
+                    <div class="h-3.5 w-3.5 shrink-0 rounded-full" style="background-color: ${languageData.colors[index]}"></div>
+                    <div class="min-w-0 flex-1">
+                        <p class="text-sm font-medium text-gray-800 truncate">${escapeHtml(language)}</p>
+                        <p class="text-lg font-bold text-gray-900">${numFmt(languageData.data[index])}</p>
+                    </div>
+                </div>`).join('');
+
+            body.innerHTML = `
+                <div class="flex flex-col !gap-4 lg:flex-row lg:items-center">
+                    <div id="articlesByLanguageChart" class="w-full lg:w-1/2 !mx-auto min-w-0" style="min-height: 260px;"></div>
+                    <div class="w-full lg:w-1/2 min-w-0">
+                        <div id="articles-by-language-list" class="grid grid-cols-1 sm:grid-cols-2 !gap-2 sm:!gap-2 max-h-[280px] overflow-y-auto !pr-1">
+                            ${list}
+                        </div>
+                    </div>
+                </div>`;
+            languageChart = null;
+        }
+
+        function renderDomainCategories(categories) {
+            const body = document.getElementById('domain-categories-table-body');
+            if (!body) return;
+            if (!categories.length) {
+                body.innerHTML = `<tr><td colspan="4" class="!px-2 !py-8 text-center text-gray-500">No domain categories found</td></tr>`;
+                return;
+            }
+
+            body.innerHTML = categories.map((domain, index) => `
+                <tr class="border-b border-gray-100 hover:bg-gray-50/80">
+                    <td class="!px-2 !py-3">${index + 1}</td>
+                    <td class="!px-2 !py-3">${escapeHtml(domain.domain)}</td>
+                    <td class="!px-2 !py-3 tabular-nums">${numFmt(domain.quantity)}</td>
+                    <td class="!px-2 !py-2">
+                        <a href="${domainIndexBaseUrl}?category_id=${encodeURIComponent(domain.id)}"
+                            class="inline-flex h-9 w-9 items-center justify-center rounded-full bg-slate-800 text-white transition hover:bg-slate-700"
+                            title="View domains">
+                            <span class="material-symbols-outlined !text-[18px]">visibility</span>
+                        </a>
+                    </td>
+                </tr>`).join('');
+        }
 
         document.addEventListener("DOMContentLoaded", () => {
-            const mainChartEl = document.querySelector("#pbncampaigns-data");
-            if (mainChartEl) {
-                new ApexCharts(mainChartEl, options).render();
-            }
-            const articlesChartEl = document.querySelector("#articlesChart");
-            if (articlesChartEl) {
-                new ApexCharts(articlesChartEl, options2).render();
-            }
+            renderMainCharts();
+            renderLanguageChart();
 
-            // Articles by Language chart
-            const langChartEl = document.querySelector("#articlesByLanguageChart");
-            if (langChartEl && articlesByLanguage.data.length > 0) {
-                new ApexCharts(langChartEl, languageChartOptions).render();
-            }
-
-            // Campaign tabs functionality
             const campaignTabs = document.querySelectorAll('.campaign-tab-btn');
             const campaignTableBody = document.getElementById('campaigns-table-body');
-            let url = '';
+
             campaignTabs.forEach(tab => {
                 tab.addEventListener('click', async function() {
-                    // Update active state
                     campaignTabs.forEach(t => {
                         t.classList.remove('active-bg');
                         t.classList.add('bg-black');
@@ -790,23 +844,19 @@
                     this.classList.remove('bg-black');
                     this.classList.add('active-bg');
 
-                    // Fetch campaigns
                     const type = this.dataset.campaignType;
-
+                    let url = '/admin/campaign/';
                     if (type == 'dripfeed' || type == 'schedule_sticky') {
-                        url = '/admin/campaign/post/schedule/'
+                        url = '/admin/campaign/post/schedule/';
                     } else if (type == 'sidebar') {
-                        url = '/admin/sidebar/campaign/'
-                    } else {
-                        url = '/admin/campaign/'
+                        url = '/admin/sidebar/campaign/';
                     }
-                    try {
-                        const response = await fetch(
-                            `{{ route('admin.dashboard.campaigns') }}?type=${type}`);
-                        const data = await response.json();
 
+                    try {
+                        const response = await fetch(`${dashboardCampaignsUrl}?type=${type}`);
+                        const data = await response.json();
                         if (data.success) {
-                            renderCampaigns(data.campaigns,url);
+                            renderCampaigns(data.campaigns, url);
                         }
                     } catch (error) {
                         console.error('Error fetching campaigns:', error);
@@ -822,27 +872,38 @@
                     <td colspan="8" class="!px-2 !py-8 text-center text-gray-500">
                         No campaigns found
                     </td>
-                </tr>
-            `;
+                </tr>`;
                     return;
                 }
 
                 campaignTableBody.innerHTML = campaigns.map((campaign, index) => `
             <tr class="border-b border-gray-100 hover:bg-gray-50/80">
                 <td class="!px-2 !py-2.5">${index + 1}</td>
-                <td class="!px-2 !py-2.5 max-w-[200px] truncate">${campaign.campaign}</td>
-                <td class="!px-2 !py-2.5">${campaign.domain}</td>
+                <td class="!px-2 !py-2.5 max-w-[200px] truncate">${escapeHtml(campaign.campaign)}</td>
+                <td class="!px-2 !py-2.5">${escapeHtml(campaign.domain)}</td>
                 <td class="!px-2 !py-2.5">${campaign.quantity}</td>
                 <td class="!px-2 !py-2.5">${campaign.links}</td>
                 <td class="!px-2 !py-2.5">${campaign.keywords}</td>
-                <td class="!px-2 !py-2.5 whitespace-nowrap">${campaign.date}</td>
+                <td class="!px-2 !py-2.5 whitespace-nowrap">${escapeHtml(campaign.date)}</td>
                 <td class="!px-2 !py-2.5">
                         <a href="${url}${campaign.id}" class="inline-flex items-center justify-center rounded-lg bg-emerald-600 !px-3 !py-1.5 text-xs font-medium text-white transition hover:bg-emerald-700">
                             View
                         </a>
                 </td>
-            </tr>
-        `).join('');
+            </tr>`).join('');
+            }
+
+            window.renderCampaigns = renderCampaigns;
+
+            if (loadDashboardAnalytics) {
+                fetch(dashboardAnalyticsUrl)
+                    .then((response) => response.json())
+                    .then((payload) => {
+                        if (payload.success) {
+                            applyDashboardData(payload.data);
+                        }
+                    })
+                    .catch((error) => console.error('Error fetching dashboard analytics:', error));
             }
         });
     </script>

@@ -353,7 +353,7 @@ class LocalClientBillingFeatureTest extends TestCase
             ->assertDontSee($wrongReportUrl, false);
     }
 
-    public function test_sync_billing_recalculates_total_and_marks_paid_unpaid(): void
+    public function test_sync_billing_recalculates_total_and_marks_paid_semi_paid(): void
     {
         Schema::create('domains', function (Blueprint $table) {
             $table->id();
@@ -446,12 +446,77 @@ class LocalClientBillingFeatureTest extends TestCase
         $campaign->refresh();
         $this->assertSame('20.00', (string) $campaign->billing_total);
         $this->assertSame('15.00', (string) $campaign->billing_amount_paid);
-        $this->assertSame('unpaid', $campaign->billing_payment_status);
+        $this->assertSame('semi_paid', $campaign->billing_payment_status);
         $this->assertSame(1, LocalClientPaymentEvent::count());
+        $this->assertSame('semi_paid', LocalClientPaymentEvent::first()->new_status);
 
         $this->get('/client/billing/'.$client->id.'/'.$client->billing_report_token)
             ->assertOk()
             ->assertSee('Due now', false)
             ->assertSee('Already paid', false);
+    }
+
+    public function test_estimate_accepts_more_than_250_domain_ids_as_one_string(): void
+    {
+        Schema::create('domains', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->unsignedBigInteger('domain_category_id');
+            $table->unsignedBigInteger('admin_id')->default(1);
+            $table->integer('status')->default(1);
+            $table->timestamps();
+        });
+
+        \DB::table('domain_categories')->insert([
+            'id' => 1,
+            'name' => 'Bulk',
+            'slug' => 'bulk',
+            'admin_id' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $count = 260;
+        $now = now();
+        $rows = [];
+        for ($i = 1; $i <= $count; $i++) {
+            $rows[] = [
+                'id' => $i,
+                'name' => 'bulk-'.$i.'.test',
+                'domain_category_id' => 1,
+                'admin_id' => 1,
+                'status' => 1,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+        foreach (array_chunk($rows, 100) as $chunk) {
+            \DB::table('domains')->insert($chunk);
+        }
+
+        $client = LocalClient::create([
+            'name' => 'Bulk Estimate Client',
+            'default_currency' => 'USD',
+            'billing_report_token' => str_repeat('e', 64),
+            'created_by_admin_id' => 1,
+        ]);
+
+        \App\Models\Admin\LocalClientDomainCategoryPrice::create([
+            'local_client_id' => $client->id,
+            'domain_category_id' => 1,
+            'post_price' => 2,
+        ]);
+
+        $this->actingAs(Admin::find(1), 'admin')
+            ->postJson(route('admin.local-clients.estimate', $client), [
+                'campaign_type' => 'post',
+                'is_sticky' => 0,
+                'currency' => 'USD',
+                'domain_ids' => implode(',', range(1, $count)),
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('total', '520.00')
+            ->assertJsonCount($count, 'lines');
     }
 }

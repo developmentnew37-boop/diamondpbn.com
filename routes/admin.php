@@ -159,6 +159,7 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     // Dashboard Route Here
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/dashboard/campaigns', [DashboardController::class, 'getCampaignsByType'])->name('dashboard.campaigns');
+    Route::get('/dashboard/analytics', [DashboardController::class, 'analytics'])->name('dashboard.analytics');
     // Dashboard Route Ends Here
 
     Route::middleware(\App\Http\Middleware\Admin\CanCreateCampaigns::class)->group(function () {
@@ -590,7 +591,7 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     Route::get('/sticky/campaign/', [StickyPostCampaignController::class, 'index'])->name('sticky.campaign.index');
 
     Route::middleware('can.create.campaigns')->group(function () {
-        Route::get('/local-clients/{localClient}/estimate', [LocalClientController::class, 'estimate'])
+        Route::post('/local-clients/{localClient}/estimate', [LocalClientController::class, 'estimate'])
             ->name('local-clients.estimate');
         Route::patch('/local-clients/payment/{billableType}/{id}', [LocalClientPaymentController::class, 'update'])
             ->name('local-clients.payment.update');

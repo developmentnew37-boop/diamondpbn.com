@@ -144,7 +144,7 @@
                             —
                         @endif
                     </td>
-                    <td class="col-status">{{ ucfirst($row['billing_payment_status'] ?? 'unpaid') }}</td>
+                    <td class="col-status">{{ \App\Services\LocalClientBillingService::paymentStatusLabel($row['billing_payment_status'] ?? null) }}</td>
                     <td class="col-url wrap">
                         @if (! empty($row['report_url']))
                             <a class="url-link" href="{{ $row['report_url'] }}">{!! $softBreak($row['report_url'], 34) !!}</a>

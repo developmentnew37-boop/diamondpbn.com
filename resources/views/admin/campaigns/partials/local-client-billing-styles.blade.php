@@ -293,6 +293,12 @@
         border: 1px solid #fde68a;
     }
 
+    .lcb-payment-badge.semi-paid {
+        color: #1e40af;
+        background: #dbeafe;
+        border: 1px solid #bfdbfe;
+    }
+
     .lcb-view-stats {
         display: grid;
         grid-template-columns: repeat(1, minmax(0, 1fr));

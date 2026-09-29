@@ -3,188 +3,107 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Admin;
+use App\Models\Admin\Article;
+use App\Models\Admin\Campaign;
+use App\Models\Admin\Domain;
+use App\Models\Admin\HiddenLinksCampaign;
+use App\Models\Admin\ScheduleCampaign;
+use App\Models\Admin\ScheduleSidebarCampaign;
+use App\Models\Admin\SidebarCampaign;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use App\Models\Admin;
-use App\Models\Admin\Article;
-use App\Models\Admin\ArticleLanguage;
-use App\Models\Admin\Domain;
-use App\Models\Admin\DomainCategory;
-use App\Models\Admin\Campaign;
-use App\Models\Admin\CampaignPost;
-use App\Models\Admin\SidebarCampaign;
-use App\Models\Admin\SidebarCampaignTask;
-use App\Models\Admin\HiddenLinksCampaign;
-use App\Models\Admin\ScheduleCampaign;
-use App\Models\Admin\ScheduleCampaignPost;
-use App\Models\Admin\ScheduleSidebarCampaign;
-use Carbon\Carbon;
 
 class DashboardController extends Controller
 {
     /**
-     * Display the dashboard with dynamic data based on user role
+     * Display the dashboard without blocking first paint on heavy aggregations.
      */
     public function index()
     {
         $admin = Auth::guard('admin')->user();
+        $cacheKey = $this->dashboardCacheKey($admin);
 
-        // Cache dashboard data for 5 minutes to improve performance
-        $cacheKey = 'dashboard_data_' . $admin->id . '_' . ($admin->isSuperAdmin() ? 'super' : 'user');
-
-        $dashboardData = cache()->remember($cacheKey, 300, function () use ($admin) {
-            return [
-                'stats' => $this->getStats($admin),
-                'chartData' => $this->getChartData($admin),
-                'campaigns' => $this->getRecentCampaigns($admin),
-                'domainCategories' => $this->getDomainCategories($admin),
-                'articleUsage' => $this->getArticleUsage($admin),
-                'articlesByLanguage' => $this->getArticlesByLanguage($admin),
-            ];
-        });
+        $fresh = cache()->get($cacheKey);
+        $dashboardData = $fresh
+            ?? cache()->get($cacheKey.'_stale')
+            ?? $this->emptyDashboardData($admin);
 
         return view('admin.welcome', array_merge(
-            ['admin' => $admin],
+            [
+                'admin' => $admin,
+                'loadAnalytics' => $fresh === null,
+            ],
             $dashboardData
         ));
     }
 
     /**
+     * JSON payload for charts, counts, and tables (cached).
+     */
+    public function analytics()
+    {
+        $admin = Auth::guard('admin')->user();
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->rememberDashboardData($admin),
+        ]);
+    }
+
+    /**
      * Get statistics based on user role
      */
-    private function getStats(Admin $admin): array
+    private function getStats(Admin $admin, object $articleAgg): array
     {
         $isSuperAdmin = $admin->isSuperAdmin();
 
-        // Batch all count queries in a single optimized query set
         if ($isSuperAdmin) {
-            // Super admin: get all counts in parallel
             $usersCount = Admin::count();
             $membersCount = Admin::where('type', Admin::MEMBER)->count();
             $domainsCount = Domain::count();
         } else {
-            // Regular user: scoped counts
             $usersCount = 1;
             $membersCount = 0;
             $domainsCount = Domain::where('admin_id', $admin->id)->count();
         }
 
-        // Optimize article count query with proper indexing
-        $articlesCount = Article::query()
-            ->whereNull('lock_at')
-            ->whereNull('deleted_at')
-            ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
-            ->count();
+        $articlesCount = (int) ($articleAgg->unlocked ?? 0);
 
-        // Batch campaign counts using a single query with conditional aggregation
         $campaignCounts = DB::table('campaigns')
             ->selectRaw('COUNT(*) as total')
-            ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
+            ->when(! $isSuperAdmin, fn ($q) => $q->where('admin_id', $admin->id))
             ->first();
 
         $postCampaignsCount = $campaignCounts->total ?? 0;
 
-        // Schedule campaigns counts
         $scheduleCounts = DB::table('schedule_campaigns')
             ->selectRaw('
                 SUM(CASE WHEN is_sticky_campaign = 0 THEN 1 ELSE 0 END) as regular,
                 SUM(CASE WHEN is_sticky_campaign = 1 THEN 1 ELSE 0 END) as sticky
             ')
-            ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
+            ->when(! $isSuperAdmin, fn ($q) => $q->where('admin_id', $admin->id))
             ->first();
 
         $schedulePostCampaignsCount = $scheduleCounts->regular ?? 0;
         $scheduleStickyPostCampaignsCount = $scheduleCounts->sticky ?? 0;
 
-        // Schedule Sidebar Campaigns count
         $scheduleSidebarCampaignsCount = ScheduleSidebarCampaign::query()
-            ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
+            ->when(! $isSuperAdmin, fn ($q) => $q->where('admin_id', $admin->id))
             ->count();
 
-        return [
-            [
-                'count' => $usersCount,
-                'label' => 'No of Users',
-                'bg' => 'bg-green-200',
-                'stroke' => 'green',
-                'icon' => '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                    <circle cx="9" cy="7" r="4"></circle>
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>',
-                'visible' => true,
-            ],
-            [
-                'count' => $membersCount,
-                'label' => 'No of Members',
-                'bg' => 'bg-gray-700',
-                'stroke' => '#e5e7eb',
-                'icon' => '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                    <circle cx="9" cy="7" r="4"></circle>
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>',
-                'visible' => $isSuperAdmin,
-            ],
-            [
-                'count' => $domainsCount,
-                'label' => 'No of Domains',
-                'bg' => 'bg-orange-100',
-                'stroke' => 'orange',
-                'icon' => '<circle cx="12" cy="12" r="10"></circle>
-                    <line x1="2" y1="12" x2="22" y2="12"></line>
-                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>',
-                'visible' => true,
-            ],
-            [
-                'count' => $articlesCount,
-                'label' => 'No of Articles',
-                'bg' => 'bg-purple-100',
-                'stroke' => 'purple',
-                'icon' => '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                    <polyline points="14 2 14 8 20 8"></polyline>
-                    <line x1="16" y1="13" x2="8" y2="13"></line>
-                    <line x1="16" y1="17" x2="8" y2="17"></line>
-                    <polyline points="10 9 9 9 8 9"></polyline>',
-                'visible' => true,
-            ],
-            [
-                'count' => $postCampaignsCount,
-                'label' => 'Post Campaigns',
-                'bg' => 'bg-red-200',
-                'stroke' => 'red',
-                'icon' => '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                    <polyline points="7 10 12 15 17 10"></polyline>
-                    <line x1="12" y1="15" x2="12" y2="3"></line>',
-                'visible' => true,
-            ],
-            [
-                'count' => $schedulePostCampaignsCount,
-                'label' => 'Schedule Post Campaigns',
-                'bg' => 'bg-[#8cdcff]',
-                'stroke' => '#0094d4',
-                'icon' => '<circle cx="12" cy="12" r="10"></circle>
-                    <polyline points="12 6 12 12 16 14"></polyline>',
-                'visible' => true,
-            ],
-            [
-                'count' => $scheduleStickyPostCampaignsCount,
-                'label' => 'Schedule Sticky Post Campaigns',
-                'bg' => 'bg-[#b8e0ff]',
-                'stroke' => '#0077b6',
-                'icon' => '<circle cx="12" cy="12" r="10"></circle>
-                    <polyline points="12 6 12 12 16 14"></polyline>',
-                'visible' => true,
-            ],
-            [
-                'count' => $scheduleSidebarCampaignsCount,
-                'label' => 'Schedule Sidebar Campaigns',
-                'bg' => 'bg-[#ffc7bd]',
-                'stroke' => '#ff6e54',
-                'icon' => '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                    <line x1="9" y1="3" x2="9" y2="21"></line>',
-                'visible' => true,
-            ],
-        ];
+        return $this->statsCards($isSuperAdmin, [
+            'users' => $usersCount,
+            'members' => $membersCount,
+            'domains' => $domainsCount,
+            'articles' => $articlesCount,
+            'posts' => $postCampaignsCount,
+            'schedule_posts' => $schedulePostCampaignsCount,
+            'schedule_sticky' => $scheduleStickyPostCampaignsCount,
+            'schedule_sidebar' => $scheduleSidebarCampaignsCount,
+        ]);
     }
 
     /**
@@ -194,17 +113,27 @@ class DashboardController extends Controller
     {
         $isSuperAdmin = $admin->isSuperAdmin();
 
-        // Optimize with a direct join query instead of withCount
-        $languages = DB::table('article_languages')
-            ->leftJoin('articles', 'article_languages.id', '=', 'articles.article_language_id')
-            ->select('article_languages.id', 'article_languages.name', DB::raw('COUNT(articles.id) as article_count'))
-            ->whereNull('articles.lock_at')
-            ->whereNull('articles.deleted_at')
-            ->when(!$isSuperAdmin, fn($q) => $q->where('articles.admin_id', $admin->id))
-            ->groupBy('article_languages.id', 'article_languages.name')
-            ->having('article_count', '>', 0)
-            ->orderBy('article_count', 'desc')
+        $counts = DB::table('articles')
+            ->select('article_language_id', DB::raw('COUNT(*) as article_count'))
+            ->whereNull('deleted_at')
+            ->whereNull('lock_at')
+            ->whereNotNull('article_language_id')
+            ->when(! $isSuperAdmin, fn ($q) => $q->where('admin_id', $admin->id))
+            ->groupBy('article_language_id')
+            ->orderByDesc('article_count')
             ->get();
+
+        $names = DB::table('article_languages')
+            ->whereIn('id', $counts->pluck('article_language_id')->filter()->all())
+            ->pluck('name', 'id');
+
+        $languages = $counts
+            ->map(fn ($row) => (object) [
+                'name' => $names[$row->article_language_id] ?? 'Unknown',
+                'article_count' => (int) $row->article_count,
+            ])
+            ->filter(fn ($row) => $row->article_count > 0)
+            ->values();
 
         return [
             'labels' => $languages->pluck('name')->toArray(),
@@ -251,28 +180,14 @@ class DashboardController extends Controller
     {
         $isSuperAdmin = $admin->isSuperAdmin();
 
-        // Get last 12 months
-        $months = collect();
-        for ($i = 11; $i >= 0; $i--) {
-            $months->push(Carbon::now()->subMonths($i));
-        }
-
-        $categories = $months->map(fn($m) => $m->format('M/y'))->toArray();
-
-        // PBN Post Campaigns (regular campaigns)
-        $pbnPostData = $this->getMonthlyData(Campaign::class, $admin, $months, $isSuperAdmin);
-
-        // Sidebar Campaigns (blogroll)
-        $sidebarData = $this->getMonthlyData(SidebarCampaign::class, $admin, $months, $isSuperAdmin);
-
-        // Hidden Links Campaigns (sticky equivalent)
-        $hiddenLinkData = $this->getMonthlyData(HiddenLinksCampaign::class, $admin, $months, $isSuperAdmin);
+        $months = $this->lastTwelveMonths();
+        $categories = $months->map(fn ($m) => $m->format('M/y'))->toArray();
 
         return [
             'categories' => $categories,
-            'pbnPostCampaigns' => $pbnPostData,
-            'pbnBlogrollCampaigns' => $sidebarData,
-            'pbnStickyCampaigns' => $hiddenLinkData,
+            'pbnPostCampaigns' => $this->getMonthlyData(Campaign::class, $admin, $months, $isSuperAdmin),
+            'pbnBlogrollCampaigns' => $this->getMonthlyData(SidebarCampaign::class, $admin, $months, $isSuperAdmin),
+            'pbnStickyCampaigns' => $this->getMonthlyData(HiddenLinksCampaign::class, $admin, $months, $isSuperAdmin),
         ];
     }
 
@@ -285,16 +200,17 @@ class DashboardController extends Controller
         $end = $months->last()->copy()->endOfMonth();
 
         $monthlyCounts = $model::query()
-            ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
+            ->when(! $isSuperAdmin, fn ($q) => $q->where('admin_id', $admin->id))
             ->whereBetween('created_at', [$start, $end])
             ->selectRaw('YEAR(created_at) as y, MONTH(created_at) as m, COUNT(*) as total')
             ->groupBy('y', 'm')
             ->get()
-            ->keyBy(fn($row) => $row->y . '-' . $row->m);
+            ->keyBy(fn ($row) => $row->y.'-'.$row->m);
 
         return $months
             ->map(function ($month) use ($monthlyCounts) {
-                $key = $month->year . '-' . $month->month;
+                $key = $month->year.'-'.$month->month;
+
                 return (int) optional($monthlyCounts->get($key))->total;
             })
             ->toArray();
@@ -312,13 +228,13 @@ class DashboardController extends Controller
         switch ($type) {
             case 'sidebar':
                 $campaigns = SidebarCampaign::query()
-                    ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
+                    ->when(! $isSuperAdmin, fn ($q) => $q->where('admin_id', $admin->id))
                     ->with(['domainCategory:id,name'])
                     ->withCount(['links', 'domains'])
                     ->latest()
                     ->take(10)
                     ->get()
-                    ->map(fn($c) => [
+                    ->map(fn ($c) => [
                         'campaign' => $c->campaign_no,
                         'domain' => $c->domainCategory->name ?? 'N/A',
                         'quantity' => $c->total_targets ?? 0,
@@ -334,13 +250,13 @@ class DashboardController extends Controller
             case 'schedule':
                 $campaigns = ScheduleCampaign::query()
                     ->where('is_sticky_campaign', false)
-                    ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
+                    ->when(! $isSuperAdmin, fn ($q) => $q->where('admin_id', $admin->id))
                     ->with(['domainCategory:id,name'])
                     ->withCount(['articles', 'domains'])
                     ->latest()
                     ->take(10)
                     ->get()
-                    ->map(fn($c) => [
+                    ->map(fn ($c) => [
                         'campaign' => $c->campaign_no,
                         'domain' => $c->domainCategory->name ?? 'N/A',
                         'quantity' => $c->total_targets ?? 0,
@@ -355,13 +271,13 @@ class DashboardController extends Controller
             case 'schedule_sticky':
                 $campaigns = ScheduleCampaign::query()
                     ->where('is_sticky_campaign', true)
-                    ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
+                    ->when(! $isSuperAdmin, fn ($q) => $q->where('admin_id', $admin->id))
                     ->with(['domainCategory:id,name'])
                     ->withCount(['articles', 'domains'])
                     ->latest()
                     ->take(10)
                     ->get()
-                    ->map(fn($c) => [
+                    ->map(fn ($c) => [
                         'campaign' => $c->campaign_no,
                         'domain' => $c->domainCategory->name ?? 'N/A',
                         'quantity' => $c->total_targets ?? 0,
@@ -375,14 +291,14 @@ class DashboardController extends Controller
 
             case 'sticky':
                 $campaigns = Campaign::query()
-                    ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
+                    ->when(! $isSuperAdmin, fn ($q) => $q->where('admin_id', $admin->id))
                     ->where('is_sticky_campaign', true)
                     ->with(['domainCategory:id,name'])
                     ->withCount(['campaignArticles', 'campaignDomains'])
                     ->latest()
                     ->take(10)
                     ->get()
-                    ->map(fn($c) => [
+                    ->map(fn ($c) => [
                         'campaign' => $c->campaign_no,
                         'domain' => $c->domainCategory->name ?? 'N/A',
                         'quantity' => $c->total_targets ?? 0,
@@ -396,14 +312,14 @@ class DashboardController extends Controller
 
             default: // post
                 $campaigns = Campaign::query()
-                    ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
-                    ->where(fn($q) => $q->whereNull('is_sticky_campaign')->orWhere('is_sticky_campaign', false))
+                    ->when(! $isSuperAdmin, fn ($q) => $q->where('admin_id', $admin->id))
+                    ->where(fn ($q) => $q->whereNull('is_sticky_campaign')->orWhere('is_sticky_campaign', false))
                     ->with(['domainCategory:id,name'])
                     ->withCount(['campaignArticles', 'campaignDomains'])
                     ->latest()
                     ->take(10)
                     ->get()
-                    ->map(fn($c) => [
+                    ->map(fn ($c) => [
                         'campaign' => $c->campaign_no,
                         'domain' => $c->domainCategory->name ?? 'N/A',
                         'quantity' => $c->total_targets ?? 0,
@@ -426,51 +342,20 @@ class DashboardController extends Controller
     {
         $isSuperAdmin = $admin->isSuperAdmin();
 
-        // Optimize with direct join query
         $categories = DB::table('domain_categories')
             ->leftJoin('domains', 'domain_categories.id', '=', 'domains.domain_category_id')
             ->select('domain_categories.id', 'domain_categories.name', DB::raw('COUNT(domains.id) as domains_count'))
-            ->when(!$isSuperAdmin, fn($q) => $q->where('domain_categories.admin_id', $admin->id))
+            ->when(! $isSuperAdmin, fn ($q) => $q->where('domain_categories.admin_id', $admin->id))
             ->groupBy('domain_categories.id', 'domain_categories.name')
             ->orderBy('domains_count', 'desc')
             ->limit(10)
             ->get();
 
-        return $categories->map(fn($dc) => [
+        return $categories->map(fn ($dc) => [
             'domain' => $dc->name,
             'quantity' => $dc->domains_count,
             'id' => $dc->id,
         ])->toArray();
-    }
-
-    /**
-     * Get article usage statistics
-     */
-    private function getArticleUsage(Admin $admin): array
-    {
-        $isSuperAdmin = $admin->isSuperAdmin();
-
-        // Single optimized query with conditional aggregation
-        $stats = DB::table('articles')
-            ->selectRaw('
-                COUNT(*) as total,
-                SUM(CASE WHEN status = ? OR lock_at IS NOT NULL THEN 1 ELSE 0 END) as used
-            ', [Article::STATUS_USED])
-            ->when(!$isSuperAdmin, fn($q) => $q->where('admin_id', $admin->id))
-            ->whereNull('deleted_at')
-            ->first();
-
-        $totalArticles = $stats->total ?? 0;
-        $usedArticles = $stats->used ?? 0;
-        $remaining = $totalArticles - $usedArticles;
-        $percentage = $totalArticles > 0 ? round(($usedArticles / $totalArticles) * 100) : 0;
-
-        return [
-            'total' => $totalArticles,
-            'used' => $usedArticles,
-            'remaining' => $remaining,
-            'percentage' => $percentage,
-        ];
     }
 
     /**
@@ -487,5 +372,232 @@ class DashboardController extends Controller
             'success' => true,
             'campaigns' => $campaigns,
         ]);
+    }
+
+    private function dashboardCacheKey(Admin $admin): string
+    {
+        return 'dashboard_data_v2_'.$admin->id.'_'.($admin->isSuperAdmin() ? 'super' : 'user');
+    }
+
+    private function rememberDashboardData(Admin $admin): array
+    {
+        $cacheKey = $this->dashboardCacheKey($admin);
+
+        return cache()->remember($cacheKey, 900, function () use ($admin, $cacheKey) {
+            $data = $this->buildDashboardData($admin);
+            cache()->put($cacheKey.'_stale', $data, 86400);
+
+            return $data;
+        });
+    }
+
+    private function buildDashboardData(Admin $admin): array
+    {
+        $articleAgg = $this->getArticleAggregates($admin);
+
+        return [
+            'stats' => $this->getStats($admin, $articleAgg),
+            'chartData' => $this->getChartData($admin),
+            'campaigns' => $this->getRecentCampaigns($admin),
+            'domainCategories' => $this->getDomainCategories($admin),
+            'articleUsage' => $this->formatArticleUsage($articleAgg),
+            'articlesByLanguage' => $this->getArticlesByLanguage($admin),
+            'userRoleCounts' => $this->getUserRoleCounts($admin),
+        ];
+    }
+
+    private function emptyDashboardData(Admin $admin): array
+    {
+        return [
+            'stats' => $this->statsCards($admin->isSuperAdmin(), [
+                'users' => 0,
+                'members' => 0,
+                'domains' => 0,
+                'articles' => 0,
+                'posts' => 0,
+                'schedule_posts' => 0,
+                'schedule_sticky' => 0,
+                'schedule_sidebar' => 0,
+            ]),
+            'chartData' => $this->emptyChartData(),
+            'campaigns' => [],
+            'domainCategories' => [],
+            'articleUsage' => [
+                'total' => 0,
+                'used' => 0,
+                'remaining' => 0,
+                'percentage' => 0,
+            ],
+            'articlesByLanguage' => [
+                'labels' => [],
+                'data' => [],
+                'colors' => [],
+            ],
+            'userRoleCounts' => [
+                'super' => 0,
+                'admin' => 0,
+                'member' => 0,
+            ],
+        ];
+    }
+
+    private function emptyChartData(): array
+    {
+        $months = $this->lastTwelveMonths();
+
+        return [
+            'categories' => $months->map(fn ($m) => $m->format('M/y'))->toArray(),
+            'pbnPostCampaigns' => array_fill(0, 12, 0),
+            'pbnBlogrollCampaigns' => array_fill(0, 12, 0),
+            'pbnStickyCampaigns' => array_fill(0, 12, 0),
+        ];
+    }
+
+    private function lastTwelveMonths()
+    {
+        $months = collect();
+        for ($i = 11; $i >= 0; $i--) {
+            $months->push(Carbon::now()->subMonths($i));
+        }
+
+        return $months;
+    }
+
+    private function getArticleAggregates(Admin $admin): object
+    {
+        $isSuperAdmin = $admin->isSuperAdmin();
+
+        return DB::table('articles')
+            ->selectRaw('
+                COUNT(*) as total,
+                SUM(CASE WHEN lock_at IS NULL THEN 1 ELSE 0 END) as unlocked,
+                SUM(CASE WHEN status = ? OR lock_at IS NOT NULL THEN 1 ELSE 0 END) as used
+            ', [Article::STATUS_USED])
+            ->whereNull('deleted_at')
+            ->when(! $isSuperAdmin, fn ($q) => $q->where('admin_id', $admin->id))
+            ->first() ?? (object) ['total' => 0, 'unlocked' => 0, 'used' => 0];
+    }
+
+    private function formatArticleUsage(object $stats): array
+    {
+        $totalArticles = (int) ($stats->total ?? 0);
+        $usedArticles = (int) ($stats->used ?? 0);
+        $remaining = $totalArticles - $usedArticles;
+        $percentage = $totalArticles > 0 ? round(($usedArticles / $totalArticles) * 100) : 0;
+
+        return [
+            'total' => $totalArticles,
+            'used' => $usedArticles,
+            'remaining' => $remaining,
+            'percentage' => $percentage,
+        ];
+    }
+
+    private function getUserRoleCounts(Admin $admin): array
+    {
+        if (! $admin->isSuperAdmin()) {
+            return ['super' => 0, 'admin' => 0, 'member' => 0];
+        }
+
+        $counts = Admin::query()
+            ->selectRaw('
+                SUM(CASE WHEN type = ? THEN 1 ELSE 0 END) as super_count,
+                SUM(CASE WHEN type = ? THEN 1 ELSE 0 END) as admin_count,
+                SUM(CASE WHEN type = ? THEN 1 ELSE 0 END) as member_count
+            ', [Admin::SUPER_ADMIN, Admin::ADMIN, Admin::MEMBER])
+            ->first();
+
+        return [
+            'super' => (int) ($counts->super_count ?? 0),
+            'admin' => (int) ($counts->admin_count ?? 0),
+            'member' => (int) ($counts->member_count ?? 0),
+        ];
+    }
+
+    private function statsCards(bool $isSuperAdmin, array $counts): array
+    {
+        return [
+            [
+                'count' => $counts['users'],
+                'label' => 'No of Users',
+                'bg' => 'bg-green-200',
+                'stroke' => 'green',
+                'icon' => '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="9" cy="7" r="4"></circle>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>',
+                'visible' => true,
+            ],
+            [
+                'count' => $counts['members'],
+                'label' => 'No of Members',
+                'bg' => 'bg-gray-700',
+                'stroke' => '#e5e7eb',
+                'icon' => '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="9" cy="7" r="4"></circle>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>',
+                'visible' => $isSuperAdmin,
+            ],
+            [
+                'count' => $counts['domains'],
+                'label' => 'No of Domains',
+                'bg' => 'bg-orange-100',
+                'stroke' => 'orange',
+                'icon' => '<circle cx="12" cy="12" r="10"></circle>
+                    <line x1="2" y1="12" x2="22" y2="12"></line>
+                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>',
+                'visible' => true,
+            ],
+            [
+                'count' => $counts['articles'],
+                'label' => 'No of Articles',
+                'bg' => 'bg-purple-100',
+                'stroke' => 'purple',
+                'icon' => '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                    <polyline points="10 9 9 9 8 9"></polyline>',
+                'visible' => true,
+            ],
+            [
+                'count' => $counts['posts'],
+                'label' => 'Post Campaigns',
+                'bg' => 'bg-red-200',
+                'stroke' => 'red',
+                'icon' => '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>',
+                'visible' => true,
+            ],
+            [
+                'count' => $counts['schedule_posts'],
+                'label' => 'Schedule Post Campaigns',
+                'bg' => 'bg-[#8cdcff]',
+                'stroke' => '#0094d4',
+                'icon' => '<circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>',
+                'visible' => true,
+            ],
+            [
+                'count' => $counts['schedule_sticky'],
+                'label' => 'Schedule Sticky Post Campaigns',
+                'bg' => 'bg-[#b8e0ff]',
+                'stroke' => '#0077b6',
+                'icon' => '<circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>',
+                'visible' => true,
+            ],
+            [
+                'count' => $counts['schedule_sidebar'],
+                'label' => 'Schedule Sidebar Campaigns',
+                'bg' => 'bg-[#ffc7bd]',
+                'stroke' => '#ff6e54',
+                'icon' => '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="9" y1="3" x2="9" y2="21"></line>',
+                'visible' => true,
+            ],
+        ];
     }
 }

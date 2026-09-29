@@ -289,8 +289,9 @@ class LocalClientBillingService
     }
 
     /**
-     * Recalculate billing after domain replace when the campaign has a client and is unpaid.
-     * Paid invoices stay frozen; no-op when no client is attached.
+     * Recalculate billing after a domain replace.
+     * No-op when no client is attached. A paid or semi-paid campaign keeps the amount
+     * already collected and becomes semi paid when the new total is higher.
      */
     public function syncUnpaidCampaignBilling(Model $campaign): void
     {
@@ -301,15 +302,29 @@ class LocalClientBillingService
             return;
         }
 
-        if (($campaign->billing_payment_status ?? 'unpaid') === 'paid') {
-            return;
-        }
-
         $this->syncClientOnCampaign(
             $campaign,
             $clientId,
             $campaign->billing_currency,
         );
+    }
+
+    public static function paymentStatusLabel(?string $status): string
+    {
+        return match ($status) {
+            'paid' => 'Paid',
+            'semi_paid' => 'Semi paid',
+            default => 'Unpaid',
+        };
+    }
+
+    public static function paymentStatusClass(?string $status): string
+    {
+        return match ($status) {
+            'paid' => 'paid',
+            'semi_paid' => 'semi-paid',
+            default => 'unpaid',
+        };
     }
 
     /**
@@ -322,6 +337,16 @@ class LocalClientBillingService
         ?string $currencyOverride = null,
     ): void {
         DB::transaction(function () use ($campaign, $localClientId, $currencyOverride) {
+            $campaign->refresh();
+
+            $previousClientId = $campaign->local_client_id ? (int) $campaign->local_client_id : null;
+            $collected = $this->collectedAmount($campaign);
+            $preserveCollected = $collected !== null
+                && $localClientId
+                && $previousClientId === (int) $localClientId;
+            $paidAt = $campaign->billing_paid_at;
+            $paidBy = $campaign->billing_paid_by_admin_id;
+
             $this->clearFromCampaign($campaign);
 
             if (! $localClientId) {
@@ -351,7 +376,61 @@ class LocalClientBillingService
             $currency = strtoupper($currencyOverride ?: $client->default_currency);
             $result = $this->calculate($client, $type, $domainIds);
             $this->applyToCampaign($campaign, $result, $client, $currency);
+
+            if (! $preserveCollected) {
+                return;
+            }
+
+            $newTotal = round((float) $campaign->billing_total, 2);
+            $alreadyPaid = round((float) $collected, 2);
+
+            if ($newTotal > $alreadyPaid) {
+                $campaign->forceFill([
+                    'billing_amount_paid' => number_format($alreadyPaid, 2, '.', ''),
+                    'billing_payment_status' => 'semi_paid',
+                    'billing_paid_at' => $paidAt,
+                    'billing_paid_by_admin_id' => $paidBy,
+                ])->save();
+
+                return;
+            }
+
+            $campaign->forceFill([
+                'billing_amount_paid' => null,
+                'billing_payment_status' => 'paid',
+                'billing_paid_at' => $paidAt ?? now(),
+                'billing_paid_by_admin_id' => $paidBy,
+            ])->save();
         });
+    }
+
+    /**
+     * Money already collected. A fully paid campaign has collected its current total.
+     * A semi-paid campaign has collected billing_amount_paid, not the latest total.
+     */
+    private function collectedAmount(Model $campaign): ?string
+    {
+        $status = $campaign->billing_payment_status ?? 'unpaid';
+
+        if ($status === 'paid') {
+            $total = $campaign->billing_total;
+            if ($total === null || $total === '' || (float) $total <= 0) {
+                return null;
+            }
+
+            return number_format((float) $total, 2, '.', '');
+        }
+
+        if (in_array($status, ['semi_paid', 'unpaid'], true)) {
+            $paid = $campaign->billing_amount_paid;
+            if ($paid === null || $paid === '' || (float) $paid <= 0) {
+                return null;
+            }
+
+            return number_format((float) $paid, 2, '.', '');
+        }
+
+        return null;
     }
 
     /**

@@ -223,7 +223,7 @@ class CampaignDomainReplacementBillingTest extends TestCase
         $this->assertSame($fixture['new_domain_id'], (int) LocalClientBillLine::first()->domain_id);
     }
 
-    public function test_paid_replace_keeps_billing_frozen(): void
+    public function test_paid_replace_with_higher_price_becomes_semi_paid(): void
     {
         Queue::fake();
         $fixture = $this->billedFixture(paymentStatus: 'paid', oldPrice: 15, newPrice: 20);
@@ -238,10 +238,96 @@ class CampaignDomainReplacementBillingTest extends TestCase
         );
 
         $campaign = $fixture['campaign']->fresh();
-        $this->assertSame('15.00', (string) $campaign->billing_total);
-        $this->assertSame('paid', $campaign->billing_payment_status);
-        $this->assertSame($fixture['old_domain_id'], (int) LocalClientBillLine::first()->domain_id);
+        $this->assertSame('20.00', (string) $campaign->billing_total);
+        $this->assertSame('15.00', (string) $campaign->billing_amount_paid);
+        $this->assertSame('semi_paid', $campaign->billing_payment_status);
+        $this->assertSame($fixture['new_domain_id'], (int) LocalClientBillLine::first()->domain_id);
         $this->assertSame($fixture['new_domain_id'], (int) DB::table('campaign_domains')->find($fixture['campaign_domain_id'])->domain_id);
+    }
+
+    public function test_paid_replace_with_equal_or_lower_price_stays_paid(): void
+    {
+        Queue::fake();
+        $fixture = $this->billedFixture(paymentStatus: 'paid', oldPrice: 20, newPrice: 15);
+
+        $this->service()->replace(
+            $fixture['post'],
+            $fixture['admin'],
+            $fixture['new_domain_id'],
+            $fixture['old_domain_id'],
+            (string) Str::uuid(),
+            'Cheaper replacement'
+        );
+
+        $campaign = $fixture['campaign']->fresh();
+        $this->assertSame('15.00', (string) $campaign->billing_total);
+        $this->assertNull($campaign->billing_amount_paid);
+        $this->assertSame('paid', $campaign->billing_payment_status);
+    }
+
+    public function test_paid_replace_with_equal_price_stays_paid(): void
+    {
+        Queue::fake();
+        $fixture = $this->billedFixture(paymentStatus: 'paid', oldPrice: 15, newPrice: 15);
+
+        $this->service()->replace(
+            $fixture['post'],
+            $fixture['admin'],
+            $fixture['new_domain_id'],
+            $fixture['old_domain_id'],
+            (string) Str::uuid(),
+            'Same price'
+        );
+
+        $campaign = $fixture['campaign']->fresh();
+        $this->assertSame('15.00', (string) $campaign->billing_total);
+        $this->assertNull($campaign->billing_amount_paid);
+        $this->assertSame('paid', $campaign->billing_payment_status);
+    }
+
+    public function test_second_replace_while_semi_paid_keeps_original_collected_amount(): void
+    {
+        Queue::fake();
+        $fixture = $this->billedFixture(paymentStatus: 'paid', oldPrice: 15, newPrice: 20);
+
+        $this->service()->replace(
+            $fixture['post'],
+            $fixture['admin'],
+            $fixture['new_domain_id'],
+            $fixture['old_domain_id'],
+            (string) Str::uuid(),
+            'Dead domain'
+        );
+
+        DB::table('domain_categories')->insert([
+            'id' => 30,
+            'name' => 'Cat C',
+            'slug' => 'cat-c',
+            'admin_id' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        LocalClientDomainCategoryPrice::create([
+            'local_client_id' => $fixture['campaign']->local_client_id,
+            'domain_category_id' => 30,
+            'post_price' => 40,
+        ]);
+        $thirdDomainId = $this->domain($fixture['admin']->id, 30, 'third.example');
+
+        $this->service()->replace(
+            $fixture['post']->fresh(),
+            $fixture['admin'],
+            $thirdDomainId,
+            $fixture['new_domain_id'],
+            (string) Str::uuid(),
+            'Still down'
+        );
+
+        $campaign = $fixture['campaign']->fresh();
+        $this->assertSame('40.00', (string) $campaign->billing_total);
+        $this->assertSame('15.00', (string) $campaign->billing_amount_paid);
+        $this->assertSame('semi_paid', $campaign->billing_payment_status);
+        $this->assertSame($thirdDomainId, (int) LocalClientBillLine::first()->domain_id);
     }
 
     public function test_replace_without_local_client_still_works(): void

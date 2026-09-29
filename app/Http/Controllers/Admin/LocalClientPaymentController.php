@@ -29,7 +29,7 @@ class LocalClientPaymentController extends Controller
         LocalClientPaymentService $paymentService,
     ) {
         $validated = $request->validate([
-            'billing_payment_status' => 'required|in:paid,unpaid',
+            'billing_payment_status' => 'required|in:paid,unpaid,semi_paid',
             'billing_payment_note' => 'nullable|string|max:500',
         ]);
 
@@ -105,26 +105,20 @@ class LocalClientPaymentController extends Controller
 
         $clientId = (int) $campaign->local_client_id;
         $currency = $campaign->billing_currency;
-        $wasPaid = ($campaign->billing_payment_status ?? 'unpaid') === 'paid';
-        $oldTotal = $campaign->billing_total;
-        $oldStatus = $campaign->billing_payment_status;
+        $oldStatus = $campaign->billing_payment_status ?? 'unpaid';
 
         $billingService->syncClientOnCampaign($campaign, $clientId, $currency);
         $campaign->refresh();
 
         $currencyCode = $campaign->billing_currency ?? 'USD';
         $newFormatted = CurrencyFormatter::format($campaign->billing_total, $currencyCode);
+        $newStatus = $campaign->billing_payment_status ?? 'unpaid';
 
-        if ($wasPaid && $oldTotal !== null && (float) $oldTotal > 0) {
-            $campaign->forceFill([
-                'billing_amount_paid' => number_format((float) $oldTotal, 2, '.', ''),
-            ])->save();
-            $campaign->refresh();
-
+        if (in_array($oldStatus, ['paid', 'semi_paid'], true)) {
             $due = LocalClientBillingService::balanceDue(
                 $campaign->billing_total,
                 $campaign->billing_amount_paid,
-                $campaign->billing_payment_status,
+                $newStatus,
             );
 
             LocalClientPaymentEvent::create([
@@ -133,22 +127,26 @@ class LocalClientPaymentController extends Controller
                 'local_client_id' => $campaign->local_client_id,
                 'campaign_no' => $campaign->campaign_no ?? null,
                 'old_status' => $oldStatus,
-                'new_status' => 'unpaid',
-                'note' => sprintf(
-                    'Billing synced. Already paid %s. Due now %s.',
-                    CurrencyFormatter::format($campaign->billing_amount_paid, $currencyCode),
-                    CurrencyFormatter::format($due, $currencyCode),
-                ),
+                'new_status' => $newStatus,
+                'note' => $newStatus === 'semi_paid'
+                    ? sprintf(
+                        'Billing synced. Already paid %s. Due now %s.',
+                        CurrencyFormatter::format($campaign->billing_amount_paid, $currencyCode),
+                        CurrencyFormatter::format($due, $currencyCode),
+                    )
+                    : sprintf('Billing synced. New total %s. Status remains paid.', $newFormatted),
                 'admin_id' => $admin->id,
                 'created_at' => now(),
             ]);
 
-            $message = sprintf(
-                'Billing synced. New total: %s. Already paid: %s. Due now: %s.',
-                $newFormatted,
-                CurrencyFormatter::format($campaign->billing_amount_paid, $currencyCode),
-                CurrencyFormatter::format($due, $currencyCode),
-            );
+            $message = $newStatus === 'semi_paid'
+                ? sprintf(
+                    'Billing synced. New total: %s. Already paid: %s. Due now: %s.',
+                    $newFormatted,
+                    CurrencyFormatter::format($campaign->billing_amount_paid, $currencyCode),
+                    CurrencyFormatter::format($due, $currencyCode),
+                )
+                : "Billing synced. New total: {$newFormatted}. Status remains paid.";
 
             return back()->with('cus__success', $message);
         }

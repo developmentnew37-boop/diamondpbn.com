@@ -40,7 +40,13 @@ class LocalClientPaymentService
         Admin $admin,
         ?string $note = null,
     ): Model {
-        if (! in_array($newStatus, ['paid', 'unpaid'], true)) {
+        if (! in_array($newStatus, ['paid', 'unpaid', 'semi_paid'], true)) {
+            throw ValidationException::withMessages([
+                'billing_payment_status' => 'Invalid payment status.',
+            ]);
+        }
+
+        if ($newStatus === 'semi_paid' && ($campaign->billing_payment_status ?? '') !== 'semi_paid') {
             throw ValidationException::withMessages([
                 'billing_payment_status' => 'Invalid payment status.',
             ]);
@@ -64,7 +70,7 @@ class LocalClientPaymentService
                 'billing_payment_note' => $note,
             ];
 
-            if ($newStatus === 'paid') {
+            if ($newStatus === 'paid' || $newStatus === 'unpaid') {
                 $updates['billing_amount_paid'] = null;
             }
 
@@ -116,9 +122,15 @@ class LocalClientPaymentService
 
         DB::transaction(function () use ($campaigns, $admin, $note, $paidAt, $client, $periodStart, $periodEnd, $currency, &$updatedCount, &$paidTotal) {
             foreach ($campaigns as $campaign) {
+                $due = LocalClientBillingService::balanceDue(
+                    $campaign->billing_total,
+                    $campaign->billing_amount_paid,
+                    $campaign->billing_payment_status,
+                );
+
                 if ($this->markCampaignPaid($campaign, $admin, $note, $paidAt)) {
                     $updatedCount++;
-                    $paidTotal += (float) ($campaign->billing_total ?? 0);
+                    $paidTotal += $due;
                 }
             }
 
@@ -156,6 +168,7 @@ class LocalClientPaymentService
 
         $campaign->forceFill([
             'billing_payment_status' => 'paid',
+            'billing_amount_paid' => null,
             'billing_paid_at' => $paidAt,
             'billing_paid_by_admin_id' => $admin->id,
             'billing_payment_note' => $note,

@@ -15,7 +15,10 @@
                 ?? $localClients->firstWhere('id', (int) $selectedClientId)?->default_currency
                 ?? 'USD'
         );
-        $isPaid = ($campaign->billing_payment_status ?? 'unpaid') === 'paid';
+        $paymentStatus = $campaign->billing_payment_status ?? 'unpaid';
+        $isPaid = $paymentStatus === 'paid';
+        $paymentLabel = \App\Services\LocalClientBillingService::paymentStatusLabel($paymentStatus);
+        $paymentClass = \App\Services\LocalClientBillingService::paymentStatusClass($paymentStatus);
         $hasBilling = (bool) $campaign->local_client_id && ! empty($campaign->billing_snapshot);
     @endphp
 
@@ -39,19 +42,16 @@
                         ·
                         <strong>{{ \App\Support\CurrencyFormatter::format($campaign->billing_total, $campaign->billing_currency ?? 'USD') }}</strong>
                     </span>
-                    <span class="lcb-payment-badge {{ $isPaid ? 'paid' : 'unpaid' }}">
-                        {{ $isPaid ? 'Paid' : 'Unpaid' }}
+                    <span class="lcb-payment-badge {{ $paymentClass }}">
+                        {{ $paymentLabel }}
                     </span>
                 @endif
             </div>
 
             <p class="text-sm text-gray-600 !m-0">
                 Attach, change, or remove the billing client for this campaign.
-                @if ($isPaid)
-                    Saving will reset payment status to unpaid and recalculate the billing total.
-                @else
-                    Saving recalculates the billing total from this campaign’s domains.
-                @endif
+                Saving recalculates the billing total from this campaign’s domains.
+                Keeping the same client preserves money already collected. A higher total becomes semi paid. Changing or removing the client starts a new unpaid bill.
             </p>
 
             <form method="POST"

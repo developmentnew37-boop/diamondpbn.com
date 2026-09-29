@@ -242,6 +242,8 @@ class LocalClientController extends Controller
         LocalClient $localClient,
         LocalClientBillingService $billingService,
     ): JsonResponse {
+        $this->normalizeEstimateDomainIds($request);
+
         $validated = $request->validate([
             'campaign_type' => 'required|string|in:post,sidebar,hidden_links,sticky,schedule_post,schedule_sidebar',
             'domain_ids' => 'required|array|min:1',
@@ -271,6 +273,25 @@ class LocalClientController extends Controller
                 ];
             })->values(),
         ]);
+    }
+
+    /**
+     * One comma-separated field stays under live WAF argument limits (about 255).
+     */
+    private function normalizeEstimateDomainIds(Request $request): void
+    {
+        $raw = $request->input('domain_ids');
+
+        if (! is_string($raw)) {
+            return;
+        }
+
+        $ids = array_values(array_filter(
+            array_map(static fn (string $part): int => (int) trim($part), explode(',', $raw)),
+            static fn (int $id): bool => $id > 0,
+        ));
+
+        $request->merge(['domain_ids' => $ids]);
     }
 
     /** @return array<string, mixed> */

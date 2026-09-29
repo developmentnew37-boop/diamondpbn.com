@@ -1015,6 +1015,12 @@
         border: 1px solid #fde68a;
     }
 
+    .billing-status-badge.semi-paid {
+        color: #1e40af;
+        background: #dbeafe;
+        border: 1px solid #bfdbfe;
+    }
+
     .billing-status-dot {
         width: 6px;
         height: 6px;

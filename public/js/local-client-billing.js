@@ -294,16 +294,22 @@
 
     async function fetchBillingEstimate(clientId, domainIds) {
         const url = urlTemplate.replace('__ID__', clientId);
-        const params = new URLSearchParams();
-        params.set('campaign_type', campaignType);
-        params.set('is_sticky', isSticky ? '1' : '0');
-        if (currencySelect?.value) {
-            params.set('currency', currencySelect.value);
-        }
-        domainIds.forEach((id) => params.append('domain_ids[]', String(id)));
+        const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
-        const response = await fetch(`${url}?${params.toString()}`, {
-            headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': token,
+            },
+            body: JSON.stringify({
+                campaign_type: campaignType,
+                is_sticky: isSticky ? 1 : 0,
+                currency: currencySelect?.value || null,
+                domain_ids: domainIds.join(','),
+            }),
         });
 
         let data = {};
@@ -338,19 +344,28 @@
         errorEl.classList.remove('hidden');
     }
 
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     function renderEstimate(data) {
         errorEl.classList.add('hidden');
         totalEl.innerHTML = `
             <span class="lcb-estimate-label">Estimated total</span>
-            <span class="lcb-estimate-amount">${data.formatted_total}</span>
+            <span class="lcb-estimate-amount">${escapeHtml(data.formatted_total)}</span>
         `;
         linesEl.innerHTML = (data.lines || []).map((line) =>
             `<li class="lcb-estimate-line">
                 <span>
-                    ${line.domain_name}
-                    <span class="lcb-estimate-line-meta"> · ${line.category_name}</span>
+                    ${escapeHtml(line.domain_name)}
+                    <span class="lcb-estimate-line-meta"> · ${escapeHtml(line.category_name)}</span>
                 </span>
-                <span class="lcb-estimate-line-price">${line.formatted_unit_price}</span>
+                <span class="lcb-estimate-line-price">${escapeHtml(line.formatted_unit_price)}</span>
             </li>`
         ).join('');
         estimateBox.classList.remove('hidden');

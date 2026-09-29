@@ -453,7 +453,7 @@ class LocalClientBillingServiceTest extends TestCase
         $this->assertSame($newDomain->id, (int) LocalClientBillLine::first()->domain_id);
     }
 
-    public function test_sync_unpaid_campaign_billing_skips_paid(): void
+    public function test_sync_paid_campaign_billing_becomes_semi_paid(): void
     {
         $client = LocalClient::create([
             'name' => 'Sync Paid',
@@ -496,17 +496,20 @@ class LocalClientBillingServiceTest extends TestCase
         app(LocalClientBillingService::class)->syncUnpaidCampaignBilling($campaign);
 
         $campaign->refresh();
-        $this->assertSame('15.00', (string) $campaign->billing_total);
-        $this->assertSame('paid', $campaign->billing_payment_status);
-        $this->assertSame(0, LocalClientBillLine::count());
+        $this->assertSame('20.00', (string) $campaign->billing_total);
+        $this->assertSame('15.00', (string) $campaign->billing_amount_paid);
+        $this->assertSame('semi_paid', $campaign->billing_payment_status);
+        $this->assertSame($newDomain->id, (int) LocalClientBillLine::first()->domain_id);
     }
 
     public function test_balance_due_helpers(): void
     {
         $this->assertSame(5.0, LocalClientBillingService::balanceDue(20, 15, 'unpaid'));
+        $this->assertSame(5.0, LocalClientBillingService::balanceDue(20, 15, 'semi_paid'));
         $this->assertSame(20.0, LocalClientBillingService::balanceDue(20, null, 'unpaid'));
         $this->assertSame(0.0, LocalClientBillingService::balanceDue(20, 15, 'paid'));
         $this->assertTrue(LocalClientBillingService::hasBalanceCredit(15, 'unpaid'));
+        $this->assertTrue(LocalClientBillingService::hasBalanceCredit(15, 'semi_paid'));
         $this->assertFalse(LocalClientBillingService::hasBalanceCredit(null, 'unpaid'));
         $this->assertFalse(LocalClientBillingService::hasBalanceCredit(15, 'paid'));
     }

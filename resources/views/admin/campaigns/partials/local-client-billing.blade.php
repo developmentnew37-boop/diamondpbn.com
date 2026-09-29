@@ -4,7 +4,10 @@
         $snapshot = is_array($campaign->billing_snapshot) ? $campaign->billing_snapshot : json_decode($campaign->billing_snapshot, true);
         $currency = $campaign->billing_currency ?? 'USD';
         $client = $campaign->localClient ?? \App\Models\Admin\LocalClient::find($campaign->local_client_id);
-        $isPaid = ($campaign->billing_payment_status ?? 'unpaid') === 'paid';
+        $paymentStatus = $campaign->billing_payment_status ?? 'unpaid';
+        $isPaid = $paymentStatus === 'paid';
+        $paymentLabel = \App\Services\LocalClientBillingService::paymentStatusLabel($paymentStatus);
+        $paymentClass = \App\Services\LocalClientBillingService::paymentStatusClass($paymentStatus);
         $lineCount = count($snapshot['lines'] ?? []);
         $lcbStorageKey = $billableType.'-'.$campaign->id;
         $hasBalanceCredit = \App\Services\LocalClientBillingService::hasBalanceCredit(
@@ -34,8 +37,8 @@
                     <span class="material-symbols-outlined">receipt_long</span>
                 </div>
                 <span class="lcb-view-bar-title">Client Billing</span>
-                <span class="lcb-payment-badge {{ $isPaid ? 'paid' : 'unpaid' }}">
-                    {{ $isPaid ? 'Paid' : 'Unpaid' }}
+                <span class="lcb-payment-badge {{ $paymentClass }}">
+                    {{ $paymentLabel }}
                 </span>
                 <span class="lcb-view-bar-meta">
                     {{ $client?->name ?? '—' }}
@@ -66,13 +69,13 @@
                     <div class="min-w-0">
                         <div class="lcb-panel-title-row">
                             <h3 class="lcb-panel-title">Client Billing</h3>
-                            <span class="lcb-payment-badge {{ $isPaid ? 'paid' : 'unpaid' }}">
-                                {{ $isPaid ? 'Paid' : 'Unpaid' }}
+                            <span class="lcb-payment-badge {{ $paymentClass }}">
+                                {{ $paymentLabel }}
                             </span>
                         </div>
                         <p class="lcb-panel-desc">
                             Current billed amount for this campaign’s domains.
-                            Unpaid totals update automatically when a domain is replaced; use Sync billing to rebuild from current domains (and to reopen a paid invoice).
+                            Replacing a domain recalculates the total. A paid campaign stays paid unless the new total is higher, in which case it becomes semi paid and only the difference is due.
                             @if ($lineCount > 0)
                                 {{ $lineCount }} {{ $lineCount === 1 ? 'domain' : 'domains' }} priced.
                             @endif
@@ -84,8 +87,8 @@
                         <form method="POST"
                               action="{{ route('admin.local-clients.billing.sync', ['billableType' => $billableType, 'id' => $campaign->id]) }}"
                               class="inline"
-                              @if ($isPaid)
-                              onsubmit="return confirm('This recalculates billing from current domains and marks the campaign unpaid. Continue?');"
+                              @if ($isPaid || $paymentStatus === 'semi_paid')
+                              onsubmit="return confirm('This recalculates billing from current domains. If the new total is higher than the amount already paid, the campaign becomes semi paid and the difference is due. Continue?');"
                               @endif>
                             @csrf
                             <button type="submit" class="lcb-btn-invoice">
@@ -176,7 +179,10 @@
                         <div class="lcb-field">
                             <label for="billing_payment_status_{{ $campaign->id }}" class="lcb-label">Payment status</label>
                             <select name="billing_payment_status" id="billing_payment_status_{{ $campaign->id }}" class="lcb-select">
-                                <option value="unpaid" @selected(!$isPaid)>Unpaid</option>
+                                @if ($paymentStatus === 'semi_paid')
+                                    <option value="semi_paid" selected>Semi paid</option>
+                                @endif
+                                <option value="unpaid" @selected($paymentStatus === 'unpaid')>Unpaid</option>
                                 <option value="paid" @selected($isPaid)>Paid</option>
                             </select>
                         </div>

@@ -180,7 +180,17 @@ class LocalClientBillingPeriodService
      */
     private function buildOpenPeriod(Collection $rows, string $currency): array
     {
-        $total = $rows->sum(fn (array $row) => (float) ($row['billing_total'] ?? 0));
+        $total = $rows->sum(function (array $row) {
+            if (isset($row['billing_balance_due'])) {
+                return (float) $row['billing_balance_due'];
+            }
+
+            return LocalClientBillingService::balanceDue(
+                $row['billing_total'] ?? 0,
+                $row['billing_amount_paid'] ?? null,
+                $row['billing_payment_status'] ?? null,
+            );
+        });
 
         return [
             'id' => null,
