@@ -11,8 +11,8 @@
             <td align="center">
                 <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:620px;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
                     <tr>
-                        <td style="background:linear-gradient(135deg,#111827,#1f2937);padding:24px;text-align:center;">
-                            <img src="{{ $logoUrl ?? url('/images/hero-network.svg') }}" alt="{{ $brandName ?? 'Diamond PBN' }} logo" style="height:42px;max-width:190px;display:block;margin:0 auto 10px auto;">
+                        <td style="background-color:#111827;background-image:linear-gradient(135deg,#111827,#1f2937);padding:24px;text-align:center;">
+                            <img src="{{ asset('logo.png') }}" width="48" height="48" alt="{{ $brandName ?? 'Diamond PBN' }}" style="display:block;width:48px;height:48px;margin:0 auto 10px auto;border:0;outline:none;">
                             <div style="font-size:20px;line-height:1.3;color:#ffffff;font-weight:700;">{{ $brandName ?? 'Diamond PBN' }}</div>
                             <div style="font-size:13px;line-height:1.4;color:#d1d5db;margin-top:4px;">Secure admin login verification</div>
                         </td>

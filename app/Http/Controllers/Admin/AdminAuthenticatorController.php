@@ -66,7 +66,6 @@ class AdminAuthenticatorController extends Controller
             'otp' => $otp,
             'admin' => $admin,
             'brandName' => 'Diamond PBN',
-            'logoUrl' => 'https://diamondpbn.com/logo.png',
         ], function ($message) use ($admin) {
             $message->to($admin->email)
                 ->subject('Diamond PBN Login Verification Code');

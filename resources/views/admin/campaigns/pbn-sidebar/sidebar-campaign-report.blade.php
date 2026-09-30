@@ -50,18 +50,18 @@
         </div>
 
         {{-- Table --}}
-        <div class="overflow-x-auto w-full max-w-full min-w-0 -mx-1 px-1 sm:mx-0 sm:px-0">
-            <table class="display w-full min-w-[960px] border border-gray-200 text-sm whitespace-nowrap">
+        <div class="w-full max-w-full min-w-0 overflow-hidden">
+            <table class="w-full max-w-full table-fixed border border-gray-200 text-sm">
 
                 <thead>
                     <tr class="bg-gray-800 text-white">
-                        <th class="border !px-2 !py-3">S.No</th>
-                        <th class="border !px-2 !py-3">Live Link</th>
-                        <th class="border !px-2 !py-3">Domain</th>
-                        <th class="border !px-2 !py-3">Keyword</th>
+                        <th class="border !px-2 !py-3 w-14">S.No</th>
+                        <th class="border !px-2 !py-3 w-[16%]">Live Link</th>
+                        <th class="border !px-2 !py-3 w-[16%]">Domain</th>
+                        <th class="border !px-2 !py-3 w-[12%]">Keyword</th>
                         <th class="border !px-2 !py-3">Target URL</th>
-                        <th class="border !px-2 !py-3">Status</th>
-                        <th class="border !px-2 !py-3">Date</th>
+                        <th class="border !px-2 !py-3 w-24">Status</th>
+                        <th class="border !px-2 !py-3 w-28">Date</th>
                     </tr>
                 </thead>
 
@@ -82,9 +82,10 @@
                                 {{ $index + 1 }}
                             </td>
 
-                            <td class="border !px-2 !py-3 font-medium">
+                            <td class="border !px-2 !py-3 font-medium overflow-hidden">
                                 @if ($domain !== '-')
-                                    <a href="https://{{ $domain }}" target="_blank" class="text-sm text-blue-600 hover:underline">
+                                    <a href="https://{{ $domain }}" target="_blank" title="{{ $domain }}"
+                                        class="block truncate text-sm text-blue-600 hover:underline">
                                         {{ $domain }}
                                     </a>
                                 @else
@@ -92,36 +93,38 @@
                                 @endif
                             </td>
 
-                            <td class="border !px-2 !py-3">
-                                {{ $domain }}
+                            <td class="border !px-2 !py-3 overflow-hidden">
+                                <span class="block truncate" title="{{ $domain }}">{{ $domain }}</span>
                             </td>
-
-
 
                             @php
                                 $kwCell = \App\Support\ReportDisplay::keyword($keyword !== '-' ? $keyword : null);
                                 $urlCell = \App\Support\ReportDisplay::url($url !== '-' ? $url : null);
                             @endphp
-                            <td class="border !px-2 !py-3 max-w-[12rem] align-top"
-                                @if ($kwCell['title'] !== '') title="{{ $kwCell['title'] }}" @endif>{{ $kwCell['display'] }}</td>
+                            <td class="border !px-2 !py-3 overflow-hidden">
+                                <span class="block truncate"
+                                    @if ($kwCell['title'] !== '') title="{{ $kwCell['title'] }}" @endif>{{ $kwCell['display'] }}</span>
+                            </td>
 
-                            <td class="border !px-2 !py-3 max-w-[18rem] align-top"
-                                @if ($urlCell['title'] !== '') title="{{ $urlCell['title'] }}" @endif>{{ $urlCell['display'] }}</td>
+                            <td class="border !px-2 !py-3 overflow-hidden">
+                                <span class="block truncate"
+                                    @if ($urlCell['title'] !== '') title="{{ $urlCell['title'] }}" @endif>{{ $urlCell['display'] }}</span>
+                            </td>
 
-                            <td class="border !px-2 !py-3 text-center">
+                            <td class="border !px-2 !py-3 text-center whitespace-nowrap">
                                 <span class="!px-2 !py-1 rounded text-xs font-semibold {{ $statusClass }}">
                                     {{ $statusText }}
                                 </span>
                             </td>
 
-                            <td class="border !px-2 !py-3">
+                            <td class="border !px-2 !py-3 whitespace-nowrap">
                                 {{ $task->created_at->format('d M Y') }}
                             </td>
                         </tr>
 
                     @empty
                         <tr>
-                            <td colspan="8" class="text-center !py-4 text-gray-500 bg-gray-100">
+                            <td colspan="7" class="text-center !py-4 text-gray-500 bg-gray-100">
                                 No sidebar campaign links found
                             </td>
                         </tr>
