@@ -7,17 +7,16 @@
 @endpush
 
 @section('main-content')
-    <div class="page-header w-full max-w-full min-w-0">
-        <div class="w-full flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-            <div class="w-full sm:w-1/2 flex flex-col gap-2 min-w-0">
-                <h2 class="page-title">Deployment History</h2>
-                <div class="breadcrumb flex-wrap">
-                    <div class="breadcrumb-item"><a href="{{ route('admin.dashboard') }}" class="breadcrumb-link">Dashboard</a><span>›</span></div>
-                    <div class="breadcrumb-item"><a href="{{ route('admin.plugin-manager.index') }}" class="breadcrumb-link">Plugin Manager</a><span>›</span></div>
-                    <div class="breadcrumb-item"><span class="breadcrumb-link">History</span></div>
-                </div>
+    <div class="page-header pm-page-header">
+        <div class="pm-page-heading">
+            <h2 class="page-title">Deployment History</h2>
+            <div class="breadcrumb flex-wrap">
+                <div class="breadcrumb-item"><a href="{{ route('admin.dashboard') }}" class="breadcrumb-link">Dashboard</a><span>›</span></div>
+                <div class="breadcrumb-item"><a href="{{ route('admin.plugin-manager.index') }}" class="breadcrumb-link">Plugin Manager</a><span>›</span></div>
+                <div class="breadcrumb-item"><span class="breadcrumb-link">History</span></div>
             </div>
-            <div class="w-full sm:w-1/2 flex flex-wrap justify-start sm:justify-end items-center gap-2">
+        </div>
+        <div class="pm-page-actions">
                 <a href="{{ route('admin.plugin-manager.index') }}" class="pm-btn pm-btn-muted">
                     <span class="material-symbols-outlined !text-base">inventory_2</span>
                     Library
@@ -27,7 +26,6 @@
                     New Deploy
                 </a>
             </div>
-        </div>
     </div>
 
     <div id="pluginManagerAlert" class="w-full hidden !mt-2" role="alert"></div>
@@ -67,7 +65,13 @@
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 !mb-4 !pb-4 border-b border-gray-100">
             <div>
                 <h3 class="text-base font-semibold text-gray-800">Recent deployments</h3>
-                <p class="text-xs text-gray-500 !mt-1">Track install, update, and delete rollouts across your network.</p>
+                <p class="text-xs text-gray-500 !mt-1">
+                    @if (! empty($canSeeAllHistory))
+                        Showing deployments started by every admin. Clear my history removes only your own runs.
+                    @else
+                        Track install, update, and delete rollouts across your network.
+                    @endif
+                </p>
             </div>
             @if ($deployments->total() > 0)
                 <span class="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-full !px-3 !py-1 w-fit">
@@ -77,7 +81,20 @@
         </div>
 
         <form method="GET" action="{{ route('admin.plugin-manager.deployments.index') }}" class="pm-filter-bar">
-            <div class="pm-filter-grid">
+            <div class="pm-filter-grid {{ ! empty($canSeeAllHistory) ? 'pm-filter-grid-wide' : '' }}">
+                @if (! empty($canSeeAllHistory))
+                    <div class="pm-filter-field">
+                        <label class="pm-filter-label" for="filter_admin">User</label>
+                        <select name="admin_id" id="filter_admin" class="pm-filter-control">
+                            <option value="">All users</option>
+                            @foreach ($historyAdmins as $historyAdmin)
+                                <option value="{{ $historyAdmin->id }}" @selected((string) ($filters['admin_id'] ?? '') === (string) $historyAdmin->id)>
+                                    {{ $historyAdmin->name }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                @endif
                 <div class="pm-filter-field">
                     <label class="pm-filter-label" for="filter_status">Status</label>
                     <select name="status" id="filter_status" class="pm-filter-control">
@@ -162,18 +179,22 @@
                             <span class="material-symbols-outlined !text-base">delete</span>
                             Delete selected
                         </button>
-                        <button type="button" id="deploymentClearHistoryBtn" class="pm-btn pm-btn-danger !min-h-[38px] !py-2 text-sm">
+                        <button type="button" id="deploymentClearHistoryBtn" class="pm-btn pm-btn-danger !min-h-[38px] !py-2 text-sm"
+                            title="{{ ! empty($canSeeAllHistory) ? 'Removes only deployments you started' : 'Removes every deployment in your history' }}">
                             <span class="material-symbols-outlined !text-base">delete_sweep</span>
-                            Clear all history
+                            {{ ! empty($canSeeAllHistory) ? 'Clear my history' : 'Clear all history' }}
                         </button>
                     </div>
                 </div>
 
             <div class="pm-history-table-wrap">
-                <table class="pm-history-table">
+                <table class="pm-history-table {{ ! empty($canSeeAllHistory) ? 'pm-history-table-all' : '' }}">
                     <colgroup>
                         <col class="pm-col-select">
                         <col class="pm-col-started">
+                        @if (! empty($canSeeAllHistory))
+                            <col class="pm-col-user">
+                        @endif
                         <col class="pm-col-package">
                         <col class="pm-col-operation">
                         <col class="pm-col-scope">
@@ -186,6 +207,9 @@
                         <tr>
                             <th class="pm-th-select"></th>
                             <th>Started</th>
+                            @if (! empty($canSeeAllHistory))
+                                <th>User</th>
+                            @endif
                             <th>Package</th>
                             <th>Operation</th>
                             <th>Scope</th>
@@ -217,10 +241,20 @@
                                         <span class="pm-cell-secondary">{{ $deployment->created_at->format('H:i') }}</span>
                                     </div>
                                 </td>
+                                @if (! empty($canSeeAllHistory))
+                                    <td>
+                                        <div class="pm-cell">
+                                            <span class="pm-cell-primary" title="{{ $deployment->admin?->email }}">{{ $deployment->admin?->name ?? 'Unknown' }}</span>
+                                        </div>
+                                    </td>
+                                @endif
                                 <td>
                                     @if ($package)
                                         <div class="pm-cell pm-cell-package">
                                             <span class="pm-package-name" title="{{ $package->name }}">{{ Str::limit($package->name, 42) }}</span>
+                                            @if ($deployment->batchLabel())
+                                                <span class="pm-batch-tag">{{ $deployment->batchLabel() }}</span>
+                                            @endif
                                             <span class="pm-package-meta">
                                                 <span class="pm-version-tag">v{{ $package->version }}</span>
                                                 <span class="pm-meta-dot">·</span>

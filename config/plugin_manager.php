@@ -73,4 +73,8 @@ return [
 
     'min_agent_version' => env('PLUGIN_MANAGER_MIN_AGENT_VERSION', '8.1.5'),
 
+    'report_chunk_size' => (int) env('PLUGIN_MANAGER_REPORT_CHUNK_SIZE', 1),
+
+    'report_retention_hours' => (int) env('PLUGIN_MANAGER_REPORT_RETENTION_HOURS', 24),
+
 ];

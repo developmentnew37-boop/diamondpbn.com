@@ -114,20 +114,92 @@
         });
     });
 
-    // --- Package metadata (deploy page) ---
-    const packageSelect = document.getElementById('plugin_package_uuid');
-    const packageMetaPanel = document.getElementById('packageMetaPanel');
-    function refreshPackageMeta() {
-        if (!packageSelect || !packageMetaPanel) return;
-        const option = packageSelect.selectedOptions[0];
-        if (!option) return;
-        document.getElementById('metaExpectedSlug').textContent = option.dataset.expectedSlug || '—';
-        document.getElementById('metaLibrarySlug').textContent = option.dataset.librarySlug || '—';
-        document.getElementById('metaVersion').textContent = option.dataset.version || '—';
-        packageMetaPanel.classList.remove('hidden');
+    // --- Plugin run order (deploy page) ---
+    const pluginPicker = document.getElementById('pluginPackagePicker');
+    const pluginRunOrder = document.getElementById('pluginRunOrder');
+    const pluginRunOrderList = document.getElementById('pluginRunOrderList');
+    const selectedPluginOrder = [];
+    const maxPlugins = Number(pluginPicker?.dataset.maxPlugins || 10);
+
+    function pluginCheckboxes() {
+        return pluginPicker ? Array.from(pluginPicker.querySelectorAll('.pm-package-check')) : [];
     }
-    packageSelect?.addEventListener('change', refreshPackageMeta);
-    refreshPackageMeta();
+
+    function renderPluginOrder() {
+        pluginCheckboxes().forEach((box) => {
+            const badge = box.closest('.pm-package-option')?.querySelector('.pm-package-order');
+            const index = selectedPluginOrder.indexOf(box.value);
+            if (!badge) return;
+            if (index === -1) {
+                badge.hidden = true;
+                badge.textContent = '';
+            } else {
+                badge.hidden = false;
+                badge.textContent = String(index + 1);
+            }
+        });
+
+        if (!pluginRunOrder || !pluginRunOrderList) return;
+        pluginRunOrderList.innerHTML = '';
+        if (selectedPluginOrder.length === 0) {
+            pluginRunOrder.classList.add('hidden');
+            return;
+        }
+        pluginRunOrder.classList.remove('hidden');
+        selectedPluginOrder.forEach((uuid) => {
+            const box = pluginCheckboxes().find((candidate) => candidate.value === uuid);
+            const item = document.createElement('li');
+            const name = box?.dataset.name || 'Plugin';
+            const version = box?.dataset.version || '';
+            item.textContent = version ? name + ' (v' + version + ')' : name;
+            pluginRunOrderList.appendChild(item);
+        });
+    }
+
+    const pluginPackageSearch = document.getElementById('pluginPackageSearch');
+    const pluginPackageEmpty = document.getElementById('pluginPackageEmpty');
+    pluginPackageSearch?.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') event.preventDefault();
+    });
+    pluginPackageSearch?.addEventListener('input', () => {
+        const query = pluginPackageSearch.value.trim().toLowerCase();
+        let visible = 0;
+        pluginPicker?.querySelectorAll('.pm-package-option').forEach((card) => {
+            const box = card.querySelector('.pm-package-check');
+            const version = box?.dataset.version || '';
+            const haystack = [
+                box?.dataset.name || '',
+                version,
+                version ? 'v' + version : '',
+                box?.dataset.expectedSlug || '',
+            ].join(' ').toLowerCase();
+            const match = query === '' || haystack.includes(query);
+            card.classList.toggle('pm-package-option-hidden', !match);
+            if (match) visible += 1;
+        });
+        pluginPackageEmpty?.classList.toggle('hidden', visible !== 0);
+    });
+
+    pluginPicker?.querySelectorAll('.pm-package-check').forEach((box) => {
+        if (box.checked && !selectedPluginOrder.includes(box.value)) {
+            selectedPluginOrder.push(box.value);
+        }
+        box.addEventListener('change', () => {
+            const index = selectedPluginOrder.indexOf(box.value);
+            if (box.checked) {
+                if (selectedPluginOrder.length >= maxPlugins) {
+                    box.checked = false;
+                    showAlert('Select at most ' + maxPlugins + ' plugins.', 'warning');
+                    return;
+                }
+                if (index === -1) selectedPluginOrder.push(box.value);
+            } else if (index !== -1) {
+                selectedPluginOrder.splice(index, 1);
+            }
+            renderPluginOrder();
+        });
+    });
+    renderPluginOrder();
 
     // --- Deploy form ---
     const deployForm = document.getElementById('pluginDeployForm');
@@ -140,7 +212,15 @@
             btn.disabled = true;
             spinner?.classList.remove('hidden');
 
+            if (selectedPluginOrder.length === 0) {
+                showAlert('Select at least one plugin.', 'error');
+                btn.disabled = false;
+                spinner?.classList.add('hidden');
+                return;
+            }
+
             const formData = new FormData(deployForm);
+            selectedPluginOrder.forEach((uuid) => formData.append('plugin_package_uuids[]', uuid));
             const source = formData.get('source');
             if (source === 'inventory') formData.delete('domains_list');
             if (!formData.get('activate_after')) formData.delete('activate_after');
@@ -496,5 +576,120 @@
         });
 
         refreshDeploymentSelectionUi();
+    }
+
+    // --- Plugin inventory report ---
+    const reportForm = document.getElementById('pluginReportForm');
+    if (reportForm) {
+        reportForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            clearAlert();
+            const btn = document.getElementById('reportSubmitBtn');
+            const spinner = document.getElementById('reportSubmitSpinner');
+            btn.disabled = true;
+            spinner?.classList.remove('hidden');
+
+            const formData = new FormData(reportForm);
+            const source = formData.get('source');
+            if (source === 'inventory') formData.delete('domains_list');
+
+            try {
+                const res = await fetch(reportForm.dataset.startUrl, {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: formData,
+                });
+                const data = await parseJsonResponse(res);
+                if (!res.ok || !data.success) throw new Error(data.message || 'Could not start the report');
+                if (data.truncated) {
+                    showAlert('First ' + data.total + ' of ' + data.total_in_scope + ' domains queued. Run again for the rest.', 'warning');
+                }
+                window.location.href = data.redirect_url;
+            } catch (err) {
+                showAlert(err.message || 'Could not start the report.', 'error');
+                btn.disabled = false;
+                spinner?.classList.add('hidden');
+            }
+        });
+    }
+
+    const reportPanel = document.getElementById('pluginReportPanel');
+    if (reportPanel) {
+        const bar = document.getElementById('pluginReportBar');
+        const progressText = document.getElementById('pluginReportProgressText');
+        const statusText = document.getElementById('pluginReportStatus');
+        const successCount = document.getElementById('pluginReportSuccess');
+        const failedCount = document.getElementById('pluginReportFailed');
+        const downloadLink = document.getElementById('pluginReportDownload');
+        const cancelBtn = document.getElementById('pluginReportCancel');
+        const deleteBtn = document.getElementById('pluginReportDelete');
+        let pollTimer = null;
+
+        function applyReportProgress(data) {
+            if (bar) bar.style.width = data.percent + '%';
+            if (progressText) progressText.textContent = data.processed_count + ' / ' + data.total_count + ' · ' + data.percent + '%';
+            if (statusText) statusText.textContent = data.status_message || '';
+            if (successCount) successCount.textContent = data.success_count;
+            if (failedCount) failedCount.textContent = data.failed_count;
+            if (data.download_ready) downloadLink?.classList.remove('hidden');
+            if (data.finished) {
+                cancelBtn?.classList.add('hidden');
+                if (pollTimer) window.clearInterval(pollTimer);
+            }
+        }
+
+        async function pollReport() {
+            try {
+                const res = await fetch(reportPanel.dataset.progressUrl, {
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                const data = await parseJsonResponse(res);
+                if (!res.ok || !data.success) return;
+                applyReportProgress(data);
+            } catch (err) {
+                // Keep the last progress on screen if one poll fails.
+            }
+        }
+
+        if (reportPanel.dataset.finished !== '1') {
+            pollTimer = window.setInterval(pollReport, 2000);
+        }
+
+        cancelBtn?.addEventListener('click', async () => {
+            if (!confirm('Cancel this report?')) return;
+            clearAlert();
+            cancelBtn.disabled = true;
+            try {
+                const res = await fetch(reportPanel.dataset.cancelUrl, {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                const data = await parseJsonResponse(res);
+                if (!res.ok || !data.success) throw new Error(data.message || 'Could not cancel');
+                showAlert(data.message, 'success');
+                pollReport();
+            } catch (err) {
+                showAlert(err.message || 'Could not cancel.', 'error');
+                cancelBtn.disabled = false;
+            }
+        });
+
+        deleteBtn?.addEventListener('click', async () => {
+            if (!confirm('Delete this report and its Excel file?')) return;
+            clearAlert();
+            deleteBtn.disabled = true;
+            try {
+                const res = await fetch(reportPanel.dataset.deleteUrl, {
+                    method: 'DELETE',
+                    headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                const data = await parseJsonResponse(res);
+                if (!res.ok || !data.success) throw new Error(data.message || 'Could not delete');
+                window.location.href = reportPanel.dataset.indexUrl;
+            } catch (err) {
+                showAlert(err.message || 'Could not delete.', 'error');
+                deleteBtn.disabled = false;
+            }
+        });
     }
 })();

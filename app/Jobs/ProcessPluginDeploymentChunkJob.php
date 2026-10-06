@@ -106,6 +106,8 @@ class ProcessPluginDeploymentChunkJob implements ShouldQueue
             'completed_at' => now(),
         ]);
 
+        $deploymentService->releaseNextInBatch($deployment->fresh());
+
         Log::error('Plugin deployment job failed', [
             'deployment_id' => $this->deploymentId,
             'error' => $exception->getMessage(),

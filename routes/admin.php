@@ -29,6 +29,7 @@ use App\Http\Controllers\Admin\LocalClientPaymentController;
 use App\Http\Controllers\Admin\LocalClientRateListController;
 use App\Http\Controllers\Admin\PendingDomainController;
 use App\Http\Controllers\Admin\PluginDeploymentController;
+use App\Http\Controllers\Admin\PluginInventoryReportController;
 use App\Http\Controllers\Admin\PluginPackageController;
 use App\Http\Controllers\Admin\ProfileController;
 use App\Http\Controllers\Admin\ScheduleCampaignController;
@@ -270,6 +271,18 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
                 ->name('deployments.destroy');
             Route::get('/deployments/{uuid}/export-failures', [PluginDeploymentController::class, 'exportFailures'])
                 ->name('deployments.export-failures');
+
+            Route::get('/reports', [PluginInventoryReportController::class, 'create'])->name('reports.create');
+            Route::post('/reports', [PluginInventoryReportController::class, 'start'])
+                ->middleware('throttle:10,1')
+                ->name('reports.start');
+            Route::get('/reports/{uuid}', [PluginInventoryReportController::class, 'show'])->name('reports.show');
+            Route::get('/reports/{uuid}/progress', [PluginInventoryReportController::class, 'progress'])
+                ->middleware('throttle:120,1')
+                ->name('reports.progress');
+            Route::get('/reports/{uuid}/download', [PluginInventoryReportController::class, 'download'])->name('reports.download');
+            Route::post('/reports/{uuid}/cancel', [PluginInventoryReportController::class, 'cancel'])->name('reports.cancel');
+            Route::delete('/reports/{uuid}', [PluginInventoryReportController::class, 'destroy'])->name('reports.destroy');
         });
 
     /** Webhook Secrets Routes Start Here **/

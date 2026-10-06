@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Admin;
 use App\Models\Admin\DomainCategory;
 use App\Models\Admin\PluginDeployment;
 use App\Models\Admin\PluginPackage;
 use App\Services\PluginDeploymentService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -21,10 +23,10 @@ class PluginDeploymentController extends Controller
 
     public function index(Request $request): View
     {
-        $adminId = (int) Auth::guard('admin')->id();
-        $filters = $this->historyFiltersFromRequest($request);
-
-        $baseQuery = PluginDeployment::query()->where('admin_id', $adminId);
+        $admin = $this->actingAdmin();
+        $canSeeAll = $admin->isSuperAdmin();
+        $filters = $this->historyFiltersFromRequest($request, $canSeeAll);
+        $baseQuery = $this->historyBaseQuery($filters);
 
         $stats = [
             'total' => (clone $baseQuery)->count(),
@@ -36,7 +38,11 @@ class PluginDeploymentController extends Controller
         $listQuery = $this->deploymentService->applyHistoryFilters(clone $baseQuery, $filters);
 
         $deployments = $listQuery
-            ->with(['pluginPackage:id,name,slug,expected_slug,version', 'domainCategory:id,name'])
+            ->with([
+                'pluginPackage:id,name,slug,expected_slug,version',
+                'domainCategory:id,name',
+                'admin:id,name,email',
+            ])
             ->orderByDesc('created_at')
             ->paginate(20)
             ->withQueryString();
@@ -47,25 +53,32 @@ class PluginDeploymentController extends Controller
             'filters' => $filters,
             'operations' => PluginDeployment::OPERATIONS,
             'hasFilters' => $this->historyHasActiveFilters($filters),
+            'canSeeAllHistory' => $canSeeAll,
+            'historyAdmins' => $canSeeAll
+                ? Admin::query()->orderBy('name')->get(['id', 'name', 'email'])
+                : collect(),
         ]);
     }
 
     public function exportHistory(Request $request): StreamedResponse
     {
-        $adminId = (int) Auth::guard('admin')->id();
-        $filters = $this->historyFiltersFromRequest($request);
+        $admin = $this->actingAdmin();
+        $canSeeAll = $admin->isSuperAdmin();
+        $filters = $this->historyFiltersFromRequest($request, $canSeeAll);
 
         $query = $this->deploymentService->applyHistoryFilters(
-            PluginDeployment::query()->where('admin_id', $adminId),
+            $this->historyBaseQuery($filters),
             $filters
-        )->with(['pluginPackage:id,name,slug,expected_slug,version'])
-            ->orderByDesc('created_at');
+        )->with([
+            'pluginPackage:id,name,slug,expected_slug,version',
+            'admin:id,name,email',
+        ])->orderByDesc('created_at');
 
         $filename = 'plugin-deployment-history-'.now()->format('Ymd-His').'.csv';
 
-        return response()->streamDownload(function () use ($query) {
+        return response()->streamDownload(function () use ($query, $canSeeAll) {
             $handle = fopen('php://output', 'w');
-            fputcsv($handle, [
+            $headers = [
                 'uuid',
                 'package',
                 'operation',
@@ -76,11 +89,15 @@ class PluginDeploymentController extends Controller
                 'skipped',
                 'created_at',
                 'completed_at',
-            ]);
+            ];
+            if ($canSeeAll) {
+                $headers[] = 'started_by';
+            }
+            fputcsv($handle, $headers);
 
-            $query->chunkById(200, function ($deployments) use ($handle) {
+            $query->chunkById(200, function ($deployments) use ($handle, $canSeeAll) {
                 foreach ($deployments as $deployment) {
-                    fputcsv($handle, [
+                    $row = [
                         $deployment->uuid,
                         $deployment->pluginPackage?->displayLabel() ?? '',
                         $deployment->operation,
@@ -91,7 +108,11 @@ class PluginDeploymentController extends Controller
                         $deployment->skipped_count,
                         optional($deployment->created_at)?->toDateTimeString(),
                         optional($deployment->completed_at)?->toDateTimeString(),
-                    ]);
+                    ];
+                    if ($canSeeAll) {
+                        $row[] = $deployment->admin?->name ?? '';
+                    }
+                    fputcsv($handle, $row);
                 }
             });
 
@@ -114,13 +135,16 @@ class PluginDeploymentController extends Controller
             'packages' => $packages,
             'selectedPackageUuid' => $selectedPackageUuid,
             'operations' => PluginDeployment::OPERATIONS,
+            'maxPlugins' => $this->deploymentService->maxPluginsPerBatch(),
         ]);
     }
 
     public function start(Request $request): JsonResponse
     {
         $request->validate([
-            'plugin_package_uuid' => 'required|string|exists:plugin_packages,uuid',
+            'plugin_package_uuid' => 'nullable|string|exists:plugin_packages,uuid',
+            'plugin_package_uuids' => 'nullable|array|max:'.$this->deploymentService->maxPluginsPerBatch(),
+            'plugin_package_uuids.*' => 'string|distinct|exists:plugin_packages,uuid',
             'operation' => 'required|in:'.implode(',', PluginDeployment::OPERATIONS),
             'source' => 'required|in:manual,inventory',
             'domains_list' => 'required_if:source,manual|nullable|string|max:100000',
@@ -129,7 +153,28 @@ class PluginDeploymentController extends Controller
             'skip_if_same_version' => 'nullable|boolean',
         ]);
 
-        $package = PluginPackage::query()->where('uuid', $request->input('plugin_package_uuid'))->firstOrFail();
+        $packageUuids = $this->selectedPackageUuids($request);
+        if ($packageUuids === []) {
+            return response()->json(['success' => false, 'message' => 'Select at least one plugin.'], 422);
+        }
+
+        if (count($packageUuids) > $this->deploymentService->maxPluginsPerBatch()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Select at most '.$this->deploymentService->maxPluginsPerBatch().' plugins.',
+            ], 422);
+        }
+
+        $packagesByUuid = PluginPackage::query()->whereIn('uuid', $packageUuids)->get()->keyBy('uuid');
+        $packages = [];
+        foreach ($packageUuids as $uuid) {
+            $package = $packagesByUuid->get($uuid);
+            if (! $package) {
+                return response()->json(['success' => false, 'message' => 'One of the selected plugins was not found.'], 422);
+            }
+            $packages[] = $package;
+        }
+
         $source = $request->input('source', 'manual');
         $truncated = false;
         $totalInScope = null;
@@ -166,9 +211,9 @@ class PluginDeploymentController extends Controller
         $adminId = (int) Auth::guard('admin')->id();
 
         try {
-            $deployment = $this->deploymentService->createDeployment(
+            $deployments = $this->deploymentService->createSequentialDeployments(
                 $adminId,
-                $package,
+                $packages,
                 $request->input('operation'),
                 $domains,
                 $source,
@@ -182,9 +227,12 @@ class PluginDeploymentController extends Controller
             return response()->json(['success' => false, 'message' => 'Could not start deployment: '.$e->getMessage()], 500);
         }
 
+        $deployment = $deployments[0];
+
         return response()->json([
             'success' => true,
             'deployment_uuid' => $deployment->uuid,
+            'deployment_count' => count($deployments),
             'total' => $deployment->total_count,
             'truncated' => $truncated,
             'total_in_scope' => $totalInScope,
@@ -195,23 +243,32 @@ class PluginDeploymentController extends Controller
 
     public function show(string $uuid): View
     {
-        $deployment = PluginDeployment::query()
-            ->with(['pluginPackage', 'domainCategory'])
+        $deployment = $this->visibleDeployments()
+            ->with(['pluginPackage', 'domainCategory', 'admin:id,name,email'])
             ->where('uuid', $uuid)
-            ->where('admin_id', Auth::guard('admin')->id())
             ->firstOrFail();
+
+        $nextInBatch = null;
+        if ($deployment->batch_uuid) {
+            $nextInBatch = PluginDeployment::query()
+                ->with('pluginPackage:id,name,version')
+                ->where('batch_uuid', $deployment->batch_uuid)
+                ->where('batch_position', (int) $deployment->batch_position + 1)
+                ->first();
+        }
 
         return view('admin.domains.plugin-manager.deployment-show', [
             'deployment' => $deployment,
+            'canSeeAllHistory' => $this->actingAdmin()->isSuperAdmin(),
+            'nextInBatch' => $nextInBatch,
         ]);
     }
 
     public function progress(Request $request, string $uuid): JsonResponse
     {
-        $deployment = PluginDeployment::query()
+        $deployment = $this->visibleDeployments()
             ->with('pluginPackage')
             ->where('uuid', $uuid)
-            ->where('admin_id', Auth::guard('admin')->id())
             ->firstOrFail();
 
         $metrics = $this->deploymentService->progressMetrics($deployment);
@@ -264,9 +321,8 @@ class PluginDeploymentController extends Controller
 
     public function retryFailed(Request $request, string $uuid): JsonResponse
     {
-        $deployment = PluginDeployment::query()
+        $deployment = $this->visibleDeployments()
             ->where('uuid', $uuid)
-            ->where('admin_id', Auth::guard('admin')->id())
             ->firstOrFail();
 
         $scope = (string) $request->input('scope', $request->query('scope', 'both'));
@@ -294,9 +350,8 @@ class PluginDeploymentController extends Controller
 
     public function cancel(string $uuid): JsonResponse
     {
-        $deployment = PluginDeployment::query()
+        $deployment = $this->visibleDeployments()
             ->where('uuid', $uuid)
-            ->where('admin_id', Auth::guard('admin')->id())
             ->firstOrFail();
 
         $this->deploymentService->cancelDeployment($deployment);
@@ -306,9 +361,8 @@ class PluginDeploymentController extends Controller
 
     public function destroy(string $uuid): JsonResponse
     {
-        $deployment = PluginDeployment::query()
+        $deployment = $this->visibleDeployments()
             ->where('uuid', $uuid)
-            ->where('admin_id', Auth::guard('admin')->id())
             ->firstOrFail();
 
         $wasActive = $deployment->isActive();
@@ -336,10 +390,14 @@ class PluginDeploymentController extends Controller
             'uuids.*' => 'required|string|uuid',
         ]);
 
-        $adminId = (int) Auth::guard('admin')->id();
+        $admin = $this->actingAdmin();
 
         try {
-            $result = $this->deploymentService->bulkDeleteDeployments($validated['uuids'], $adminId);
+            $result = $this->deploymentService->bulkDeleteDeployments(
+                $validated['uuids'],
+                (int) $admin->id,
+                ! $admin->isSuperAdmin()
+            );
         } catch (\Throwable $e) {
             report($e);
 
@@ -392,9 +450,8 @@ class PluginDeploymentController extends Controller
 
     public function exportFailures(Request $request, string $uuid): StreamedResponse
     {
-        $deployment = PluginDeployment::query()
+        $deployment = $this->visibleDeployments()
             ->where('uuid', $uuid)
-            ->where('admin_id', Auth::guard('admin')->id())
             ->firstOrFail();
 
         $status = strtolower((string) $request->query('status', 'all'));
@@ -446,26 +503,78 @@ class PluginDeploymentController extends Controller
     }
 
     /**
-     * @return array{status: string, operation: string, outcome: string, q: string}
+     * @return list<string>
      */
-    private function historyFiltersFromRequest(Request $request): array
+    private function selectedPackageUuids(Request $request): array
     {
+        $uuids = [];
+
+        foreach ((array) $request->input('plugin_package_uuids', []) as $uuid) {
+            if (! is_string($uuid) || $uuid === '' || in_array($uuid, $uuids, true)) {
+                continue;
+            }
+            $uuids[] = $uuid;
+        }
+
+        if ($uuids === [] && is_string($request->input('plugin_package_uuid')) && $request->input('plugin_package_uuid') !== '') {
+            $uuids[] = $request->input('plugin_package_uuid');
+        }
+
+        return $uuids;
+    }
+
+    private function actingAdmin(): Admin
+    {
+        $admin = Auth::guard('admin')->user();
+        abort_unless($admin instanceof Admin, 403);
+
+        return $admin;
+    }
+
+    private function visibleDeployments(): Builder
+    {
+        return PluginDeployment::query()->visibleTo($this->actingAdmin());
+    }
+
+    /**
+     * @param  array{status: string, operation: string, outcome: string, q: string, admin_id: string}  $filters
+     */
+    private function historyBaseQuery(array $filters): Builder
+    {
+        $query = $this->visibleDeployments();
+
+        if ($filters['admin_id'] !== '' && ctype_digit($filters['admin_id'])) {
+            $query->where('admin_id', (int) $filters['admin_id']);
+        }
+
+        return $query;
+    }
+
+    /**
+     * @return array{status: string, operation: string, outcome: string, q: string, admin_id: string}
+     */
+    private function historyFiltersFromRequest(Request $request, bool $canSeeAll): array
+    {
+        $adminId = trim((string) $request->query('admin_id', ''));
+
         return [
             'status' => (string) $request->query('status', ''),
             'operation' => (string) $request->query('operation', ''),
             'outcome' => (string) $request->query('outcome', ''),
             'q' => trim((string) $request->query('q', '')),
+            'admin_id' => $canSeeAll && ctype_digit($adminId) ? $adminId : '',
         ];
     }
 
     /**
-     * @param  array{status: string, operation: string, outcome: string, q: string}  $filters
+     * @param  array{status: string, operation: string, outcome: string, q: string, admin_id: string}  $filters
      */
     private function historyHasActiveFilters(array $filters): bool
     {
         return $filters['status'] !== ''
             || $filters['operation'] !== ''
             || $filters['outcome'] !== ''
-            || $filters['q'] !== '';
+            || $filters['q'] !== ''
+            || $filters['admin_id'] !== '';
     }
 }

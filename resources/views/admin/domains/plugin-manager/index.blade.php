@@ -7,27 +7,29 @@
 @endpush
 
 @section('main-content')
-    <div class="page-header w-full max-w-full min-w-0">
-        <div class="w-full flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-            <div class="w-full sm:w-1/2 flex flex-col gap-2 min-w-0">
-                <h2 class="page-title">Plugin Manager</h2>
-                <div class="breadcrumb flex-wrap">
-                    <div class="breadcrumb-item"><a href="{{ route('admin.dashboard') }}" class="breadcrumb-link">Dashboard</a><span>›</span></div>
-                    <div class="breadcrumb-item"><span class="breadcrumb-link">Plugin Manager</span><span>›</span></div>
-                    <div class="breadcrumb-item"><span class="breadcrumb-link">Plugin Library</span></div>
-                </div>
+    <div class="page-header pm-page-header">
+        <div class="pm-page-heading">
+            <h2 class="page-title">Plugin Manager</h2>
+            <div class="breadcrumb flex-wrap">
+                <div class="breadcrumb-item"><a href="{{ route('admin.dashboard') }}" class="breadcrumb-link">Dashboard</a><span>›</span></div>
+                <div class="breadcrumb-item"><span class="breadcrumb-link">Plugin Manager</span><span>›</span></div>
+                <div class="breadcrumb-item"><span class="breadcrumb-link">Plugin Library</span></div>
             </div>
-            <div class="w-full sm:w-1/2 flex flex-wrap justify-start sm:justify-end items-center gap-2">
-                <a href="{{ route('admin.plugin-manager.deploy.create') }}" class="pm-btn pm-btn-muted">
-                    <span class="material-symbols-outlined !text-base">rocket_launch</span>
-                    Deploy Plugin
+        </div>
+        <div class="pm-page-actions">
+                <a href="{{ route('admin.plugin-manager.reports.create') }}" class="pm-btn pm-btn-muted">
+                    <span class="material-symbols-outlined !text-base">description</span>
+                    Plugin Report
                 </a>
                 <a href="{{ route('admin.plugin-manager.deployments.index') }}" class="pm-btn pm-btn-muted">
                     <span class="material-symbols-outlined !text-base">history</span>
                     History
                 </a>
+                <a href="{{ route('admin.plugin-manager.deploy.create') }}" class="pm-btn">
+                    <span class="material-symbols-outlined !text-base">rocket_launch</span>
+                    Deploy Plugin
+                </a>
             </div>
-        </div>
     </div>
 
     <div id="pluginManagerAlert" class="w-full hidden !mt-2" role="alert"></div>
@@ -44,31 +46,31 @@
         </div>
     @endif
 
-    <div class="w-full content-card !mt-4">
-        <div class="!p-4 theme-info-box !mb-4">
-            <div class="flex items-start gap-3">
-                <span class="material-symbols-outlined text-[var(--primary-color)] !text-xl">info</span>
-                <div class="text-sm text-gray-700">
-                    <strong>Upload once</strong> per plugin version, then <strong>deploy many times</strong> by category or manual list.
-                    Each package stores a <strong>library slug</strong> (catalog) and <strong>WP folder</strong> (<code>expected_slug</code> from the ZIP).
-                    Remote sites need Diamond PBN agent <strong>≥ {{ config('plugin_manager.min_agent_version') }}</strong>.
-                    Queue: <code class="bg-white !px-1 rounded text-xs">php artisan queue:work --queue=plugin_deployments</code>
-                </div>
+    <div class="w-full content-card !mt-4 pm-library-card">
+        <div class="pm-library-note">
+            <span class="material-symbols-outlined pm-library-note-icon">info</span>
+            <div class="pm-library-note-body">
+                <p class="pm-library-note-title">Upload once, deploy many times</p>
+                <p class="pm-library-note-copy">
+                    Each package stores a library slug and the WordPress folder from the ZIP.
+                    Remote sites need Diamond PBN agent <strong>{{ config('plugin_manager.min_agent_version') }}</strong> or newer.
+                </p>
             </div>
         </div>
 
-        <form id="pluginUploadForm" class="flex flex-col gap-4 !mb-6 !pb-6 border-b border-gray-200"
+        <form id="pluginUploadForm" class="pm-upload-form"
             data-upload-url="{{ route('admin.plugin-manager.packages.store') }}"
             data-max-bytes="{{ $uploadLimits['effective_bytes'] }}"
             data-max-mb="{{ $uploadLimits['effective_mb'] }}">
             @csrf
-            <h3 class="text-base font-semibold text-gray-800">Upload New Package</h3>
-            <div class="flex flex-col gap-2 max-w-xl">
-                <label for="plugin_zip" class="text-sm font-medium text-gray-700">Plugin ZIP (max {{ $uploadLimits['effective_mb'] }} MB{{ $uploadLimits['effective_mb'] < $uploadLimits['max_zip_mb'] ? ' — server limit' : '' }})</label>
-                <input type="file" name="plugin_zip" id="plugin_zip" accept=".zip,application/zip" required
-                    class="bg-gray-100 border border-gray-200 !p-2 text-sm w-full rounded">
-                <input type="text" name="notes" placeholder="Optional notes" maxlength="1000"
-                    class="bg-gray-100 border border-gray-200 !p-3 text-sm w-full rounded outline-none focus:border-[var(--primary-color)]">
+            <div class="pm-upload-copy">
+                <h3 class="text-base font-semibold text-gray-800">Upload New Package</h3>
+                <p class="text-sm text-gray-500">ZIP only, up to {{ $uploadLimits['effective_mb'] }} MB{{ $uploadLimits['effective_mb'] < $uploadLimits['max_zip_mb'] ? ' on this server' : '' }}.</p>
+            </div>
+            <div class="pm-upload-fields">
+                <label for="plugin_zip" class="pm-filter-label">Plugin ZIP</label>
+                <input type="file" name="plugin_zip" id="plugin_zip" accept=".zip,application/zip" required class="pm-file-input">
+                <input type="text" name="notes" placeholder="Optional notes" maxlength="1000" class="pm-filter-control">
             </div>
             <button type="submit" class="pm-btn w-fit" id="pluginUploadBtn">
                 <span class="btn-spinner hidden" id="pluginUploadSpinner"></span>
@@ -77,49 +79,63 @@
             </button>
         </form>
 
-        <h3 class="text-base font-semibold text-gray-800 !mb-4">Plugin Library</h3>
+        <div class="pm-library-heading">
+            <h3 class="text-base font-semibold text-gray-800">Plugin Library</h3>
+            @if ($packages->isNotEmpty())
+                <span class="pm-library-count">{{ $packages->count() }} {{ \Illuminate\Support\Str::plural('package', $packages->count()) }}</span>
+            @endif
+        </div>
         @if ($packages->isEmpty())
             <p class="text-sm text-gray-500">No packages yet. Upload a WordPress plugin ZIP above.</p>
         @else
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm text-left">
-                    <thead class="text-xs uppercase bg-gray-800 text-white">
+            <div class="pm-library-table-wrap">
+                <table class="pm-library-table">
+                    <thead>
                         <tr>
-                            <th class="!px-4 !py-3">Plugin</th>
-                            <th class="!px-4 !py-3">Library Slug</th>
-                            <th class="!px-4 !py-3">WP Folder</th>
-                            <th class="!px-4 !py-3">Version</th>
-                            <th class="!px-4 !py-3">Checksum</th>
-                            <th class="!px-4 !py-3">Size</th>
-                            <th class="!px-4 !py-3">Uploaded</th>
-                            <th class="!px-4 !py-3">Actions</th>
+                            <th class="pm-th-sno">S.No</th>
+                            <th>Plugin</th>
+                            <th>Library Slug</th>
+                            <th>WP Folder</th>
+                            <th>Version</th>
+                            <th>Checksum</th>
+                            <th>Size</th>
+                            <th>Uploaded</th>
+                            <th class="pm-th-actions">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach ($packages as $package)
-                            <tr class="border-b border-gray-100 hover:bg-gray-50" data-package-uuid="{{ $package->uuid }}">
-                                <td class="!px-4 !py-3 font-medium">
-                                    {{ $package->name }}
-                                    @if ($package->is_diamond_pbn_agent)
-                                        <span class="text-xs text-orange-600">(Agent)</span>
-                                    @endif
+                            <tr data-package-uuid="{{ $package->uuid }}">
+                                <td class="pm-sno">{{ $loop->iteration }}</td>
+                                <td>
+                                    <div class="pm-library-name" title="{{ $package->name }}">
+                                        <span class="pm-name-text">{{ $package->name }}</span>
+                                        @if ($package->is_diamond_pbn_agent)
+                                            <span class="pm-agent-tag">Agent</span>
+                                        @endif
+                                    </div>
                                 </td>
-                                <td class="!px-4 !py-3 font-mono text-xs">{{ $package->librarySlug() }}</td>
-                                <td class="!px-4 !py-3 font-mono text-xs">{{ $package->expectedSlug() }}</td>
-                                <td class="!px-4 !py-3">{{ $package->version }}</td>
-                                <td class="!px-4 !py-3 font-mono text-xs" title="{{ $package->checksum_sha256 }}">
-                                    {{ substr($package->checksum_sha256, 0, 12) }}…
-                                </td>
-                                <td class="!px-4 !py-3">{{ number_format($package->file_size_bytes / 1024, 1) }} KB</td>
-                                <td class="!px-4 !py-3">{{ $package->created_at->format('M j, Y H:i') }}</td>
-                                <td class="!px-4 !py-3">
-                                    <div class="flex flex-wrap gap-2">
-                                        <a href="{{ route('admin.plugin-manager.deploy.create', ['package' => $package->uuid]) }}"
-                                            class="text-[var(--primary-color)] hover:underline text-xs font-semibold">Deploy</a>
-                                        <a href="{{ route('admin.plugin-manager.packages.download', $package->uuid) }}"
-                                            class="text-gray-600 hover:underline text-xs">Download</a>
-                                        <button type="button" class="text-red-600 hover:underline text-xs package-delete-btn"
-                                            data-delete-url="{{ route('admin.plugin-manager.packages.destroy', $package->uuid) }}">Delete</button>
+                                <td><span class="pm-mono" title="{{ $package->librarySlug() }}">{{ $package->librarySlug() }}</span></td>
+                                <td><span class="pm-mono" title="{{ $package->expectedSlug() }}">{{ $package->expectedSlug() }}</span></td>
+                                <td><span class="pm-version" title="{{ $package->version }}">{{ $package->version }}</span></td>
+                                <td><span class="pm-mono" title="{{ $package->checksum_sha256 }}">{{ substr($package->checksum_sha256, 0, 12) }}…</span></td>
+                                <td>{{ number_format($package->file_size_bytes / 1024, 1) }} KB</td>
+                                <td class="pm-library-date">{{ $package->created_at->format('M j, Y H:i') }}</td>
+                                <td>
+                                    <div class="pm-row-actions">
+                                        <a href="{{ route('admin.plugin-manager.deploy.create', ['package' => $package->uuid]) }}" class="pm-row-action pm-row-action-primary">
+                                            <span class="material-symbols-outlined">rocket_launch</span>
+                                            Deploy
+                                        </a>
+                                        <a href="{{ route('admin.plugin-manager.packages.download', $package->uuid) }}" class="pm-row-action">
+                                            <span class="material-symbols-outlined">download</span>
+                                            Download
+                                        </a>
+                                        <button type="button" class="pm-row-action pm-row-action-danger package-delete-btn"
+                                            data-delete-url="{{ route('admin.plugin-manager.packages.destroy', $package->uuid) }}">
+                                            <span class="material-symbols-outlined">delete</span>
+                                            Delete
+                                        </button>
                                     </div>
                                 </td>
                             </tr>

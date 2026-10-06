@@ -3,6 +3,7 @@
 namespace App\Models\Admin;
 
 use App\Models\Admin as AdminUser;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -21,6 +22,9 @@ class PluginDeployment extends Model
 
     protected $fillable = [
         'uuid',
+        'batch_uuid',
+        'batch_position',
+        'batch_size',
         'admin_id',
         'plugin_package_id',
         'operation',
@@ -59,6 +63,15 @@ class PluginDeployment extends Model
     public function admin(): BelongsTo
     {
         return $this->belongsTo(AdminUser::class, 'admin_id');
+    }
+
+    public function scopeVisibleTo(Builder $query, AdminUser $admin): Builder
+    {
+        if ($admin->isSuperAdmin()) {
+            return $query;
+        }
+
+        return $query->where('admin_id', $admin->id);
     }
 
     public function pluginPackage(): BelongsTo
@@ -100,6 +113,15 @@ class PluginDeployment extends Model
         }
 
         return (int) min(100, round(((int) $this->processed_count / $total) * 100));
+    }
+
+    public function batchLabel(): ?string
+    {
+        if ((int) $this->batch_size < 2 || (int) $this->batch_position < 1) {
+            return null;
+        }
+
+        return 'Plugin '.$this->batch_position.' of '.$this->batch_size;
     }
 
     public function operationLabel(): string

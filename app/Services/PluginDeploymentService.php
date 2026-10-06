@@ -9,6 +9,7 @@ use App\Models\Admin\PluginDeploymentItem;
 use App\Models\Admin\PluginPackage;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class PluginDeploymentService
 {
@@ -50,8 +51,80 @@ class PluginDeploymentService
         return max(1, (int) config('plugin_manager.max_domains_per_deployment', 500));
     }
 
+    public function maxPluginsPerBatch(): int
+    {
+        return 10;
+    }
+
+    /**
+     * @param  array<int, PluginPackage>  $packages
+     * @param  array<int, string>  $domainNames
+     * @return array<int, PluginDeployment>
+     */
+    public function createSequentialDeployments(
+        int $adminId,
+        array $packages,
+        string $operation,
+        array $domainNames,
+        string $source,
+        ?int $categoryId,
+        bool $activateAfter,
+        bool $skipIfSameVersion
+    ): array {
+        $packages = array_values($packages);
+
+        if ($packages === []) {
+            throw new \InvalidArgumentException('Select at least one plugin.');
+        }
+
+        if (count($packages) > $this->maxPluginsPerBatch()) {
+            throw new \InvalidArgumentException('Select at most '.$this->maxPluginsPerBatch().' plugins.');
+        }
+
+        $batch = count($packages) > 1
+            ? ['uuid' => (string) Str::uuid(), 'size' => count($packages)]
+            : null;
+
+        return DB::transaction(function () use (
+            $adminId,
+            $packages,
+            $operation,
+            $domainNames,
+            $source,
+            $categoryId,
+            $activateAfter,
+            $skipIfSameVersion,
+            $batch
+        ) {
+            $deployments = [];
+
+            foreach ($packages as $index => $package) {
+                $position = $index + 1;
+                $deployments[] = $this->createDeployment(
+                    $adminId,
+                    $package,
+                    $operation,
+                    $domainNames,
+                    $source,
+                    $categoryId,
+                    $activateAfter,
+                    $skipIfSameVersion,
+                    false,
+                    $batch === null ? null : $batch + ['position' => $position]
+                );
+            }
+
+            ProcessPluginDeploymentChunkJob::dispatch($deployments[0]->id)
+                ->afterCommit()
+                ->onQueue('plugin_deployments');
+
+            return $deployments;
+        });
+    }
+
     /**
      * @param  array<int, string>  $domainNames
+     * @param  array{uuid: string, position: int, size: int}|null  $batch
      */
     public function createDeployment(
         int $adminId,
@@ -61,7 +134,9 @@ class PluginDeploymentService
         string $source,
         ?int $categoryId,
         bool $activateAfter,
-        bool $skipIfSameVersion
+        bool $skipIfSameVersion,
+        bool $dispatchNow = true,
+        ?array $batch = null
     ): PluginDeployment {
         if (! in_array($operation, PluginDeployment::OPERATIONS, true)) {
             throw new \InvalidArgumentException('Invalid deployment operation.');
@@ -82,7 +157,9 @@ class PluginDeploymentService
             $categoryId,
             $activateAfter,
             $skipIfSameVersion,
-            $inventoryByName
+            $inventoryByName,
+            $dispatchNow,
+            $batch
         ) {
             $deployment = PluginDeployment::create([
                 'admin_id' => $adminId,
@@ -95,7 +172,10 @@ class PluginDeploymentService
                 'total_count' => count($domainNames),
                 'activate_after' => $activateAfter,
                 'skip_if_same_version' => $skipIfSameVersion,
-                'status_message' => 'Queued — waiting for queue worker (plugin_deployments)',
+                'batch_uuid' => $batch['uuid'] ?? null,
+                'batch_position' => $batch['position'] ?? null,
+                'batch_size' => $batch['size'] ?? null,
+                'status_message' => $this->initialStatusMessage($batch, $dispatchNow),
             ]);
 
             $rows = [];
@@ -121,13 +201,78 @@ class PluginDeploymentService
                 PluginDeploymentItem::insert($chunk);
             }
 
-            ProcessPluginDeploymentChunkJob::dispatch($deployment->id)
-                ->onQueue('plugin_deployments');
-
             return $deployment;
         });
 
+        if ($dispatchNow) {
+            ProcessPluginDeploymentChunkJob::dispatch($deployment->id)
+                ->afterCommit()
+                ->onQueue('plugin_deployments');
+        }
+
         return $deployment;
+    }
+
+    /**
+     * @param  array{uuid: string, position: int, size: int}|null  $batch
+     */
+    private function initialStatusMessage(?array $batch, bool $dispatchNow): string
+    {
+        if ($batch !== null && ! $dispatchNow) {
+            return 'Waiting — plugin '.$batch['position'].' of '.$batch['size'].' starts after the previous plugin finishes';
+        }
+
+        return 'Queued — waiting for queue worker (plugin_deployments)';
+    }
+
+    public function releaseNextInBatch(PluginDeployment $finished): ?PluginDeployment
+    {
+        if ($finished->batch_uuid === null || $finished->batch_position === null) {
+            return null;
+        }
+
+        $earlierStillActive = PluginDeployment::query()
+            ->where('batch_uuid', $finished->batch_uuid)
+            ->where('batch_position', '<', $finished->batch_position)
+            ->whereIn('status', ['queued', 'running'])
+            ->exists();
+
+        if ($earlierStillActive) {
+            return null;
+        }
+
+        $next = PluginDeployment::query()
+            ->where('batch_uuid', $finished->batch_uuid)
+            ->where('batch_position', '>', $finished->batch_position)
+            ->where('status', 'queued')
+            ->orderBy('batch_position')
+            ->first();
+
+        if (! $next) {
+            return null;
+        }
+
+        $claimed = PluginDeployment::query()
+            ->whereKey($next->id)
+            ->where('status', 'queued')
+            ->whereNull('started_at')
+            ->update([
+                'started_at' => now(),
+                'status_message' => 'Queued — waiting for queue worker (plugin_deployments)',
+                'updated_at' => now(),
+            ]);
+
+        if ($claimed !== 1) {
+            return null;
+        }
+
+        $next->refresh();
+
+        ProcessPluginDeploymentChunkJob::dispatch($next->id)
+            ->afterCommit()
+            ->onQueue('plugin_deployments');
+
+        return $next;
     }
 
     public function processNextChunk(PluginDeployment $deployment): void
@@ -175,6 +320,7 @@ class PluginDeploymentService
                 'status_message' => 'Plugin package missing',
                 'completed_at' => now(),
             ]);
+            $this->releaseNextInBatch($deployment->fresh());
 
             return;
         }
@@ -796,6 +942,8 @@ class PluginDeploymentService
             'status_message' => $message,
             'completed_at' => now(),
         ]);
+
+        $this->releaseNextInBatch($deployment->fresh());
     }
 
     public function cancelDeployment(PluginDeployment $deployment): void
@@ -823,6 +971,8 @@ class PluginDeploymentService
             'status_message' => 'Cancelled by admin',
             'completed_at' => now(),
         ]);
+
+        $this->releaseNextInBatch($deployment->fresh());
     }
 
     public function deleteDeployment(PluginDeployment $deployment): void
@@ -839,20 +989,23 @@ class PluginDeploymentService
      * @param  array<int, string>  $uuids
      * @return array{deleted: int, cancelled: int, not_found: int}
      */
-    public function bulkDeleteDeployments(array $uuids, int $adminId): array
+    public function bulkDeleteDeployments(array $uuids, int $adminId, bool $restrictToAdmin = true): array
     {
         $uuids = array_values(array_unique(array_filter($uuids)));
         $deleted = 0;
         $cancelled = 0;
 
         $deployments = PluginDeployment::query()
-            ->where('admin_id', $adminId)
+            ->when($restrictToAdmin, fn ($query) => $query->where('admin_id', $adminId))
             ->whereIn('uuid', $uuids)
             ->get()
-            ->keyBy('uuid');
+            ->sortBy([
+                ['batch_position', 'desc'],
+                ['id', 'desc'],
+            ])
+            ->values();
 
-        foreach ($uuids as $uuid) {
-            $deployment = $deployments->get($uuid);
+        foreach ($deployments as $deployment) {
             if (! $deployment) {
                 continue;
             }
@@ -882,7 +1035,8 @@ class PluginDeploymentService
 
         $deploymentIds = PluginDeployment::query()
             ->where('admin_id', $adminId)
-            ->orderBy('id')
+            ->orderByDesc('batch_position')
+            ->orderByDesc('id')
             ->pluck('id')
             ->all();
 

@@ -7,20 +7,18 @@
 @endpush
 
 @section('main-content')
-    <div class="page-header w-full max-w-full min-w-0">
-        <div class="w-full flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-            <div class="w-full sm:w-1/2 flex flex-col gap-2 min-w-0">
-                <h2 class="page-title">Deployment Progress</h2>
-                <div class="breadcrumb flex-wrap">
-                    <div class="breadcrumb-item"><a href="{{ route('admin.plugin-manager.index') }}" class="breadcrumb-link">Plugin Manager</a><span>›</span></div>
-                    <div class="breadcrumb-item"><span class="breadcrumb-link">Progress</span></div>
-                </div>
+    <div class="page-header pm-page-header">
+        <div class="pm-page-heading">
+            <h2 class="page-title">Deployment Progress</h2>
+            <div class="breadcrumb flex-wrap">
+                <div class="breadcrumb-item"><a href="{{ route('admin.plugin-manager.index') }}" class="breadcrumb-link">Plugin Manager</a><span>›</span></div>
+                <div class="breadcrumb-item"><span class="breadcrumb-link">Progress</span></div>
             </div>
-            <div class="w-full sm:w-1/2 flex flex-wrap justify-start sm:justify-end gap-2">
+        </div>
+        <div class="pm-page-actions">
                 <a href="{{ route('admin.plugin-manager.deployments.index') }}" class="pm-btn pm-btn-muted">History</a>
                 <a href="{{ route('admin.plugin-manager.deploy.create') }}" class="pm-btn pm-btn-muted">New Deploy</a>
             </div>
-        </div>
     </div>
 
     <div id="pluginManagerAlert" class="w-full hidden !mt-2" role="alert"></div>
@@ -33,10 +31,23 @@
                     · WP folder: <code class="text-xs bg-gray-100 !px-1 rounded">{{ $deployment->pluginPackage->expectedSlug() }}</code>
                 @endif
                 · Operation: <strong>{{ str_replace('_', ' ', $deployment->operation) }}</strong>
+                @if (! empty($canSeeAllHistory) && $deployment->admin)
+                    · Started by <strong>{{ $deployment->admin->name }}</strong>
+                @endif
                 @if ($deployment->domainCategory)
                     · Category: <strong>{{ $deployment->domainCategory->name }}</strong>
                 @endif
+                @if ($deployment->batchLabel())
+                    · <span class="pm-batch-tag">{{ $deployment->batchLabel() }}</span>
+                @endif
             </p>
+            @if (! empty($nextInBatch))
+                <p class="text-sm text-gray-600">
+                    Next: <strong>{{ $nextInBatch->pluginPackage?->name ?? 'Plugin' }}</strong>
+                    <span class="text-gray-500">({{ $nextInBatch->status }})</span>
+                    · <a href="{{ route('admin.plugin-manager.deployments.show', $nextInBatch->uuid) }}" class="text-[var(--primary-color)] font-semibold">View</a>
+                </p>
+            @endif
         </div>
 
         <div id="deploymentProgressPanel"

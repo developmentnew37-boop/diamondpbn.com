@@ -2,15 +2,18 @@
 
 namespace Tests\Unit;
 
+use App\Jobs\ProcessPluginDeploymentChunkJob;
+use App\Models\Admin;
 use App\Models\Admin\PluginDeployment;
 use App\Models\Admin\PluginDeploymentItem;
 use App\Models\Admin\PluginPackage;
 use App\Services\DomainStatusCheckerService;
-use App\Services\PluginDeployPreflightService;
 use App\Services\PluginDeploymentService;
+use App\Services\PluginDeployPreflightService;
 use App\Services\PluginPackageService;
 use App\Services\RemotePluginManagerService;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Mockery;
 use Tests\TestCase;
@@ -56,6 +59,9 @@ class PluginDeploymentHistoryActionsTest extends TestCase
             $table->boolean('activate_after')->default(true);
             $table->boolean('skip_if_same_version')->default(true);
             $table->text('status_message')->nullable();
+            $table->uuid('batch_uuid')->nullable();
+            $table->unsignedSmallInteger('batch_position')->nullable();
+            $table->unsignedSmallInteger('batch_size')->nullable();
             $table->timestamp('started_at')->nullable();
             $table->timestamp('completed_at')->nullable();
             $table->timestamps();
@@ -279,6 +285,177 @@ class PluginDeploymentHistoryActionsTest extends TestCase
             ]));
 
         $service->retryFailedOrSkipped($original, 1, 'failed');
+    }
+
+    public function test_super_admin_can_see_other_admins_deployment_history(): void
+    {
+        $package = PluginPackage::query()->create([
+            'uuid' => (string) \Illuminate\Support\Str::uuid(),
+            'admin_id' => 1,
+            'slug' => 'sample-version-1.0.0',
+            'expected_slug' => 'sample',
+            'name' => 'Sample Plugin',
+            'version' => '1.0.0',
+            'original_filename' => 'sample.zip',
+            'storage_path' => 'plugin-packages/x/sample.zip',
+            'file_size_bytes' => 10,
+            'checksum_sha256' => str_repeat('a', 64),
+        ]);
+
+        $own = PluginDeployment::query()->create([
+            'uuid' => (string) \Illuminate\Support\Str::uuid(),
+            'admin_id' => 2,
+            'plugin_package_id' => $package->id,
+            'operation' => 'install',
+            'status' => 'completed',
+        ]);
+        $other = PluginDeployment::query()->create([
+            'uuid' => (string) \Illuminate\Support\Str::uuid(),
+            'admin_id' => 9,
+            'plugin_package_id' => $package->id,
+            'operation' => 'install',
+            'status' => 'completed',
+        ]);
+
+        $regular = new Admin;
+        $regular->id = 2;
+        $regular->type = Admin::ADMIN;
+
+        $super = new Admin;
+        $super->id = 1;
+        $super->type = Admin::SUPER_ADMIN;
+
+        $this->assertSame(
+            [$own->id],
+            PluginDeployment::query()->visibleTo($regular)->orderBy('id')->pluck('id')->all()
+        );
+        $this->assertEqualsCanonicalizing(
+            [$own->id, $other->id],
+            PluginDeployment::query()->visibleTo($super)->pluck('id')->all()
+        );
+
+        $deleted = $this->service()->bulkDeleteDeployments([$other->uuid], 2, true);
+        $this->assertSame(0, $deleted['deleted']);
+        $this->assertNotNull(PluginDeployment::query()->find($other->id));
+
+        $deleted = $this->service()->bulkDeleteDeployments([$other->uuid], 1, false);
+        $this->assertSame(1, $deleted['deleted']);
+        $this->assertNull(PluginDeployment::query()->find($other->id));
+    }
+
+    public function test_selected_plugins_start_one_after_another(): void
+    {
+        $this->withDomainsTable(function () {
+            Queue::fake();
+            $packages = $this->makePackages(['Alpha', 'Beta', 'Gamma']);
+
+            $deployments = $this->service()->createSequentialDeployments(
+                1,
+                $packages,
+                'install',
+                ['example.com'],
+                'manual',
+                null,
+                true,
+                true
+            );
+
+            $this->assertCount(3, $deployments);
+            $this->assertSame(1, (int) $deployments[0]->batch_position);
+            $this->assertSame(2, (int) $deployments[1]->batch_position);
+            $this->assertSame(3, (int) $deployments[2]->batch_position);
+            $this->assertSame($deployments[0]->batch_uuid, $deployments[1]->batch_uuid);
+            $this->assertSame('queued', $deployments[1]->status);
+            Queue::assertPushed(ProcessPluginDeploymentChunkJob::class, 1);
+            Queue::assertPushed(ProcessPluginDeploymentChunkJob::class, function ($job) use ($deployments) {
+                return $job->deploymentId === $deployments[0]->id;
+            });
+
+            $this->service()->finalizeDeployment($deployments[0]->fresh());
+
+            Queue::assertPushed(ProcessPluginDeploymentChunkJob::class, function ($job) use ($deployments) {
+                return $job->deploymentId === $deployments[1]->id;
+            });
+            $this->assertSame('queued', $deployments[2]->fresh()->status);
+
+            $this->service()->finalizeDeployment($deployments[0]->fresh());
+            Queue::assertPushed(ProcessPluginDeploymentChunkJob::class, 2);
+        });
+    }
+
+    public function test_cancelling_a_plugin_does_not_cancel_the_following_one(): void
+    {
+        $this->withDomainsTable(function () {
+            Queue::fake();
+            $packages = $this->makePackages(['Alpha', 'Beta', 'Gamma']);
+
+            $deployments = $this->service()->createSequentialDeployments(
+                1,
+                $packages,
+                'install',
+                ['example.com'],
+                'manual',
+                null,
+                true,
+                true
+            );
+
+            $this->service()->cancelDeployment($deployments[1]->fresh());
+
+            $this->assertSame('cancelled', $deployments[1]->fresh()->status);
+            $this->assertSame('queued', $deployments[2]->fresh()->status);
+            Queue::assertPushed(ProcessPluginDeploymentChunkJob::class, 1);
+
+            $this->service()->finalizeDeployment($deployments[0]->fresh());
+
+            Queue::assertPushed(ProcessPluginDeploymentChunkJob::class, function ($job) use ($deployments) {
+                return $job->deploymentId === $deployments[2]->id;
+            });
+            $this->assertSame('cancelled', $deployments[1]->fresh()->status);
+            $this->assertSame('queued', $deployments[2]->fresh()->status);
+        });
+    }
+
+    /**
+     * @param  list<string>  $names
+     * @return list<PluginPackage>
+     */
+    private function makePackages(array $names): array
+    {
+        $packages = [];
+
+        foreach ($names as $name) {
+            $packages[] = PluginPackage::query()->create([
+                'uuid' => (string) \Illuminate\Support\Str::uuid(),
+                'admin_id' => 1,
+                'slug' => strtolower($name).'-version-1.0.0',
+                'expected_slug' => strtolower($name),
+                'name' => $name,
+                'version' => '1.0.0',
+                'original_filename' => strtolower($name).'.zip',
+                'storage_path' => 'plugin-packages/x/'.strtolower($name).'.zip',
+                'file_size_bytes' => 10,
+                'checksum_sha256' => str_repeat('a', 64),
+            ]);
+        }
+
+        return $packages;
+    }
+
+    private function withDomainsTable(callable $callback): void
+    {
+        Schema::create('domains', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->unsignedBigInteger('domain_category_id')->nullable();
+            $table->timestamps();
+        });
+
+        try {
+            $callback();
+        } finally {
+            Schema::dropIfExists('domains');
+        }
     }
 
     private function service(): PluginDeploymentService
