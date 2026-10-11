@@ -931,6 +931,8 @@ class SidebarCampaignController extends Controller
             SidebarCampaignDomain::where('id', $domainRowId)->delete();
         }
 
+        app(LocalClientBillingService::class)->syncBillingAfterRowDelete($campaign);
+
         return back()->with('cus__success', 'Sidebar link removed from remote and database.');
     }
 
@@ -1453,6 +1455,8 @@ class SidebarCampaignController extends Controller
                 SidebarCampaignDomain::where('id', $domainRowId)->delete();
             }
         }
+
+        app(LocalClientBillingService::class)->syncBillingAfterRowDelete($campaign);
 
         if (count($errors) > 0) {
             return back()->with('cus__error', 'Some remote deletes failed: '.implode(' ', $errors))

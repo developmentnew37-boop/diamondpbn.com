@@ -9,8 +9,8 @@ use App\Services\DomainStatusCheckerService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class DomainRecheckDisconnectedController extends Controller
 {
@@ -24,13 +24,13 @@ class DomainRecheckDisconnectedController extends Controller
             ? (int) $request->input('domain_category_id')
             : null;
 
-        $snapshot = $this->statusChecker->getDisconnectedDomainNames($selectedCategoryId);
+        $snapshot = $this->statusChecker->disconnectedScopeSnapshot($selectedCategoryId);
 
         $resumeCheck = $this->statusChecker->latestDisconnectedCheckForAdmin(
             (int) Auth::guard('admin')->id()
         );
         $resumeBootstrap = $resumeCheck
-            ? $this->statusChecker->disconnectedProgressPayload($resumeCheck)
+            ? $this->statusChecker->disconnectedProgressPayload($resumeCheck, null, false)
             : null;
 
         return view('admin.domains.recheck-disconnected', [

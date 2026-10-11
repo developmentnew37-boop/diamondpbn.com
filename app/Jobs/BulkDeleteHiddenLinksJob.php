@@ -2,6 +2,12 @@
 
 namespace App\Jobs;
 
+use App\Models\Admin\HiddenLinksCampaign;
+use App\Models\Admin\HiddenLinksCampaignDomains;
+use App\Models\Admin\HiddenLinksCampaignLinks;
+use App\Models\Admin\HiddenLinksCampaignTasks;
+use App\Services\HiddenLinksApiService;
+use App\Services\LocalClientBillingService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -9,11 +15,6 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use App\Models\Admin\HiddenLinksCampaign;
-use App\Models\Admin\HiddenLinksCampaignTasks;
-use App\Models\Admin\HiddenLinksCampaignLinks;
-use App\Models\Admin\HiddenLinksCampaignDomains;
-use App\Services\HiddenLinksApiService;
 
 /**
  * Bulk delete hidden link tasks: remote delete then DB cleanup and campaign count decrements.
@@ -33,8 +34,9 @@ class BulkDeleteHiddenLinksJob implements ShouldQueue
     public function handle(): void
     {
         $campaign = HiddenLinksCampaign::find($this->campaignId);
-        if (!$campaign) {
+        if (! $campaign) {
             Log::info('BulkDeleteHiddenLinksJob: campaign not found', ['id' => $this->campaignId]);
+
             return;
         }
 
@@ -58,7 +60,7 @@ class BulkDeleteHiddenLinksJob implements ShouldQueue
 
         DB::transaction(function () use ($tasks) {
             $campaign = HiddenLinksCampaign::lockForUpdate()->find($this->campaignId);
-            if (!$campaign) {
+            if (! $campaign) {
                 return;
             }
 
@@ -74,7 +76,7 @@ class BulkDeleteHiddenLinksJob implements ShouldQueue
                     $campaign->decrement('failed_targets');
                 }
 
-                $linkId      = $task->hidden_links_campaigns_link_id;
+                $linkId = $task->hidden_links_campaigns_link_id;
                 $domainRowId = $task->hidden_links_campaigns_domain_id;
                 $task->delete();
                 if ($linkId) {
@@ -91,9 +93,11 @@ class BulkDeleteHiddenLinksJob implements ShouldQueue
             }
         });
 
+        app(LocalClientBillingService::class)->syncBillingAfterRowDelete($campaign);
+
         Log::info('BulkDeleteHiddenLinksJob: completed', [
-            'campaign_id'     => $this->campaignId,
-            'deleted_remote'  => $deletedRemote,
+            'campaign_id' => $this->campaignId,
+            'deleted_remote' => $deletedRemote,
             'tasks_processed' => $tasks->count(),
         ]);
     }

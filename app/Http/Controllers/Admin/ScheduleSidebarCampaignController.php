@@ -1477,6 +1477,7 @@ class ScheduleSidebarCampaignController extends Controller
         }
 
         app(ScheduleSidebarCampaignTargetCounterService::class)->syncCampaignFromTasks($campaign->fresh());
+        app(LocalClientBillingService::class)->syncBillingAfterRowDelete($campaign);
 
         return back()->with('cus__success', 'Sidebar link removed from campaign and remote site.');
     }

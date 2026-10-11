@@ -554,4 +554,176 @@ class LocalClientBillingServiceTest extends TestCase
         $this->assertSame('paid', $campaign->billing_payment_status);
         $this->assertNull($campaign->billing_amount_paid);
     }
+
+    public function test_row_delete_sync_recalculates_from_remaining_domains(): void
+    {
+        $client = LocalClient::create([
+            'name' => 'Row Sync',
+            'default_currency' => 'USD',
+            'billing_report_token' => str_repeat('t', 64),
+            'created_by_admin_id' => 1,
+        ]);
+
+        LocalClientDomainCategoryPrice::create([
+            'local_client_id' => $client->id,
+            'domain_category_id' => 1,
+            'post_price' => 15,
+        ]);
+        LocalClientDomainCategoryPrice::create([
+            'local_client_id' => $client->id,
+            'domain_category_id' => 2,
+            'post_price' => 20,
+        ]);
+
+        $kept = Domain::create(['name' => 'kept-bill.com', 'domain_category_id' => 1, 'admin_id' => 1]);
+        $removed = Domain::create(['name' => 'removed-bill.com', 'domain_category_id' => 2, 'admin_id' => 1]);
+
+        $campaign = Campaign::create([
+            'campaign_no' => 'CMP-ROW-SYNC',
+            'report_token' => str_repeat('u', 64),
+            'admin_id' => 1,
+            'local_client_id' => $client->id,
+            'billing_total' => 35,
+            'billing_currency' => 'USD',
+            'billing_snapshot' => ['total' => '35.00', 'lines' => []],
+            'billing_payment_status' => 'unpaid',
+        ]);
+        CampaignDomain::create([
+            'campaign_id' => $campaign->id,
+            'domain_id' => $kept->id,
+            'sort_order' => 0,
+        ]);
+        $removedRow = CampaignDomain::create([
+            'campaign_id' => $campaign->id,
+            'domain_id' => $removed->id,
+            'sort_order' => 1,
+        ]);
+
+        $removedRow->delete();
+
+        app(LocalClientBillingService::class)->syncBillingAfterRowDelete($campaign);
+
+        $campaign->refresh();
+        $this->assertSame('15.00', (string) $campaign->billing_total);
+        $this->assertSame('unpaid', $campaign->billing_payment_status);
+        $this->assertSame($client->id, (int) $campaign->local_client_id);
+    }
+
+    public function test_row_delete_sync_clears_unpaid_billing_when_no_domains_remain(): void
+    {
+        $client = LocalClient::create([
+            'name' => 'Empty Unpaid',
+            'default_currency' => 'USD',
+            'billing_report_token' => str_repeat('v', 64),
+            'created_by_admin_id' => 1,
+        ]);
+
+        $campaign = Campaign::create([
+            'campaign_no' => 'CMP-EMPTY-UNPAID',
+            'report_token' => str_repeat('w', 64),
+            'admin_id' => 1,
+            'local_client_id' => $client->id,
+            'billing_total' => 15,
+            'billing_currency' => 'USD',
+            'billing_snapshot' => ['total' => '15.00', 'lines' => []],
+            'billing_payment_status' => 'unpaid',
+        ]);
+
+        LocalClientBillLine::create([
+            'local_client_id' => $client->id,
+            'billing_campaign_type' => 'post',
+            'unit_price' => 15,
+            'line_total' => 15,
+            'currency' => 'USD',
+            'billable_type' => Campaign::class,
+            'billable_id' => $campaign->id,
+            'campaign_no' => $campaign->campaign_no,
+            'created_at' => now(),
+        ]);
+
+        app(LocalClientBillingService::class)->syncBillingAfterRowDelete($campaign);
+
+        $campaign->refresh();
+        $this->assertNull($campaign->billing_total);
+        $this->assertNull($campaign->billing_snapshot);
+        $this->assertSame($client->id, (int) $campaign->local_client_id);
+        $this->assertSame(0, LocalClientBillLine::query()->count());
+    }
+
+    public function test_row_delete_sync_keeps_paid_snapshot_when_no_domains_remain(): void
+    {
+        $client = LocalClient::create([
+            'name' => 'Empty Paid',
+            'default_currency' => 'USD',
+            'billing_report_token' => str_repeat('x', 64),
+            'created_by_admin_id' => 1,
+        ]);
+
+        $campaign = Campaign::create([
+            'campaign_no' => 'CMP-EMPTY-PAID',
+            'report_token' => str_repeat('y', 64),
+            'admin_id' => 1,
+            'local_client_id' => $client->id,
+            'billing_total' => 40,
+            'billing_currency' => 'USD',
+            'billing_snapshot' => ['total' => '40.00', 'lines' => []],
+            'billing_payment_status' => 'paid',
+            'billing_paid_at' => now(),
+        ]);
+
+        app(LocalClientBillingService::class)->syncBillingAfterRowDelete($campaign);
+
+        $campaign->refresh();
+        $this->assertSame('40.00', (string) $campaign->billing_total);
+        $this->assertSame('paid', $campaign->billing_payment_status);
+        $this->assertSame($client->id, (int) $campaign->local_client_id);
+    }
+
+    public function test_row_delete_sync_ignores_a_missing_campaign_and_a_billing_error(): void
+    {
+        $client = LocalClient::create([
+            'name' => 'Sync Error',
+            'default_currency' => 'USD',
+            'billing_report_token' => str_repeat('z', 64),
+            'created_by_admin_id' => 1,
+        ]);
+
+        $deleted = Campaign::create([
+            'campaign_no' => 'CMP-GONE',
+            'report_token' => str_repeat('1', 64),
+            'admin_id' => 1,
+            'local_client_id' => $client->id,
+            'billing_total' => 10,
+            'billing_currency' => 'USD',
+            'billing_snapshot' => ['total' => '10.00', 'lines' => []],
+            'billing_payment_status' => 'unpaid',
+        ]);
+        $deleted->delete();
+
+        $domain = Domain::create(['name' => 'unpriced-bill.com', 'domain_category_id' => 1, 'admin_id' => 1]);
+        $broken = Campaign::create([
+            'campaign_no' => 'CMP-BROKEN-SYNC',
+            'report_token' => str_repeat('2', 64),
+            'admin_id' => 1,
+            'local_client_id' => $client->id,
+            'billing_total' => 10,
+            'billing_currency' => 'USD',
+            'billing_snapshot' => ['total' => '10.00', 'lines' => []],
+            'billing_payment_status' => 'unpaid',
+        ]);
+        CampaignDomain::create([
+            'campaign_id' => $broken->id,
+            'domain_id' => $domain->id,
+            'sort_order' => 0,
+        ]);
+
+        $service = app(LocalClientBillingService::class);
+        $service->syncBillingAfterRowDelete($deleted);
+        $service->syncBillingAfterRowDelete($broken);
+
+        $this->assertNull(Campaign::query()->find($deleted->id));
+        $broken->refresh();
+        $this->assertSame('10.00', (string) $broken->billing_total);
+        $this->assertSame('unpaid', $broken->billing_payment_status);
+    }
 }

@@ -53,7 +53,7 @@
                 str_contains($type, 'hidden') => 'type-hidden',
                 str_contains($type, 'schedule') => 'type-schedule',
                 str_contains($type, 'sticky') => 'type-sticky',
-                str_contains($type, 'campaign') => 'type-post',
+                str_contains($type, 'campaign') || $type === 'manual_post' => 'type-post',
                 default => 'type-default',
             };
         };
@@ -446,7 +446,12 @@
                                                     </span>
                                                 </td>
                                                 <td>
-                                                    @if (! empty($row['report_url']))
+                                                    @if (! empty($row['campaign_deleted']))
+                                                        <span class="billing-deleted-label">
+                                                            <span class="material-symbols-outlined">delete</span>
+                                                            Deleted
+                                                        </span>
+                                                    @elseif (! empty($row['report_url']))
                                                         <a href="{{ $row['report_url'] }}" target="_blank" rel="noopener noreferrer" class="billing-report-link">
                                                             <span class="material-symbols-outlined">visibility</span>
                                                             View report
@@ -526,7 +531,12 @@
                                                 </span>
                                             </div>
                                         </div>
-                                        @if (! empty($row['report_url']))
+                                        @if (! empty($row['campaign_deleted']))
+                                            <span class="billing-deleted-label !mt-3">
+                                                <span class="material-symbols-outlined">delete</span>
+                                                Deleted
+                                            </span>
+                                        @elseif (! empty($row['report_url']))
                                             <a href="{{ $row['report_url'] }}" target="_blank" rel="noopener noreferrer" class="billing-report-link !mt-3">
                                                 <span class="material-symbols-outlined">visibility</span>
                                                 View report

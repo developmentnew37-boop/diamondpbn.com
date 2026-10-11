@@ -136,6 +136,15 @@ Route::get(
 )->name('admin.wp.schedule.campaign.report.export')->withoutMiddleware($noCampaignAuth);
 
 Route::get(
+    '/manual/billing/report/{manualBilling}/{token}',
+    [LocalClientBillingReportController::class, 'manual']
+)->name('admin.local-client.manual-billing.report')->withoutMiddleware($noCampaignAuth);
+Route::get(
+    '/manual/billing/report/{manualBilling}/{token}/export',
+    [LocalClientBillingReportController::class, 'exportManual']
+)->name('admin.local-client.manual-billing.report.export')->withoutMiddleware($noCampaignAuth);
+
+Route::get(
     '/client/billing/{id}/{token}',
     [LocalClientBillingReportController::class, 'show']
 )->name('admin.local-client.billing.report')->withoutMiddleware($noCampaignAuth);
@@ -235,6 +244,7 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
         ->name('domain.recheck-disconnected.cancel');
 
     /** ends here **/
+    Route::get('/domain/details', [DomainController::class, 'details'])->name('domain.details');
     Route::resource('/domain', DomainController::class);
 
     /** Domain Routes Ends Here **/
@@ -617,10 +627,24 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     });
 
     Route::middleware('permission:local_clients.manage')->group(function () {
+        Route::get('/local-clients/installments/export', [LocalClientController::class, 'exportInstallments'])
+            ->name('local-clients.installments.export');
+        Route::get('/local-clients/installments', [LocalClientController::class, 'installments'])
+            ->name('local-clients.installments.index');
         Route::post('/local-clients/{localClient}/toggle-active', [LocalClientController::class, 'toggleActive'])
             ->name('local-clients.toggle-active');
         Route::post('/local-clients/{localClient}/mark-period-paid', [LocalClientController::class, 'markPeriodPaid'])
             ->name('local-clients.mark-period-paid');
+        Route::post('/local-clients/{localClient}/mark-period-unpaid', [LocalClientController::class, 'markPeriodUnpaid'])
+            ->name('local-clients.mark-period-unpaid');
+        Route::post('/local-clients/{localClient}/installments', [LocalClientController::class, 'storeInstallment'])
+            ->name('local-clients.installments.store');
+        Route::post('/local-clients/{localClient}/manual-billing/preview', [LocalClientController::class, 'previewManualBilling'])
+            ->name('local-clients.manual-billing.preview');
+        Route::post('/local-clients/{localClient}/manual-billings', [LocalClientController::class, 'storeManualBilling'])
+            ->name('local-clients.manual-billings.store');
+        Route::delete('/local-clients/{localClient}/installments/latest', [LocalClientController::class, 'voidLatestInstallment'])
+            ->name('local-clients.installments.void-latest');
         Route::delete('/local-clients/{localClient}/billing-periods/{billingPeriod}', [LocalClientController::class, 'destroyBillingPeriod'])
             ->name('local-clients.billing-periods.destroy');
         Route::delete('/local-clients/{localClient}/billing-periods', [LocalClientController::class, 'destroyBillingPeriodByPaidAt'])

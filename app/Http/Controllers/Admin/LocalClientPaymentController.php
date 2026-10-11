@@ -14,6 +14,7 @@ use App\Support\CurrencyFormatter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class LocalClientPaymentController extends Controller
 {
@@ -34,12 +35,20 @@ class LocalClientPaymentController extends Controller
         ]);
 
         $campaign = BillableCampaignRegistry::resolve($billableType, $id);
-        $paymentService->toggle(
-            $campaign,
-            $validated['billing_payment_status'],
-            Auth::guard('admin')->user(),
-            $validated['billing_payment_note'] ?? null,
-        );
+
+        try {
+            $paymentService->toggle(
+                $campaign,
+                $validated['billing_payment_status'],
+                Auth::guard('admin')->user(),
+                $validated['billing_payment_note'] ?? null,
+            );
+        } catch (ValidationException $exception) {
+            $message = collect($exception->errors())->flatten()->first()
+                ?: 'Payment status could not be updated.';
+
+            return back()->with('cus__error', $message)->withInput();
+        }
 
         return back()->with('cus__success', 'Payment status updated.');
     }

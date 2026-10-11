@@ -15,6 +15,10 @@
         margin: 0;
     }
 
+    .lc-heading-action {
+        margin-left: auto;
+    }
+
     .lc-theme-btn {
         display: inline-flex;
         align-items: center;
@@ -617,6 +621,216 @@
         .page-header-actions,
         .lc-stat-card {
             min-width: 0;
+        }
+    }
+
+    .lc-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 1200;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+    }
+
+    .lc-modal[hidden] {
+        display: none;
+    }
+
+    .lc-modal-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.45);
+    }
+
+    .lc-modal-dialog {
+        position: relative;
+        width: min(440px, 100%);
+        background: #fff;
+        border-radius: 0.75rem;
+        box-shadow: 0 20px 40px rgba(15, 23, 42, 0.18);
+    }
+
+    .lc-modal-dialog-form {
+        width: min(1040px, calc(100vw - 2rem));
+        max-height: calc(100vh - 2rem);
+        display: flex;
+        flex-direction: column;
+    }
+
+    .lc-manual-columns {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 0.25rem 1.5rem;
+        align-items: start;
+    }
+
+    .lc-manual-count {
+        margin: 0.25rem 0;
+        font-size: 0.75rem;
+        color: #4b5563;
+    }
+
+    .lc-modal-dialog-form form {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+    }
+
+    .lc-modal-dialog-form .lc-modal-body {
+        overflow: auto;
+    }
+
+    .lc-modal-header,
+    .lc-modal-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 1rem 1.25rem;
+    }
+
+    .lc-modal-header {
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .lc-modal-header h3 {
+        margin: 0;
+        font-size: 1.0625rem;
+        font-weight: 600;
+        color: #111827;
+    }
+
+    .lc-modal-close {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2rem;
+        height: 2rem;
+        border: none;
+        border-radius: 0.375rem;
+        background: transparent;
+        color: #6b7280;
+        cursor: pointer;
+    }
+
+    .lc-modal-close:hover {
+        background: #f3f4f6;
+        color: #111827;
+    }
+
+    .lc-modal-body {
+        padding: 1rem 1.25rem 1.25rem;
+    }
+
+    .lc-modal-balance {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.75rem 0.875rem;
+        border-radius: 0.5rem;
+        background: #f8fafc;
+        border: 1px solid #e5e7eb;
+        color: #4b5563;
+        font-size: 0.8125rem;
+    }
+
+    .lc-modal-balance strong {
+        color: #111827;
+        font-size: 0.9375rem;
+    }
+
+    .lc-modal-label {
+        display: block;
+        margin-bottom: 0.375rem;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        color: #374151;
+    }
+
+    .lc-modal-input {
+        width: 100%;
+        min-height: 42px;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.375rem;
+        font-size: 0.875rem;
+        color: #111827;
+        background: #fff;
+    }
+
+    .lc-modal-input:focus {
+        outline: none;
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
+    }
+
+    .lc-modal-error {
+        margin: 0.375rem 0 0;
+        font-size: 0.75rem;
+        color: #b91c1c;
+    }
+
+    .lc-modal-footer {
+        justify-content: flex-end;
+        border-top: 1px solid #e5e7eb;
+    }
+
+    .lc-manual-results,
+    .lc-manual-selected,
+    .lc-manual-lines {
+        display: flex;
+        flex-direction: column;
+        gap: 0.375rem;
+        margin-top: 0.5rem;
+    }
+
+    .lc-manual-results[hidden] {
+        display: none;
+    }
+
+    .lc-manual-result,
+    .lc-manual-chip {
+        text-align: left;
+        border: 1px solid #e5e7eb;
+        background: #fff;
+        border-radius: 0.375rem;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.8125rem;
+        color: #111827;
+        cursor: pointer;
+    }
+
+    .lc-manual-chip {
+        background: #f8fafc;
+    }
+
+    .lc-manual-result:hover,
+    .lc-manual-chip:hover {
+        border-color: var(--primary-color);
+    }
+
+    .lc-manual-lines {
+        margin: 0.5rem 0 0;
+        padding-left: 1.1rem;
+        color: #4b5563;
+        font-size: 0.75rem;
+    }
+
+    #lc-manual-post-links-wrap[hidden] {
+        display: none;
+    }
+
+    #lc-manual-save:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+    }
+
+    @media (max-width: 800px) {
+        .lc-manual-columns {
+            grid-template-columns: 1fr;
         }
     }
 </style>

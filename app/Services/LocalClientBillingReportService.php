@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Models\Admin\Campaign;
 use App\Models\Admin\HiddenLinksCampaign;
 use App\Models\Admin\LocalClient;
+use App\Models\Admin\LocalClientDeletedCampaignBilling;
+use App\Models\Admin\LocalClientManualBilling;
 use App\Models\Admin\ScheduleCampaign;
 use App\Models\Admin\ScheduleSidebarCampaign;
 use App\Models\Admin\SidebarCampaign;
@@ -52,10 +54,10 @@ class LocalClientBillingReportService
 
     /** @var array<string, array<int, string>> */
     public const TYPE_FILTER_MAP = [
-        'post' => ['campaign', 'schedule_campaign'],
-        'sidebar' => ['sidebar_campaign', 'schedule_sidebar_campaign'],
-        'hidden' => ['hidden_links_campaign'],
-        'sticky' => ['sticky_campaign', 'schedule_sticky_campaign'],
+        'post' => ['campaign', 'schedule_campaign', 'manual_post', 'manual_schedule_post'],
+        'sidebar' => ['sidebar_campaign', 'schedule_sidebar_campaign', 'manual_sidebar', 'manual_schedule_sidebar'],
+        'hidden' => ['hidden_links_campaign', 'manual_hidden'],
+        'sticky' => ['sticky_campaign', 'schedule_sticky_campaign', 'manual_sticky', 'manual_schedule_sticky'],
     ];
 
     /**
@@ -140,6 +142,8 @@ class LocalClientBillingReportService
         $this->appendCampaignRows($rows, ScheduleCampaign::class, 'schedule_campaign', $client, fn ($q) => $q->where('is_sticky_campaign', false));
         $this->appendCampaignRows($rows, ScheduleCampaign::class, 'schedule_sticky_campaign', $client, fn ($q) => $q->where('is_sticky_campaign', true));
         $this->appendCampaignRows($rows, ScheduleSidebarCampaign::class, 'schedule_sidebar_campaign', $client);
+        $this->appendManualBillingRows($rows, $client);
+        $this->appendDeletedCampaignRows($rows, $client);
 
         return $rows->sortByDesc('created_at')->values();
     }
@@ -523,6 +527,7 @@ class LocalClientBillingReportService
         $this->appendUnpaidModels($models, ScheduleCampaign::class, $client, fn ($q) => $q->where('is_sticky_campaign', false));
         $this->appendUnpaidModels($models, ScheduleCampaign::class, $client, fn ($q) => $q->where('is_sticky_campaign', true));
         $this->appendUnpaidModels($models, ScheduleSidebarCampaign::class, $client);
+        $this->appendUnpaidModels($models, LocalClientManualBilling::class, $client);
 
         return $models->values();
     }
@@ -629,8 +634,138 @@ class LocalClientBillingReportService
                 'billing_payment_status' => $campaign->billing_payment_status,
                 'billing_paid_at' => $campaign->billing_paid_at?->toDateTimeString(),
                 'report_url' => $this->resolveReportUrl($typeKey, $campaign),
+                'campaign_deleted' => false,
             ]);
         }
+    }
+
+    /**
+     * @param  Collection<int, array<string, mixed>>  $rows
+     */
+    private function appendManualBillingRows(Collection $rows, LocalClient $client): void
+    {
+        if (! Schema::hasTable('local_client_manual_billings')) {
+            return;
+        }
+
+        $bills = LocalClientManualBilling::query()
+            ->where('local_client_id', $client->id)
+            ->whereNotNull('billing_total')
+            ->get();
+
+        foreach ($bills as $bill) {
+            $balanceDue = LocalClientBillingService::balanceDue(
+                $bill->billing_total,
+                $bill->billing_amount_paid,
+                $bill->billing_payment_status,
+            );
+
+            $rows->push([
+                'id' => $bill->id,
+                'type' => $bill->reportTypeKey(),
+                'type_label' => LocalClientManualBilling::TYPE_LABEL,
+                'campaign_no' => $bill->campaign_no,
+                'created_at' => $bill->created_at?->toDateTimeString(),
+                'billing_total' => $bill->billing_total,
+                'billing_amount_paid' => $bill->billing_amount_paid,
+                'billing_balance_due' => number_format($balanceDue, 2, '.', ''),
+                'billing_has_credit' => LocalClientBillingService::hasBalanceCredit(
+                    $bill->billing_amount_paid,
+                    $bill->billing_payment_status,
+                ),
+                'billing_currency' => $bill->billing_currency,
+                'billing_payment_status' => $bill->billing_payment_status,
+                'billing_paid_at' => $bill->billing_paid_at?->toDateTimeString(),
+                'report_url' => filled($bill->report_token)
+                    ? route('admin.local-client.manual-billing.report', [
+                        'manualBilling' => $bill->id,
+                        'token' => $bill->report_token,
+                    ])
+                    : null,
+                'campaign_deleted' => false,
+            ]);
+        }
+    }
+
+    /**
+     * @param  Collection<int, array<string, mixed>>  $rows
+     */
+    private function appendDeletedCampaignRows(Collection $rows, LocalClient $client): void
+    {
+        if (! Schema::hasTable('local_client_deleted_campaign_billings')) {
+            return;
+        }
+
+        $archived = LocalClientDeletedCampaignBilling::query()
+            ->where('local_client_id', $client->id)
+            ->get();
+
+        $liveKeys = $this->liveBillableKeys($archived);
+
+        foreach ($archived as $record) {
+            if (isset($liveKeys[$record->billable_type.'#'.$record->billable_id])) {
+                continue;
+            }
+
+            $typeKey = (string) $record->campaign_type;
+            $label = BillableCampaignRegistry::TYPES[$typeKey]['label'] ?? $typeKey;
+            $balanceDue = LocalClientBillingService::balanceDue(
+                $record->billing_total,
+                $record->billing_amount_paid,
+                $record->billing_payment_status,
+            );
+
+            $rows->push([
+                'id' => $record->billable_id,
+                'type' => $typeKey,
+                'type_label' => $label,
+                'campaign_no' => $record->campaign_no,
+                'created_at' => $record->campaign_created_at?->toDateTimeString(),
+                'billing_total' => $record->billing_total,
+                'billing_amount_paid' => $record->billing_amount_paid,
+                'billing_balance_due' => number_format($balanceDue, 2, '.', ''),
+                'billing_has_credit' => LocalClientBillingService::hasBalanceCredit(
+                    $record->billing_amount_paid,
+                    $record->billing_payment_status,
+                ),
+                'billing_currency' => $record->billing_currency,
+                'billing_payment_status' => $record->billing_payment_status,
+                'billing_paid_at' => $record->billing_paid_at?->toDateTimeString(),
+                'report_url' => null,
+                'campaign_deleted' => true,
+            ]);
+        }
+    }
+
+    /**
+     * @param  Collection<int, LocalClientDeletedCampaignBilling>  $archived
+     * @return array<string, true>
+     */
+    private function liveBillableKeys(Collection $archived): array
+    {
+        $keys = [];
+
+        foreach ($archived->groupBy('billable_type') as $class => $records) {
+            if (! is_string($class) || ! class_exists($class) || ! is_subclass_of($class, Model::class)) {
+                continue;
+            }
+
+            $model = new $class;
+
+            if (! Schema::hasTable($model->getTable())) {
+                continue;
+            }
+
+            $ids = $class::query()
+                ->whereIn($model->getKeyName(), $records->pluck('billable_id')->all())
+                ->pluck($model->getKeyName());
+
+            foreach ($ids as $id) {
+                $keys[$class.'#'.$id] = true;
+            }
+        }
+
+        return $keys;
     }
 
     private function resolveReportUrl(string $typeKey, object $campaign): ?string
@@ -680,6 +815,11 @@ class LocalClientBillingReportService
                 $totalPaid += $amount;
                 $paidCount++;
             } else {
+                $collected = (float) ($row['billing_amount_paid'] ?? 0);
+                if ($collected > 0) {
+                    $totalPaid += min($amount, $collected);
+                }
+
                 $due = isset($row['billing_balance_due'])
                     ? (float) $row['billing_balance_due']
                     : LocalClientBillingService::balanceDue(

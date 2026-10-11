@@ -45,6 +45,11 @@
                 </div>
             </div>
             <div class="w-full sm:w-auto flex flex-wrap gap-2 shrink-0">
+                <a href="{{ route('admin.local-clients.installments.index', ['client_id' => $localClient->id]) }}" class="lc-theme-btn !min-h-[42px]">
+                    <span class="material-symbols-outlined !text-base">account_balance_wallet</span>
+                    Installments
+                </a>
+                @include('admin.local-clients.partials.manual-billing-button')
                 <a href="{{ route('admin.local-clients.edit', $localClient) }}" class="lc-theme-btn !min-h-[42px]">
                     <span class="material-symbols-outlined !text-base">edit_square</span>
                     Edit
@@ -78,6 +83,13 @@
         @if (session()->has('cus__error'))
             <div class="!p-4 text-sm rounded bg-red-100 text-red-700 w-full" role="alert">
                 <span class="font-medium">{{ session('cus__error') }}</span>
+            </div>
+        @endif
+        @if ($errors->any())
+            <div class="!p-4 text-sm rounded bg-red-100 text-red-700 w-full" role="alert">
+                @foreach ($errors->all() as $error)
+                    <span class="font-medium">{{ $error }}</span>
+                @endforeach
             </div>
         @endif
     </div>
@@ -129,7 +141,7 @@
             <h3>Billing Periods</h3>
         </div>
         <p class="lc-help-text !mb-5">
-            Settle orders in bulk by billing period. Campaign-level breakdown is available via the shareable report link above.
+            Record an installment against the open balance, or mark the whole period paid. An installment pays the oldest campaigns first. A campaign that is only partly covered becomes semi paid.
         </p>
 
         <div class="lc-desktop-table overflow-x-auto w-full max-w-full min-w-0">
@@ -172,10 +184,12 @@
                             <td class="border border-gray-200 !px-3 !py-2.5">
                                 <div class="flex flex-wrap gap-3 items-center">
                                     @if ($period['is_open'])
+                                        @include('admin.local-clients.partials.installment-form')
                                         <form method="POST"
                                             action="{{ route('admin.local-clients.mark-period-paid', $localClient) }}"
                                             class="inline"
-                                            onsubmit="return confirm('Mark all {{ $period['campaign_count'] }} unpaid campaign(s) in this period as paid?');">
+                                            data-lc-once
+                                            data-lc-confirm="Mark all {{ $period['campaign_count'] }} unpaid campaign(s) in this period as paid?">
                                             @csrf
                                             <button type="submit" class="lc-theme-btn !min-h-[36px] !py-2 !px-3 !text-xs">
                                                 <span class="material-symbols-outlined !text-sm">payments</span>
@@ -183,6 +197,7 @@
                                             </button>
                                         </form>
                                     @endif
+                                    @include('admin.local-clients.partials.mark-period-unpaid-form', ['period' => $period, 'localClient' => $localClient])
                                     @include('admin.local-clients.partials.billing-period-delete-form', ['period' => $period, 'localClient' => $localClient])
                                     <a href="{{ $reportUrl }}" target="_blank" rel="noopener noreferrer" class="lc-table-btn lc-table-btn-view">
                                         <span class="material-symbols-outlined">open_in_new</span>
@@ -240,10 +255,12 @@
                     @endif
                     <div class="lc-mobile-card-actions">
                         @if ($period['is_open'])
+                            @include('admin.local-clients.partials.installment-form')
                             <form method="POST"
                                 action="{{ route('admin.local-clients.mark-period-paid', $localClient) }}"
                                 class="inline"
-                                onsubmit="return confirm('Mark all {{ $period['campaign_count'] }} unpaid campaign(s) in this period as paid?');">
+                                data-lc-once
+                                data-lc-confirm="Mark all {{ $period['campaign_count'] }} unpaid campaign(s) in this period as paid?">
                                 @csrf
                                 <button type="submit" class="lc-theme-btn !min-h-[36px] !py-2 !px-3 !text-xs">
                                     <span class="material-symbols-outlined !text-sm">payments</span>
@@ -251,6 +268,7 @@
                                 </button>
                             </form>
                         @endif
+                        @include('admin.local-clients.partials.mark-period-unpaid-form', ['period' => $period, 'localClient' => $localClient])
                         @include('admin.local-clients.partials.billing-period-delete-form', ['period' => $period, 'localClient' => $localClient])
                         <a href="{{ $reportUrl }}" target="_blank" rel="noopener noreferrer" class="lc-table-btn lc-table-btn-view">
                             <span class="material-symbols-outlined">open_in_new</span>
@@ -273,11 +291,435 @@
         @endif
     </div>
 
+    @include('admin.local-clients.partials.installment-modal')
+    @include('admin.local-clients.partials.manual-billing-modal')
+    @foreach ($periods as $period)
+        @include('admin.local-clients.partials.mark-period-unpaid-modal', ['period' => $period, 'localClient' => $localClient])
+    @endforeach
+
     <div class="lc-toast-stack" id="lc-toast-stack" aria-live="polite" aria-atomic="true"></div>
 
 @endsection
 
 @push('scripts')
+    <script>
+        function unpaidRows(form) {
+            return Array.prototype.slice.call(form.querySelectorAll('[data-lc-unpaid-row]'));
+        }
+
+        function unpaidBox(row) {
+            return row.querySelector('input[name="campaigns[]"]');
+        }
+
+        function refreshUnpaidForm(form) {
+            const rows = unpaidRows(form);
+            const selected = rows.filter(function (row) {
+                const box = unpaidBox(row);
+                return box && box.checked;
+            }).length;
+            const count = form.querySelector('[data-lc-unpaid-count]');
+            if (count) {
+                count.textContent = 'Selected ' + selected + ' of ' + rows.length;
+            }
+            form.setAttribute('data-lc-confirm', 'Mark ' + selected + ' of ' + rows.length + ' campaigns as unpaid?');
+
+            const visible = rows.filter(function (row) {
+                return !row.hidden;
+            });
+            const master = form.querySelector('[data-lc-unpaid-all]');
+            if (master) {
+                master.checked = visible.length > 0 && visible.every(function (row) {
+                    const box = unpaidBox(row);
+                    return box && box.checked;
+                });
+            }
+        }
+
+        function applyUnpaidSearch(form) {
+            const input = form.querySelector('[data-lc-unpaid-search]');
+            const needle = input ? input.value.trim().toLowerCase() : '';
+            unpaidRows(form).forEach(function (row) {
+                const haystack = (row.getAttribute('data-lc-unpaid-match') || '').toLowerCase();
+                row.hidden = needle !== '' && haystack.indexOf(needle) === -1;
+            });
+            refreshUnpaidForm(form);
+        }
+
+        function resetUnpaidSearch(form) {
+            const input = form.querySelector('[data-lc-unpaid-search]');
+            if (input) {
+                input.value = '';
+            }
+            applyUnpaidSearch(form);
+        }
+
+        document.querySelectorAll('form [data-lc-unpaid-search]').forEach(function (input) {
+            const form = input.closest('form');
+            if (!form) {
+                return;
+            }
+            input.addEventListener('keydown', function (event) {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                }
+            });
+            input.addEventListener('input', function () {
+                applyUnpaidSearch(form);
+            });
+            form.querySelectorAll('input[name="campaigns[]"]').forEach(function (box) {
+                box.addEventListener('change', function () {
+                    refreshUnpaidForm(form);
+                });
+            });
+            const master = form.querySelector('[data-lc-unpaid-all]');
+            if (master) {
+                master.addEventListener('change', function () {
+                    unpaidRows(form).forEach(function (row) {
+                        if (row.hidden) {
+                            return;
+                        }
+                        const box = unpaidBox(row);
+                        if (box) {
+                            box.checked = master.checked;
+                        }
+                    });
+                    refreshUnpaidForm(form);
+                });
+            }
+            refreshUnpaidForm(form);
+        });
+
+        document.querySelectorAll('[data-lc-unpaid-open]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                const modal = document.getElementById(button.getAttribute('data-lc-unpaid-open'));
+                if (!modal) {
+                    return;
+                }
+                const form = modal.querySelector('form');
+                if (form) {
+                    resetUnpaidSearch(form);
+                }
+                modal.hidden = false;
+                modal.setAttribute('aria-hidden', 'false');
+            });
+        });
+        document.querySelectorAll('[data-lc-unpaid-close]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                const modal = button.closest('.lc-modal');
+                if (!modal) {
+                    return;
+                }
+                modal.hidden = true;
+                modal.setAttribute('aria-hidden', 'true');
+            });
+        });
+    </script>
+    <script>
+        document.querySelectorAll('form[data-lc-once]').forEach(function (form) {
+            form.addEventListener('submit', function (event) {
+                if (form.dataset.submitted === '1') {
+                    event.preventDefault();
+                    return;
+                }
+
+                const message = form.getAttribute('data-lc-confirm');
+                if (message && !window.confirm(message)) {
+                    event.preventDefault();
+                    return;
+                }
+
+                form.dataset.submitted = '1';
+                const button = form.querySelector('[type="submit"]');
+                if (!button) {
+                    return;
+                }
+
+                window.setTimeout(function () {
+                    button.disabled = true;
+                    const label = button.querySelector('[data-lc-once-label]');
+                    const recording = form.getAttribute('data-lc-recording');
+                    if (label && recording) {
+                        label.textContent = recording;
+                    }
+                }, 0);
+            });
+        });
+    </script>
+    <script>
+        (function () {
+            const modal = document.getElementById('lc-installment-modal');
+            if (!modal) {
+                return;
+            }
+
+            const amountInput = document.getElementById('installment-amount');
+
+            function openInstallmentModal() {
+                modal.hidden = false;
+                modal.setAttribute('aria-hidden', 'false');
+                document.body.style.overflow = 'hidden';
+                if (amountInput) {
+                    amountInput.focus();
+                }
+            }
+
+            function closeInstallmentModal() {
+                modal.hidden = true;
+                modal.setAttribute('aria-hidden', 'true');
+                document.body.style.overflow = '';
+            }
+
+            document.querySelectorAll('[data-lc-installment-open]').forEach(function (button) {
+                button.addEventListener('click', openInstallmentModal);
+            });
+
+            modal.querySelectorAll('[data-lc-installment-close]').forEach(function (button) {
+                button.addEventListener('click', closeInstallmentModal);
+            });
+
+            document.addEventListener('keydown', function (event) {
+                if (event.key === 'Escape' && !modal.hidden) {
+                    closeInstallmentModal();
+                }
+            });
+
+            @if ($errors->has('amount') || $errors->has('note'))
+                openInstallmentModal();
+            @endif
+        })();
+    </script>
+    <script>
+        (function () {
+            const modal = document.getElementById('lc-manual-billing-modal');
+            const configNode = document.getElementById('lc-manual-billing-config');
+            if (!modal || !configNode) {
+                return;
+            }
+
+            const config = JSON.parse(configNode.textContent || '{}');
+            const typeSelect = document.getElementById('lc-manual-campaign-type');
+            const liveLabel = document.getElementById('lc-manual-live-label');
+            const totalNode = document.getElementById('lc-manual-total');
+            const totalError = document.getElementById('lc-manual-total-error');
+            const linesNode = document.getElementById('lc-manual-lines');
+            const quantityInput = document.getElementById('lc-manual-post-quantity');
+            const keywordInput = document.getElementById('lc-manual-keyword');
+            const urlInput = document.getElementById('lc-manual-url');
+            const linkCountNode = document.getElementById('lc-manual-link-count');
+            const keywordCountNode = document.getElementById('lc-manual-keyword-count');
+            const urlCountNode = document.getElementById('lc-manual-url-count');
+            const postLinksInput = document.getElementById('lc-manual-post-links');
+            const matchNode = document.getElementById('lc-manual-match');
+            const saveButton = document.getElementById('lc-manual-save');
+            const form = document.getElementById('lc-manual-billing-form');
+            const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+            const domainTypes = { sidebar: true, hidden_links: true, schedule_sidebar: true };
+            let previewTimer = null;
+            let previewToken = 0;
+            let pricedSignature = '';
+
+            function openModal() {
+                modal.hidden = false;
+                modal.setAttribute('aria-hidden', 'false');
+                document.body.style.overflow = 'hidden';
+                document.getElementById('lc-manual-campaign-no')?.focus();
+            }
+
+            function closeModal() {
+                modal.hidden = true;
+                modal.setAttribute('aria-hidden', 'true');
+                document.body.style.overflow = '';
+            }
+
+            function usesDomains() {
+                return !!domainTypes[typeSelect?.value];
+            }
+
+            function liveSignature() {
+                return (typeSelect?.value || '') + '\n' + (postLinksInput?.value || '');
+            }
+
+            function entryLines(value) {
+                return String(value || '').split(/\r\n|\n|\r/).map(function (line) {
+                    return line.trim();
+                }).filter(Boolean);
+            }
+
+            function syncLiveLabel() {
+                const unit = usesDomains() ? 'Domains' : 'Live post links';
+                if (liveLabel) {
+                    liveLabel.textContent = unit;
+                }
+            }
+
+            function canSave() {
+                const quantity = entryLines(postLinksInput?.value).length;
+                const keywordCount = entryLines(keywordInput?.value).length;
+                const urlCount = entryLines(urlInput?.value).length;
+                return quantity > 0
+                    && quantity <= 500
+                    && keywordCount === quantity
+                    && urlCount === quantity
+                    && pricedSignature === liveSignature();
+            }
+
+            function syncMatch() {
+                const quantity = entryLines(postLinksInput?.value).length;
+                const keywordCount = entryLines(keywordInput?.value).length;
+                const urlCount = entryLines(urlInput?.value).length;
+                const unit = usesDomains() ? 'domains' : 'links';
+                if (quantityInput) {
+                    quantityInput.value = String(quantity);
+                }
+                if (linkCountNode) {
+                    linkCountNode.textContent = quantity + ' ' + unit;
+                }
+                if (keywordCountNode) {
+                    keywordCountNode.textContent = keywordCount + ' of ' + quantity + ' keywords';
+                }
+                if (urlCountNode) {
+                    urlCountNode.textContent = urlCount + ' of ' + quantity + ' URLs';
+                }
+                const matched = quantity > 0 && quantity <= 500 && keywordCount === quantity && urlCount === quantity;
+                if (saveButton) {
+                    saveButton.disabled = !canSave();
+                }
+                if (!matchNode) {
+                    return matched;
+                }
+                if (quantity > 500) {
+                    matchNode.hidden = false;
+                    matchNode.textContent = 'A manual campaign can include at most 500 lines.';
+                    return false;
+                }
+                if (matched || quantity === 0) {
+                    matchNode.hidden = true;
+                    matchNode.textContent = '';
+                    return matched;
+                }
+                matchNode.hidden = false;
+                matchNode.textContent = 'Live lines are ' + quantity
+                    + ', keywords are ' + keywordCount
+                    + ', and URLs are ' + urlCount + '.';
+                return matched;
+            }
+
+            function schedulePreview() {
+                pricedSignature = '';
+                syncMatch();
+                window.clearTimeout(previewTimer);
+                previewTimer = window.setTimeout(previewTotal, 250);
+            }
+
+            function previewTotal() {
+                const signature = liveSignature();
+                const requestId = ++previewToken;
+                linesNode.innerHTML = '';
+                totalError.hidden = true;
+                totalError.textContent = '';
+                if (entryLines(postLinksInput?.value).length === 0) {
+                    totalNode.textContent = '—';
+                    pricedSignature = '';
+                    syncMatch();
+                    return;
+                }
+
+                totalNode.textContent = 'Calculating…';
+                const body = new FormData();
+                body.append('campaign_type', typeSelect.value);
+                body.append('post_links', postLinksInput?.value || '');
+
+                fetch(config.previewUrl, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': token,
+                        'Accept': 'application/json',
+                    },
+                    body: body,
+                }).then(function (response) {
+                    return response.json().then(function (data) {
+                        return { ok: response.ok, data: data };
+                    });
+                }).then(function (result) {
+                    if (requestId !== previewToken || signature !== liveSignature()) {
+                        return;
+                    }
+                    if (!result.ok) {
+                        const message = result.data?.errors?.post_links?.[0]
+                            || result.data?.message
+                            || 'Could not calculate the price.';
+                        totalNode.textContent = '—';
+                        totalError.textContent = message;
+                        totalError.hidden = false;
+                        pricedSignature = '';
+                        syncMatch();
+                        return;
+                    }
+                    if ((result.data.missing || []).length > 0) {
+                        totalNode.textContent = '—';
+                        totalError.textContent = 'These domains are not in the inventory: ' + result.data.missing.join(', ') + '.';
+                        totalError.hidden = false;
+                        pricedSignature = '';
+                        syncMatch();
+                        return;
+                    }
+
+                    totalNode.textContent = result.data.formatted_total || result.data.total || '—';
+                    (result.data.lines || []).forEach(function (line) {
+                        const item = document.createElement('li');
+                        item.textContent = line.domain_name + ' · ' + line.formatted_line_total;
+                        linesNode.appendChild(item);
+                    });
+                    pricedSignature = signature;
+                    syncMatch();
+                }).catch(function () {
+                    if (requestId !== previewToken) {
+                        return;
+                    }
+                    totalNode.textContent = '—';
+                    totalError.textContent = 'Could not calculate the price.';
+                    totalError.hidden = false;
+                    pricedSignature = '';
+                    syncMatch();
+                });
+            }
+
+            document.querySelectorAll('[data-lc-manual-billing-open]').forEach(function (button) {
+                button.addEventListener('click', openModal);
+            });
+            modal.querySelectorAll('[data-lc-manual-billing-close]').forEach(function (button) {
+                button.addEventListener('click', closeModal);
+            });
+            document.addEventListener('keydown', function (event) {
+                if (event.key === 'Escape' && !modal.hidden) {
+                    closeModal();
+                }
+            });
+
+            typeSelect?.addEventListener('change', function () {
+                syncLiveLabel();
+                schedulePreview();
+            });
+
+            postLinksInput?.addEventListener('input', schedulePreview);
+            keywordInput?.addEventListener('input', syncMatch);
+            urlInput?.addEventListener('input', syncMatch);
+            form?.addEventListener('submit', function (event) {
+                if (!canSave()) {
+                    event.preventDefault();
+                }
+            });
+
+            syncLiveLabel();
+            syncMatch();
+            if (entryLines(postLinksInput?.value).length > 0) {
+                schedulePreview();
+            }
+            if (config.openOnError) {
+                openModal();
+            }
+        })();
+    </script>
     <script>
         (function () {
             const reportInput = document.getElementById('report-url');

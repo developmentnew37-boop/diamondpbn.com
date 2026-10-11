@@ -18,6 +18,8 @@ use App\Support\BillableCampaignRegistry;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 class LocalClientBillingService
@@ -309,6 +311,62 @@ class LocalClientBillingService
         );
     }
 
+    /**
+     * Recalculate client billing after a campaign row delete has committed.
+     * Billing failures are logged and do not propagate to the delete.
+     */
+    public function syncBillingAfterRowDelete(?Model $campaign): void
+    {
+        if ($campaign === null) {
+            return;
+        }
+
+        try {
+            $fresh = $campaign->fresh();
+            if ($fresh === null || ! $fresh->getAttribute('local_client_id') || blank($fresh->getAttribute('billing_snapshot'))) {
+                return;
+            }
+
+            if ($this->domainIdsForCampaign($fresh) === []) {
+                $status = (string) ($fresh->getAttribute('billing_payment_status') ?? '');
+                if (! in_array($status, ['paid', 'semi_paid'], true)) {
+                    $this->clearUnpaidEmptyBilling($fresh);
+                }
+
+                return;
+            }
+
+            $this->syncUnpaidCampaignBilling($fresh);
+        } catch (\Throwable $exception) {
+            Log::warning('Client billing could not be synced after a campaign row was deleted.', [
+                'campaign_type' => $campaign::class,
+                'campaign_id' => $campaign->getKey(),
+                'message' => $exception->getMessage(),
+            ]);
+        }
+    }
+
+    private function clearUnpaidEmptyBilling(Model $campaign): void
+    {
+        if (Schema::hasTable('local_client_bill_lines')) {
+            LocalClientBillLine::query()
+                ->where('billable_type', $campaign::class)
+                ->where('billable_id', $campaign->getKey())
+                ->delete();
+        }
+
+        $campaign->forceFill([
+            'billing_total' => null,
+            'billing_amount_paid' => null,
+            'billing_currency' => null,
+            'billing_snapshot' => null,
+            'billing_payment_status' => null,
+            'billing_paid_at' => null,
+            'billing_paid_by_admin_id' => null,
+            'billing_payment_note' => null,
+        ])->save();
+    }
+
     public static function paymentStatusLabel(?string $status): string
     {
         return match ($status) {
@@ -401,6 +459,14 @@ class LocalClientBillingService
                 'billing_paid_at' => $paidAt ?? now(),
                 'billing_paid_by_admin_id' => $paidBy,
             ])->save();
+
+            $surplusCents = LocalClientPaymentService::toCents($alreadyPaid) - LocalClientPaymentService::toCents($newTotal);
+            if ($surplusCents > 0) {
+                app(LocalClientPaymentService::class)->reallocateInstallmentSurplus(
+                    $campaign->fresh(),
+                    $surplusCents,
+                );
+            }
         });
     }
 

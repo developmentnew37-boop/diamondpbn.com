@@ -75,7 +75,7 @@
                         </div>
                         <p class="lcb-panel-desc">
                             Current billed amount for this campaign’s domains.
-                            Replacing a domain recalculates the total. A paid campaign stays paid unless the new total is higher, in which case it becomes semi paid and only the difference is due.
+                            Removing or replacing a domain recalculates the total. A paid campaign stays paid unless the new total is higher, in which case it becomes semi paid and only the difference is due.
                             @if ($lineCount > 0)
                                 {{ $lineCount }} {{ $lineCount === 1 ? 'domain' : 'domains' }} priced.
                             @endif
@@ -182,7 +182,9 @@
                                 @if ($paymentStatus === 'semi_paid')
                                     <option value="semi_paid" selected>Semi paid</option>
                                 @endif
-                                <option value="unpaid" @selected($paymentStatus === 'unpaid')>Unpaid</option>
+                                @if (Auth::guard('admin')->user()?->isSuperAdmin() || $paymentStatus === 'unpaid')
+                                    <option value="unpaid" @selected($paymentStatus === 'unpaid')>Unpaid</option>
+                                @endif
                                 <option value="paid" @selected($isPaid)>Paid</option>
                             </select>
                         </div>

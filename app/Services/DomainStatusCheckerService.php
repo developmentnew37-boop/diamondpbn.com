@@ -15,6 +15,9 @@ class DomainStatusCheckerService
 {
     public const MAX_DOMAINS = 500;
 
+    /** Latest rows the disconnected recheck page keeps in the live table. */
+    public const DISCONNECTED_RESULT_WINDOW = 100;
+
     public function __construct(
         private readonly WordPressAgentStatusService $agentStatusService
     ) {}
@@ -194,7 +197,10 @@ class DomainStatusCheckerService
 
         DomainStatusCheckItem::query()
             ->whereIn('id', $items->pluck('id'))
-            ->update(['check_status' => 'checking']);
+            ->update([
+                'check_status' => 'checking',
+                'updated_at' => now(),
+            ]);
 
         $results = $this->probeDomains($items, (bool) $check->use_authenticated_check);
 
@@ -560,21 +566,16 @@ class DomainStatusCheckerService
     }
 
     /**
+     * Counts for the recheck page. Does not load domain names.
+     *
      * @return array{
-     *     names: array<int, string>,
      *     total_in_scope: int,
      *     by_category: array<int, array{category_id: ?int, category: string, count: int}>
      * }
      */
-    public function getDisconnectedDomainNames(?int $categoryId = null): array
+    public function disconnectedScopeSnapshot(?int $categoryId = null): array
     {
-        $base = Domain::query()
-            ->where('domains.status', 0)
-            ->when(
-                $categoryId !== null,
-                fn ($q) => $q->where('domains.domain_category_id', $categoryId)
-            );
-
+        $base = $this->disconnectedDomainQuery($categoryId);
         $totalInScope = (clone $base)->count();
 
         $categoryCounts = (clone $base)
@@ -602,7 +603,24 @@ class DomainStatusCheckerService
             ->values()
             ->all();
 
-        $names = (clone $base)
+        return [
+            'total_in_scope' => $totalInScope,
+            'by_category' => $byCategory,
+        ];
+    }
+
+    /**
+     * @return array{
+     *     names: array<int, string>,
+     *     total_in_scope: int,
+     *     by_category: array<int, array{category_id: ?int, category: string, count: int}>
+     * }
+     */
+    public function getDisconnectedDomainNames(?int $categoryId = null): array
+    {
+        $snapshot = $this->disconnectedScopeSnapshot($categoryId);
+
+        $names = $this->disconnectedDomainQuery($categoryId)
             ->orderBy('domains.domain_category_id')
             ->orderBy('domains.name')
             ->limit($this->disconnectedMaxDomains())
@@ -611,9 +629,19 @@ class DomainStatusCheckerService
 
         return [
             'names' => $names,
-            'total_in_scope' => $totalInScope,
-            'by_category' => $byCategory,
+            'total_in_scope' => $snapshot['total_in_scope'],
+            'by_category' => $snapshot['by_category'],
         ];
+    }
+
+    private function disconnectedDomainQuery(?int $categoryId)
+    {
+        return Domain::query()
+            ->where('domains.status', 0)
+            ->when(
+                $categoryId !== null,
+                fn ($q) => $q->where('domains.domain_category_id', $categoryId)
+            );
     }
 
     /**
@@ -650,17 +678,25 @@ class DomainStatusCheckerService
     /**
      * Progress JSON payload for the disconnected recheck UI (poll + page-load resume).
      *
-     * @return array{check: array<string, mixed>, results: array<int, array<string, mixed>>, server_time: string}
+     * The clock cutoff is taken before the item query. A row saved while the
+     * summary is built stays eligible for the next poll, which asks for rows
+     * strictly after the newest row this response returned.
+     *
+     * @return array{check: array<string, mixed>, results: array<int, array<string, mixed>>, cursor: ?string, server_time: string}
      */
-    public function disconnectedProgressPayload(DomainStatusCheck $check, ?string $since = null): array
+    public function disconnectedProgressPayload(DomainStatusCheck $check, ?string $since = null, bool $includeItems = true): array
     {
+        $cutoff = now();
+        $items = $includeItems
+            ? $this->disconnectedProgressItems($check, $since, $cutoff)
+            : new \Illuminate\Database\Eloquent\Collection;
         $metrics = $this->progressMetrics($check);
         $summary = $this->recheckSummary($check);
-        $items = $this->progressItems($check, $since);
         $pendingCount = $metrics['pending'] + $metrics['checking'] + $metrics['retry_pending'];
 
         return [
-            'server_time' => now()->toIso8601String(),
+            'server_time' => $cutoff->toIso8601String(),
+            'cursor' => $this->progressCursorFromItems($items),
             'check' => [
                 'uuid' => $check->uuid,
                 'status' => $check->status,
@@ -700,6 +736,7 @@ class DomainStatusCheckerService
                 'response_time_ms' => $item->response_time_ms,
                 'category' => $item->category,
                 'checked_at' => $item->checked_at?->toIso8601String(),
+                'updated_at' => $item->updated_at?->format('Y-m-d H:i:s'),
             ])->values()->all(),
         ];
     }
@@ -893,7 +930,7 @@ class DomainStatusCheckerService
         return max(1, (int) $schedule[$index]);
     }
 
-    public function cancelCheck(DomainStatusCheck $check, string $reason = 'Cancelled by admin'): DomainStatusCheck
+    public function cancelCheck(DomainStatusCheck $check, string $reason = 'Cancelled by admin', bool $purgeJobs = true): DomainStatusCheck
     {
         if ($check->isFinished()) {
             return $check;
@@ -908,6 +945,7 @@ class DomainStatusCheckerService
                 'message' => $reason,
                 'next_retry_at' => null,
                 'checked_at' => now(),
+                'updated_at' => now(),
             ]);
 
         $this->recalculateCheckStats($check->fresh());
@@ -919,7 +957,9 @@ class DomainStatusCheckerService
             'completed_at' => now(),
         ]);
 
-        $this->purgeQueuedJobsForCheck((int) $check->id);
+        if ($purgeJobs) {
+            $this->purgeQueuedJobsForCheck((int) $check->id);
+        }
 
         return $check->fresh();
     }
@@ -942,7 +982,7 @@ class DomainStatusCheckerService
         $query->orderBy('id')->chunkById(50, function ($checks) use (&$cancelled, &$jobsPurged) {
             foreach ($checks as $check) {
                 $jobsPurged += $this->purgeQueuedJobsForCheck((int) $check->id);
-                $this->cancelCheck($check, 'Cancelled (stuck leftover run)');
+                $this->cancelCheck($check, 'Cancelled (stuck leftover run)', false);
                 $cancelled++;
             }
         });
@@ -956,27 +996,134 @@ class DomainStatusCheckerService
     public function purgeQueuedJobsForCheck(int $checkId): int
     {
         $deleted = 0;
-        $needle = 's:7:"checkId";i:'.$checkId.';';
 
         foreach (['jobs', 'failed_jobs'] as $table) {
-            if (! Schema::hasTable($table)) {
+            if (
+                ! Schema::hasTable($table)
+                || ! Schema::hasColumn($table, 'payload')
+                || ! Schema::hasColumn($table, 'queue')
+            ) {
                 continue;
             }
 
-            $rows = DB::table($table)->orderBy('id')->get(['id', 'payload']);
-            foreach ($rows as $row) {
-                $payload = (string) ($row->payload ?? '');
-                if (
-                    str_contains($payload, 'ProcessDomainStatusCheckChunkJob')
-                    && str_contains($payload, $needle)
-                ) {
-                    DB::table($table)->where('id', $row->id)->delete();
-                    $deleted++;
-                }
-            }
+            DB::table($table)
+                ->where('queue', 'domainCheck')
+                ->select(['id', 'payload'])
+                ->chunkById(200, function ($rows) use (&$deleted, $table, $checkId) {
+                    $ids = [];
+                    foreach ($rows as $row) {
+                        if ($this->payloadIsChunkJobForCheck((string) ($row->payload ?? ''), $checkId)) {
+                            $ids[] = $row->id;
+                        }
+                    }
+
+                    if ($ids !== []) {
+                        $deleted += DB::table($table)->whereIn('id', $ids)->delete();
+                    }
+                });
         }
 
         return $deleted;
+    }
+
+    private function payloadIsChunkJobForCheck(string $payload, int $checkId): bool
+    {
+        if ($checkId < 1 || ! str_contains($payload, 'ProcessDomainStatusCheckChunkJob')) {
+            return false;
+        }
+
+        return preg_match('/s:7:\\\\?"checkId\\\\?";i:'.$checkId.';/', $payload) === 1;
+    }
+
+    /**
+     * @return \Illuminate\Database\Eloquent\Collection<int, DomainStatusCheckItem>
+     */
+    private function disconnectedProgressItems(DomainStatusCheck $check, ?string $since, \Illuminate\Support\Carbon $cutoff): \Illuminate\Database\Eloquent\Collection
+    {
+        $query = $check->items()
+            ->where('updated_at', '<=', $cutoff)
+            ->select([
+                'id',
+                'domain',
+                'sort_order',
+                'check_status',
+                'connected',
+                'status_code',
+                'probe_method',
+                'agent_version',
+                'http_status',
+                'message',
+                'attempts',
+                'response_time_ms',
+                'in_inventory',
+                'category',
+                'checked_at',
+                'updated_at',
+            ]);
+
+        $cursor = $check->isFinished() ? null : $this->parseProgressCursor($since);
+        if ($cursor === null) {
+            return $query
+                ->where('check_status', '!=', 'pending')
+                ->orderByDesc('updated_at')
+                ->orderByDesc('id')
+                ->limit(self::DISCONNECTED_RESULT_WINDOW)
+                ->get();
+        }
+
+        [$time, $id] = $cursor;
+
+        return $query
+            ->where(function ($builder) use ($time, $id) {
+                $builder->where('updated_at', '>', $time)
+                    ->orWhere(function ($sameSecond) use ($time, $id) {
+                        $sameSecond->where('updated_at', '=', $time)
+                            ->where('id', '>', $id);
+                    });
+            })
+            ->orderBy('updated_at')
+            ->orderBy('id')
+            ->limit(self::DISCONNECTED_RESULT_WINDOW)
+            ->get();
+    }
+
+    /**
+     * @return array{0: string, 1: int}|null
+     */
+    private function parseProgressCursor(?string $since): ?array
+    {
+        if ($since === null || ! str_contains($since, '|')) {
+            return null;
+        }
+
+        [$time, $id] = explode('|', $since, 2);
+        if (! preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $time) || ! ctype_digit($id)) {
+            return null;
+        }
+
+        return [$time, (int) $id];
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Collection<int, DomainStatusCheckItem>  $items
+     */
+    private function progressCursorFromItems(\Illuminate\Database\Eloquent\Collection $items): ?string
+    {
+        $newest = $items->sort(function (DomainStatusCheckItem $left, DomainStatusCheckItem $right) {
+            $leftTime = $left->updated_at?->format('Y-m-d H:i:s') ?? '';
+            $rightTime = $right->updated_at?->format('Y-m-d H:i:s') ?? '';
+            if ($leftTime !== $rightTime) {
+                return $leftTime < $rightTime ? 1 : -1;
+            }
+
+            return $right->id <=> $left->id;
+        })->first();
+
+        if ($newest === null || $newest->updated_at === null) {
+            return null;
+        }
+
+        return $newest->updated_at->format('Y-m-d H:i:s').'|'.$newest->id;
     }
 
     /**

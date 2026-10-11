@@ -1001,6 +1001,8 @@
         font-weight: 600;
         letter-spacing: 0.01em;
         border-radius: 9999px;
+        white-space: nowrap;
+        flex-shrink: 0;
     }
 
     .billing-status-badge.paid {
@@ -1054,6 +1056,7 @@
         display: inline-flex;
         align-items: center;
         width: fit-content;
+        flex-shrink: 0;
         padding: 0.15rem 0.45rem;
         font-size: 0.8125rem;
         font-weight: 700;
@@ -1062,6 +1065,7 @@
         border: 1px solid #fdba74;
         border-radius: 0.375rem;
         font-variant-numeric: tabular-nums;
+        white-space: nowrap;
     }
 
     .billing-report-link {
@@ -1082,6 +1086,7 @@
         box-shadow: 0 1px 2px rgba(29, 78, 216, 0.08);
         transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
         white-space: nowrap;
+        flex-shrink: 0;
     }
 
     .billing-report-link:hover,
@@ -1109,6 +1114,48 @@
     .billing-report-link-unavailable {
         font-size: 0.875rem;
         color: #cbd5e1;
+    }
+
+    .billing-manual-details {
+        max-width: 280px;
+        font-size: 0.75rem;
+        line-height: 1.45;
+        color: #334155;
+        word-break: break-word;
+    }
+
+    .billing-manual-details span {
+        display: block;
+        font-weight: 600;
+        color: #64748b;
+    }
+
+    .billing-manual-details a {
+        color: #1d4ed8;
+        word-break: break-all;
+    }
+    .billing-deleted-label {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.375rem;
+        min-height: 34px;
+        padding: 0.4375rem 0.875rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        line-height: 1;
+        border-radius: 0.375rem;
+        border: 1px solid #e2e8f0;
+        background: #f8fafc;
+        color: #64748b;
+        white-space: nowrap;
+        flex-shrink: 0;
+        cursor: default;
+    }
+
+    .billing-deleted-label .material-symbols-outlined {
+        font-size: 0.9375rem !important;
+        line-height: 1;
     }
 
     .billing-empty-state {

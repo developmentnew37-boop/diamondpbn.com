@@ -1074,6 +1074,8 @@ class CampaignController extends Controller
             }
         });
 
+        app(LocalClientBillingService::class)->syncBillingAfterRowDelete($campaign);
+
         if ($campaignDeleted) {
             return redirect()->route('admin.campaign.index')->with(
                 'cus__success',

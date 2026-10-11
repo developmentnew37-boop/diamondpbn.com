@@ -74,6 +74,15 @@ class DomainRecheckDisconnectedTest extends TestCase
             $table->timestamps();
         });
 
+        Schema::create('local_client_rate_lists', function (Blueprint $table) {
+            $table->id();
+        });
+
+        Schema::create('local_clients', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('rate_list_id')->nullable();
+        });
+
         Schema::create('domain_categories', function (Blueprint $table) {
             $table->id();
             $table->string('name');
@@ -369,8 +378,8 @@ class DomainRecheckDisconnectedTest extends TestCase
             ->assertSee('data-resume-uuid="'.$check->uuid.'"', false)
             ->assertSee('id="rdResumeBootstrap"', false)
             ->assertSee($check->uuid)
-            ->assertSee('up-again.example')
-            ->assertSee('still-down.example')
+            ->assertDontSee('up-again.example')
+            ->assertDontSee('still-down.example')
             ->assertSee('Rechecking...')
             ->assertSee('Total')
             ->assertSee('Connected')
@@ -378,6 +387,12 @@ class DomainRecheckDisconnectedTest extends TestCase
             ->assertSee('id="rdSummaryTotal">2</', false)
             ->assertSee('id="rdSummaryConnected">1</', false)
             ->assertSee('id="rdSummaryStill">0</', false);
+
+        $progress = $this->getJson(route('admin.domain.recheck-disconnected.progress', $check->uuid));
+        $progress->assertOk();
+        $domains = collect($progress->json('results'))->pluck('domain');
+        $this->assertTrue($domains->contains('up-again.example'));
+        $this->assertTrue($domains->contains('still-down.example'));
     }
 
     public function test_index_does_not_resume_another_admins_check(): void
@@ -455,10 +470,265 @@ class DomainRecheckDisconnectedTest extends TestCase
             ->assertOk()
             ->assertSee('data-resume-uuid="'.$check->uuid.'"', false)
             ->assertSee('Recheck complete')
-            ->assertSee('recovered.example')
+            ->assertDontSee('recovered.example')
             ->assertSee('id="rdSummaryTotal">1</', false)
             ->assertSee('id="rdSummaryConnected">1</', false)
             ->assertSee('id="rdSummaryStill">0</', false);
+
+        $this->getJson(route('admin.domain.recheck-disconnected.progress', $check->uuid))
+            ->assertOk()
+            ->assertJsonPath('results.0.domain', 'recovered.example')
+            ->assertJsonCount(1, 'results');
+    }
+
+    public function test_progress_returns_the_latest_rows_and_a_cursor_past_them(): void
+    {
+        $admin = $this->createAdmin();
+        $this->actingAs($admin, 'admin');
+
+        $check = DomainStatusCheck::query()->create([
+            'admin_id' => $admin->id,
+            'source' => 'disconnected',
+            'status' => 'processing',
+            'phase' => 'initial',
+            'total_count' => 101,
+            'processed_count' => 0,
+            'status_message' => 'Checking',
+            'started_at' => now(),
+        ]);
+
+        $base = now()->subHours(3);
+        $oldestId = null;
+        $newestUpdatedAt = null;
+
+        foreach (range(1, 101) as $number) {
+            $item = DomainStatusCheckItem::query()->create([
+                'domain_status_check_id' => $check->id,
+                'domain' => sprintf('row-%03d.example', $number),
+                'sort_order' => $number,
+                'check_status' => 'connected',
+            ]);
+            $updatedAt = $base->copy()->addMinutes($number)->format('Y-m-d H:i:s');
+            DomainStatusCheckItem::query()->whereKey($item->id)->update([
+                'updated_at' => $updatedAt,
+            ]);
+            if ($number === 1) {
+                $oldestId = $item->id;
+            }
+            if ($number === 101) {
+                $newestUpdatedAt = $updatedAt;
+            }
+        }
+
+        $first = $this->getJson(route('admin.domain.recheck-disconnected.progress', $check->uuid));
+        $first->assertOk()
+            ->assertJsonCount(DomainStatusCheckerService::DISCONNECTED_RESULT_WINDOW, 'results')
+            ->assertJsonPath('cursor', $newestUpdatedAt.'|'.$first->json('results.0.id'));
+
+        $domains = collect($first->json('results'))->pluck('domain');
+        $this->assertTrue($domains->contains('row-101.example'));
+        $this->assertFalse($domains->contains('row-001.example'));
+
+        $isoSince = $this->getJson(route('admin.domain.recheck-disconnected.progress', [
+            'uuid' => $check->uuid,
+            'since' => now()->toIso8601String(),
+        ]));
+        $isoSince->assertOk()->assertJsonCount(DomainStatusCheckerService::DISCONNECTED_RESULT_WINDOW, 'results');
+
+        $cursor = $first->json('cursor');
+        $this->getJson(route('admin.domain.recheck-disconnected.progress', [
+            'uuid' => $check->uuid,
+            'since' => $cursor,
+        ]))->assertOk()
+            ->assertJsonCount(0, 'results')
+            ->assertJsonPath('cursor', null);
+
+        DomainStatusCheckItem::query()->whereKey($oldestId)->update([
+            'updated_at' => now()->subMinute()->format('Y-m-d H:i:s'),
+            'check_status' => 'connected',
+        ]);
+
+        $next = $this->getJson(route('admin.domain.recheck-disconnected.progress', [
+            'uuid' => $check->uuid,
+            'since' => $cursor,
+        ]));
+        $next->assertOk()
+            ->assertJsonCount(1, 'results')
+            ->assertJsonPath('results.0.domain', 'row-001.example');
+    }
+
+    public function test_progress_without_a_cursor_skips_untouched_pending_domains(): void
+    {
+        $admin = $this->createAdmin();
+        $this->actingAs($admin, 'admin');
+
+        $check = DomainStatusCheck::query()->create([
+            'admin_id' => $admin->id,
+            'source' => 'disconnected',
+            'status' => 'processing',
+            'phase' => 'initial',
+            'total_count' => 120,
+            'processed_count' => 5,
+            'connected_count' => 5,
+            'status_message' => 'Checking',
+            'started_at' => now(),
+        ]);
+
+        $insertedAt = now()->subHour()->format('Y-m-d H:i:s');
+        $checkedAt = now()->subMinute()->format('Y-m-d H:i:s');
+
+        foreach (range(1, 120) as $number) {
+            $item = DomainStatusCheckItem::query()->create([
+                'domain_status_check_id' => $check->id,
+                'domain' => sprintf('row-%03d.example', $number),
+                'sort_order' => $number,
+                'check_status' => $number <= 5 ? 'connected' : 'pending',
+                'connected' => $number <= 5,
+            ]);
+            DomainStatusCheckItem::query()->whereKey($item->id)->update([
+                'updated_at' => $number <= 5 ? $checkedAt : $insertedAt,
+            ]);
+        }
+
+        $response = $this->getJson(route('admin.domain.recheck-disconnected.progress', $check->uuid));
+        $response->assertOk()->assertJsonCount(5, 'results');
+
+        $domains = collect($response->json('results'))->pluck('domain');
+        $this->assertTrue($domains->contains('row-001.example'));
+        $this->assertFalse($domains->contains('row-120.example'));
+    }
+
+    public function test_finished_progress_ignores_an_old_cursor_and_returns_the_newest_rows(): void
+    {
+        $admin = $this->createAdmin();
+        $this->actingAs($admin, 'admin');
+
+        $check = DomainStatusCheck::query()->create([
+            'admin_id' => $admin->id,
+            'source' => 'disconnected',
+            'status' => 'completed',
+            'phase' => 'done',
+            'total_count' => 150,
+            'processed_count' => 150,
+            'connected_count' => 150,
+            'status_message' => 'Check completed',
+            'started_at' => now()->subHours(2),
+            'completed_at' => now()->subMinute(),
+        ]);
+
+        $base = now()->subHours(3);
+        $oldestCursor = null;
+
+        foreach (range(1, 150) as $number) {
+            $item = DomainStatusCheckItem::query()->create([
+                'domain_status_check_id' => $check->id,
+                'domain' => sprintf('row-%03d.example', $number),
+                'sort_order' => $number,
+                'check_status' => 'connected',
+                'connected' => true,
+            ]);
+            $updatedAt = $base->copy()->addMinutes($number)->format('Y-m-d H:i:s');
+            DomainStatusCheckItem::query()->whereKey($item->id)->update([
+                'updated_at' => $updatedAt,
+            ]);
+            if ($number === 1) {
+                $oldestCursor = $updatedAt.'|'.$item->id;
+            }
+        }
+
+        $response = $this->getJson(route('admin.domain.recheck-disconnected.progress', [
+            'uuid' => $check->uuid,
+            'since' => $oldestCursor,
+        ]));
+
+        $response->assertOk()
+            ->assertJsonCount(DomainStatusCheckerService::DISCONNECTED_RESULT_WINDOW, 'results');
+
+        $domains = collect($response->json('results'))->pluck('domain');
+        $this->assertTrue($domains->contains('row-150.example'));
+        $this->assertFalse($domains->contains('row-002.example'));
+    }
+
+    public function test_purge_deletes_only_this_checks_domain_check_chunk_jobs(): void
+    {
+        Schema::create('jobs', function (Blueprint $table) {
+            $table->id();
+            $table->string('queue');
+            $table->longText('payload');
+            $table->unsignedTinyInteger('attempts');
+            $table->unsignedInteger('reserved_at')->nullable();
+            $table->unsignedInteger('available_at');
+            $table->unsignedInteger('created_at');
+        });
+
+        Schema::create('failed_jobs', function (Blueprint $table) {
+            $table->id();
+            $table->string('uuid')->unique();
+            $table->text('connection');
+            $table->text('queue');
+            $table->longText('payload');
+            $table->longText('exception');
+            $table->timestamp('failed_at')->nullable();
+        });
+
+        $escapedTwelve = json_encode([
+            'displayName' => ProcessDomainStatusCheckChunkJob::class,
+            'command' => 'O:48:"App\\Jobs\\ProcessDomainStatusCheckChunkJob":1:{s:7:"checkId";i:12;}',
+        ]);
+        $escapedLongerId = json_encode([
+            'displayName' => ProcessDomainStatusCheckChunkJob::class,
+            'command' => 'O:48:"App\\Jobs\\ProcessDomainStatusCheckChunkJob":1:{s:7:"checkId";i:123;}',
+        ]);
+        $plainTwelve = 'ProcessDomainStatusCheckChunkJob s:7:"checkId";i:12;';
+
+        DB::table('jobs')->insert([
+            [
+                'queue' => 'domainCheck',
+                'payload' => $escapedTwelve,
+                'attempts' => 0,
+                'available_at' => 1,
+                'created_at' => 1,
+            ],
+            [
+                'queue' => 'domainCheck',
+                'payload' => $escapedLongerId,
+                'attempts' => 0,
+                'available_at' => 1,
+                'created_at' => 1,
+            ],
+            [
+                'queue' => 'campaigns',
+                'payload' => $escapedTwelve,
+                'attempts' => 0,
+                'available_at' => 1,
+                'created_at' => 1,
+            ],
+            [
+                'queue' => 'domainCheck',
+                'payload' => 'App\\Jobs\\PublishCampaignPostJob',
+                'attempts' => 0,
+                'available_at' => 1,
+                'created_at' => 1,
+            ],
+        ]);
+
+        DB::table('failed_jobs')->insert([
+            'uuid' => (string) \Illuminate\Support\Str::uuid(),
+            'connection' => 'database',
+            'queue' => 'domainCheck',
+            'payload' => $plainTwelve,
+            'exception' => 'failed',
+            'failed_at' => now(),
+        ]);
+
+        $deleted = app(DomainStatusCheckerService::class)->purgeQueuedJobsForCheck(12);
+
+        $this->assertSame(2, $deleted);
+        $this->assertSame(0, DB::table('jobs')->where('queue', 'domainCheck')->where('payload', $escapedTwelve)->count());
+        $this->assertSame(1, DB::table('jobs')->where('payload', $escapedLongerId)->count());
+        $this->assertSame(1, DB::table('jobs')->where('queue', 'campaigns')->count());
+        $this->assertSame(1, DB::table('jobs')->where('payload', 'App\\Jobs\\PublishCampaignPostJob')->count());
+        $this->assertSame(0, DB::table('failed_jobs')->count());
     }
 
     private function createAdmin(): Admin

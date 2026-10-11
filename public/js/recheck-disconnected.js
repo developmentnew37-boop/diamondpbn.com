@@ -16,7 +16,10 @@
     let activeCheckUuid = null;
     let resultsMap = new Map();
     let queuedWarningTimer = null;
-    let lastProgressSince = null;
+    let progressCursor = null;
+    let pollFailures = 0;
+    const maxPollFailures = 5;
+    const resultWindow = 100;
 
     const els = {
         alertBox: document.getElementById('rdAlert'),
@@ -80,7 +83,8 @@
 
             activeCheckUuid = data.check_uuid;
             resultsMap.clear();
-            lastProgressSince = null;
+            progressCursor = null;
+            pollFailures = 0;
             resetResultsTable();
             setCancelEnabled(true);
             updateSummary({
@@ -132,8 +136,8 @@
         if (!activeCheckUuid) return;
 
         const url = new URL(progressUrlTemplate.replace('__UUID__', activeCheckUuid), window.location.origin);
-        if (lastProgressSince) {
-            url.searchParams.set('since', lastProgressSince);
+        if (progressCursor) {
+            url.searchParams.set('since', progressCursor);
         }
 
         try {
@@ -144,24 +148,39 @@
                 },
             });
 
+            if (response.status === 401 || response.status === 419 || response.status === 403) {
+                stopPolling();
+                activeCheckUuid = null;
+                setSubmitting(false);
+                showAlert('Sign in again to keep watching this recheck.', 'error');
+                return;
+            }
+
             const data = await parseJsonResponse(response);
 
             if (!response.ok || !data.success) {
                 throw new Error(data.message || `Progress check failed (${response.status}).`);
             }
 
+            pollFailures = 0;
             applyProgressPayload(data);
         } catch (error) {
-            stopPolling();
-            activeCheckUuid = null;
-            setSubmitting(false);
-            showAlert(error.message || 'Lost connection while checking progress.', 'error');
+            pollFailures += 1;
+            if (pollFailures >= maxPollFailures) {
+                stopPolling();
+                activeCheckUuid = null;
+                setSubmitting(false);
+                showAlert(error.message || 'Lost connection while checking progress.', 'error');
+                return;
+            }
+
+            scheduleNextPoll(pollIntervalMs);
         }
     }
 
     function applyProgressPayload(data) {
-        if (data.server_time) {
-            lastProgressSince = data.server_time;
+        if (data.cursor) {
+            progressCursor = data.cursor;
         }
 
         renderProgress(data.check);
@@ -193,9 +212,10 @@
                 updatePhaseText('Cancelled');
                 setExportEnabled(true, finishedUuid);
             } else if (data.check.status === 'completed' || allItemsFinalized) {
+                const errorCount = data.check.errors || 0;
+                const errorNote = errorCount > 0 ? ` (${errorCount} of those are errors)` : '';
                 showAlert(
-                    `Done. ${data.check.now_connected} connected again, ${data.check.still_disconnected} still disconnected` +
-                    (data.check.errors ? `, ${data.check.errors} with errors` : '') + '.',
+                    `Done. ${data.check.now_connected} connected again, ${data.check.still_disconnected} still disconnected${errorNote}.`,
                     'success'
                 );
                 updatePhaseText('Completed');
@@ -226,27 +246,27 @@
         if (!bootstrap?.check?.uuid) return;
 
         resultsMap.clear();
-        lastProgressSince = null;
+        progressCursor = null;
+        pollFailures = 0;
         resetResultsTable();
         els.progressPanel?.classList.remove('hidden');
-
-        const payload = {
-            success: true,
-            server_time: bootstrap.server_time || null,
-            check: bootstrap.check,
-            results: bootstrap.results || [],
-        };
-
-        if (bootstrap.check.is_finished) {
-            activeCheckUuid = bootstrap.check.uuid;
-            applyProgressPayload(payload);
-            return;
-        }
+        renderProgress(bootstrap.check);
+        updateSummary(bootstrap.check);
+        renderCategoryBreakdown(bootstrap.check.by_category || []);
 
         activeCheckUuid = bootstrap.check.uuid;
-        setSubmitting(true);
-        setCancelEnabled(true);
-        applyProgressPayload(payload);
+        if (bootstrap.check.is_finished) {
+            setSubmitting(false);
+            setCancelEnabled(false);
+            if (bootstrap.check.status === 'completed' || bootstrap.check.status === 'cancelled') {
+                setExportEnabled(true, bootstrap.check.uuid);
+            }
+        } else {
+            setSubmitting(true);
+            setCancelEnabled(true);
+        }
+
+        startPolling();
     }
 
     function renderProgress(check) {
@@ -304,21 +324,36 @@
 
     function resetResultsTable() {
         if (els.resultsBody) els.resultsBody.innerHTML = '';
-        els.resultsPanel?.classList.remove('hidden');
+        els.resultsPanel?.classList.add('hidden');
     }
 
     function renderResults(results) {
-        results.forEach((row) => {
-            resultsMap.set(row.id, row);
-            let tr = document.getElementById(`rd-row-${row.id}`);
-            if (!tr) {
-                tr = document.createElement('tr');
-                tr.id = `rd-row-${row.id}`;
-                els.resultsBody.appendChild(tr);
+        results.forEach((row) => resultsMap.set(row.id, row));
+
+        const ranked = Array.from(resultsMap.values()).sort((left, right) => {
+            const leftTime = left.updated_at || '';
+            const rightTime = right.updated_at || '';
+            if (leftTime !== rightTime) {
+                return leftTime < rightTime ? 1 : -1;
             }
 
-            tr.className = rowClass(row);
-            tr.innerHTML = `
+            return (right.id || 0) - (left.id || 0);
+        });
+
+        ranked.slice(resultWindow).forEach((row) => resultsMap.delete(row.id));
+        const visible = ranked.slice(0, resultWindow);
+
+        if (!els.resultsBody) return;
+
+        if (visible.length === 0) {
+            els.resultsBody.innerHTML = '';
+            els.resultsPanel?.classList.add('hidden');
+            return;
+        }
+
+        els.resultsPanel?.classList.remove('hidden');
+        els.resultsBody.innerHTML = visible.map((row) => `
+            <tr id="rd-row-${row.id}" class="${rowClass(row)}">
                 <td class="!px-4 !py-3">${row.index}</td>
                 <td class="!px-4 !py-3 font-medium break-all">${escapeHtml(row.domain)}</td>
                 <td class="!px-4 !py-3">${connectionBadge(row)}</td>
@@ -326,8 +361,8 @@
                 <td class="!px-4 !py-3 text-gray-600">${escapeHtml(row.category || '—')}</td>
                 <td class="!px-4 !py-3 text-gray-600">${escapeHtml(row.message || '—')}</td>
                 <td class="!px-4 !py-3 text-gray-500 text-xs whitespace-nowrap">${formatResponseTime(row)}</td>
-            `;
-        });
+            </tr>
+        `).join('');
     }
 
     function rowClass(row) {

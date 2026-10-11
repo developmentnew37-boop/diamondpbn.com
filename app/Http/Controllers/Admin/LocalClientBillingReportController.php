@@ -4,13 +4,66 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Admin\LocalClient;
+use App\Models\Admin\LocalClientManualBilling;
 use App\Services\LocalClientBillingReportService;
 use App\Services\LocalClientPriceMatrixService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
+use Illuminate\View\View;
+use Spatie\SimpleExcel\SimpleExcelWriter;
 
 class LocalClientBillingReportController extends Controller
 {
+    public function manual(int $manualBilling, string $token): View
+    {
+        $bill = $this->manualBill($manualBilling, $token);
+
+        return view('admin.local-clients.manual-billing-report', [
+            'bill' => $bill,
+            'lines' => $bill->reportLines(),
+        ]);
+    }
+
+    public function exportManual(int $manualBilling, string $token)
+    {
+        $bill = $this->manualBill($manualBilling, $token);
+        $lines = $bill->reportLines();
+        $date = $bill->created_at?->format('d M Y') ?? '-';
+        $filename = 'campaign-report-'.preg_replace('/[^A-Za-z0-9_-]+/', '-', $bill->campaign_no).'.xlsx';
+
+        $writer = SimpleExcelWriter::streamDownload($filename)->addHeader([
+            'S.No',
+            'Domain',
+            'BlogPost',
+            'Keyword',
+            'URL',
+            'Status',
+            'Date',
+        ]);
+
+        foreach ($lines as $index => $line) {
+            $writer->addRow([
+                'S.No' => $index + 1,
+                'Domain' => $line['domain'] !== '' ? $line['domain'] : '-',
+                'BlogPost' => $line['live'] !== '' ? $line['live'] : '-',
+                'Keyword' => $line['keyword'] !== '' ? $line['keyword'] : '-',
+                'URL' => $line['url'] !== '' ? $line['url'] : '-',
+                'Status' => 'Live',
+                'Date' => $date,
+            ]);
+        }
+
+        $writer->toBrowser();
+    }
+
+    private function manualBill(int $manualBilling, string $token): LocalClientManualBilling
+    {
+        return LocalClientManualBilling::query()
+            ->whereKey($manualBilling)
+            ->where('report_token', $token)
+            ->firstOrFail();
+    }
+
     public function show(int $id, string $token, Request $request, LocalClientBillingReportService $reportService)
     {
         $payload = $this->buildReportPayload($id, $token, $request, $reportService);
@@ -62,7 +115,7 @@ class LocalClientBillingReportController extends Controller
                     ! empty($row['billing_has_credit']) ? $row['billing_balance_due'] : '',
                     $row['billing_currency'],
                     $row['billing_payment_status'],
-                    $row['report_url'] ?? '',
+                    ! empty($row['campaign_deleted']) ? 'Deleted' : ($row['report_url'] ?? ''),
                 ]);
             }
 

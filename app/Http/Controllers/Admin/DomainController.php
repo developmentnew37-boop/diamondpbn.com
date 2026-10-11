@@ -7,6 +7,7 @@ use App\Models\Admin\Domain;
 use App\Models\Admin\DomainCategory;
 use App\Rules\UniqueCredential;
 use App\Services\CredentialBlindIndex;
+use App\Services\DomainDetailsLookupService;
 use App\Services\WordPressAgentStatusService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -47,6 +48,20 @@ class DomainController extends Controller
         $offset = ($domains->currentPage() - 1) * $limit;
 
         return view('admin.domains.domains', compact('domains', 'domainCategories', 'offset'));
+    }
+
+    public function details(Request $request, DomainDetailsLookupService $lookup)
+    {
+        $validated = $request->validate([
+            'domain' => 'nullable|string|max:255',
+        ]);
+
+        $searched = trim((string) ($validated['domain'] ?? ''));
+
+        return view('admin.domains.details', [
+            'searched' => $searched,
+            'details' => $searched === '' ? null : $lookup->lookup($searched),
+        ]);
     }
 
     /**

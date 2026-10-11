@@ -32,8 +32,10 @@
       $isConvertCampaignActive = (str_starts_with($currentRoute, 'admin.convert.post') && ! str_starts_with($currentRoute, 'admin.convert.post.converted'))
           || (str_starts_with($currentRoute, 'admin.convert.sidebar') && ! str_starts_with($currentRoute, 'admin.convert.sidebar.converted'));
       $userRoutes = ['admin.user'];
-      $localClientRoutes = ['admin.local-clients'];
       $localClientRateListRoutes = ['admin.local-client-rate-lists'];
+      $isLocalClientsMenuActive = str_starts_with((string) $currentRoute, 'admin.local-clients')
+          && ! str_starts_with((string) $currentRoute, 'admin.local-clients.installments');
+      $isInstallmentsMenuActive = str_starts_with((string) $currentRoute, 'admin.local-clients.installments');
 
       $pendingCounts = \App\Models\Admin\PendingDomain::cachedSidebarCounts();
       $pendingDomainUnviewedCount = $pendingCounts['unviewed'];
@@ -155,6 +157,9 @@
                   <a href="{{ route('admin.select.category') }}"
                       class="submenu-item {{ $currentRoute === 'admin.select.category' ? 'active' : '' }} !flex justify-between">Domains
                       List </a>
+                  <a href="{{ route('admin.domain.details') }}"
+                      class="submenu-item {{ $currentRoute === 'admin.domain.details' ? 'active' : '' }}">Domain
+                      Details</a>
                   <a href="{{ route('admin.domain.create') }}"
                       class="submenu-item {{ $currentRoute === 'admin.domain.create' ? 'active' : '' }} !flex justify-between">Add
                       Domains</a>
@@ -375,7 +380,7 @@
           <div class="menu-section">
               <div class="menu-title">Local Clients</div>
               <a href="{{ route('admin.local-clients.index') }}"
-                  class="menu-item {{ $isActive($localClientRoutes) ? 'active' : '' }}">
+                  class="menu-item {{ $isLocalClientsMenuActive ? 'active' : '' }}">
                   <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
                       <circle cx="9" cy="7" r="4"></circle>
@@ -391,6 +396,14 @@
                       <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
                   </svg>
                   <span class="menu-text">Rate Lists</span>
+              </a>
+              <a href="{{ route('admin.local-clients.installments.index') }}"
+                  class="menu-item {{ $isInstallmentsMenuActive ? 'active' : '' }}">
+                  <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+                      <line x1="2" y1="10" x2="22" y2="10"></line>
+                  </svg>
+                  <span class="menu-text">Installments</span>
               </a>
           </div>
           @endif

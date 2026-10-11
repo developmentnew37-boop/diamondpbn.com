@@ -880,6 +880,8 @@ class HiddenLinkCampaignController extends Controller
             }
         });
 
+        app(LocalClientBillingService::class)->syncBillingAfterRowDelete($task->campaign);
+
         if ($campaignDeleted) {
             return redirect()->route('admin.hidden.link.campaign.index')->with(
                 'cus__success',
