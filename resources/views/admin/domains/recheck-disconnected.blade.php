@@ -158,6 +158,10 @@
                 </div>
             </div>
             <div class="w-1/2 flex flex-wrap justify-end items-center gap-2">
+                <a href="{{ route('admin.domain.recheck-disconnected.campaigns') }}"
+                    class="flex !p-2 !py-3 text-sm font-normal justify-center duration-300 border border-gray-300 text-gray-700 hover:bg-gray-50 rounded">
+                    Recheck campaigns
+                </a>
                 <a href="{{ route('admin.domain.status-checker') }}"
                     class="flex !p-2 !py-3 text-sm font-normal justify-center duration-300 border border-gray-300 text-gray-700 hover:bg-gray-50 rounded">
                     Status Checker
@@ -173,7 +177,7 @@
                     Rechecks inventory domains currently marked <strong>disconnected</strong>. Sites that respond are
                     updated to <strong>connected</strong>. Each domain is probed up to <strong>5 times</strong> with
                     delays of <strong>1m → 2m → 4m → 5m</strong> between failures (campaign-style). Work continues in
-                    the background if you leave this page — come back anytime to see connected vs disconnected counts.
+                    the background if you leave this page. Open Recheck campaigns to see the result later.
                     Requires a queue worker on <code class="text-xs bg-white px-1 rounded">domainCheck</code>.
                 </div>
 
@@ -221,6 +225,7 @@
                     data-progress-url-template="{{ route('admin.domain.recheck-disconnected.progress', ['uuid' => '__UUID__']) }}"
                     data-export-url-template="{{ route('admin.domain.recheck-disconnected.export', ['uuid' => '__UUID__']) }}"
                     data-cancel-url-template="{{ route('admin.domain.recheck-disconnected.cancel', ['uuid' => '__UUID__']) }}"
+                    data-clear-url-template="{{ route('admin.domain.recheck-disconnected.clear', ['uuid' => '__UUID__']) }}"
                     @if (! empty($resumeBootstrap['check']['uuid']))
                         data-resume-uuid="{{ $resumeBootstrap['check']['uuid'] }}"
                     @endif
@@ -258,7 +263,7 @@
                             $resumeUuid = $resumeBootstrap['check']['uuid'] ?? null;
                         @endphp
                         <button type="submit" id="rdSubmitBtn" class="rd-btn"
-                            {{ $resumeActive || $disconnectedTotal < 1 ? 'disabled' : '' }}>
+                            {{ $recheckBusy || $disconnectedTotal < 1 ? 'disabled' : '' }}>
                             <span id="rdSubmitSpinner" class="{{ $resumeActive ? '' : 'hidden' }} status-spinner"></span>
                             <span id="rdSubmitLabel">{{ $resumeActive ? 'Rechecking...' : 'Recheck disconnected' }}</span>
                         </button>
@@ -270,12 +275,21 @@
                             id="rdExportBtn"
                             class="rd-btn rd-btn-outline {{ $resumeFinished ? '' : 'opacity-50' }}"
                             @if (! $resumeFinished) aria-disabled="true" @endif>
-                            Download CSV
+                            Download Excel
                         </a>
+                        <button type="button" id="rdClearBtn" class="rd-btn rd-btn-outline"
+                            {{ $resumeFinished ? '' : 'disabled' }}>
+                            Clear results
+                        </button>
                     </div>
                 </form>
 
                 <div id="rdProgress" class="{{ ! empty($resumeBootstrap) ? '' : 'hidden' }} flex flex-col gap-2">
+                    @if (! empty($resumeBootstrap))
+                        <p class="text-xs font-semibold uppercase tracking-wide text-gray-500" id="rdProgressCategory">
+                            {{ $resumeCategoryLabel }}
+                        </p>
+                    @endif
                     <div class="flex items-center justify-between gap-2">
                         <h3 class="text-sm font-semibold text-gray-800" id="rdProgressTitle">
                             {{ ! empty($resumeBootstrap['check']['is_finished']) ? 'Recheck complete' : 'Background check in progress' }}
@@ -321,5 +335,5 @@
 @endsection
 
 @push('scripts')
-    <script src="{{ asset('js/recheck-disconnected.js') }}"></script>
+    <script src="{{ asset('js/recheck-disconnected.js') }}?v={{ filemtime(public_path('js/recheck-disconnected.js')) }}"></script>
 @endpush

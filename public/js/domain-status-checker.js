@@ -8,13 +8,18 @@
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
     const startUrl = form.dataset.startUrl;
     const progressUrlTemplate = form.dataset.progressUrlTemplate;
+    const exportUrlTemplate = form.dataset.exportUrlTemplate;
+    const cancelUrlTemplate = form.dataset.cancelUrlTemplate;
     const pollIntervalMs = 800;
 
     let pollTimer = null;
     let activeCheckUuid = null;
     let resultsMap = new Map();
     let queuedWarningTimer = null;
-    let lastProgressSince = null;
+    let progressCursor = null;
+    let pollFailures = 0;
+    let resultFilter = 'all';
+    const maxPollFailures = 5;
 
     const els = {
         alertBox: document.getElementById('statusCheckerAlert'),
@@ -30,6 +35,8 @@
         submitSpinner: document.getElementById('statusCheckSubmitSpinner'),
         progressTitle: document.getElementById('statusCheckProgressTitle'),
         progressSpinner: document.getElementById('statusCheckProgressSpinner'),
+        cancelBtn: document.getElementById('statusCheckCancelBtn'),
+        exportBtn: document.getElementById('statusCheckExportBtn'),
     };
 
     const summaryFields = {
@@ -56,11 +63,25 @@
         if (textarea) textarea.value = '';
     });
 
+    els.cancelBtn?.addEventListener('click', cancelCheck);
+
+    document.getElementById('statusResultFilters')?.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-result-filter]');
+        if (!button) return;
+
+        resultFilter = button.dataset.resultFilter || 'all';
+        document.querySelectorAll('#statusResultFilters .sc-filter').forEach((el) => {
+            el.classList.toggle('is-active', el === button);
+        });
+        applyResultFilter();
+    });
+
     form.addEventListener('submit', async (event) => {
         event.preventDefault();
         if (activeCheckUuid) return;
 
         clearAlert();
+        setExportEnabled(false);
         setSubmitting(true);
         showProgressPanel('Starting background check...');
 
@@ -104,7 +125,8 @@
 
             activeCheckUuid = data.check_uuid;
             resultsMap.clear();
-            lastProgressSince = null;
+            progressCursor = null;
+            pollFailures = 0;
             resetResultsTable(data.total);
             showSummaryPanel();
             updateSummary({
@@ -116,6 +138,7 @@
             });
 
             startPolling();
+            setCancelEnabled(true);
 
             queuedWarningTimer = window.setTimeout(() => {
                 if (activeCheckUuid) {
@@ -156,8 +179,8 @@
         if (!activeCheckUuid) return;
 
         const url = new URL(progressUrlTemplate.replace('__UUID__', activeCheckUuid), window.location.origin);
-        if (lastProgressSince) {
-            url.searchParams.set('since', lastProgressSince);
+        if (progressCursor) {
+            url.searchParams.set('since', progressCursor);
         }
 
         try {
@@ -168,65 +191,137 @@
                 },
             });
 
+            if (response.status === 401 || response.status === 419 || response.status === 403) {
+                stopPolling();
+                activeCheckUuid = null;
+                setSubmitting(false);
+                setCancelEnabled(false);
+                showAlert('Sign in again to keep watching this check.', 'error');
+                return;
+            }
+
             const data = await parseJsonResponse(response);
 
             if (!response.ok || !data.success) {
                 throw new Error(data.message || `Progress check failed (${response.status}).`);
             }
 
-            if (data.server_time) {
-                lastProgressSince = data.server_time;
-            }
-
-            renderProgress(data.check);
-            updateSummary(data.check);
-            renderResults(data.results);
-
-            if (data.check.status !== 'queued' && queuedWarningTimer) {
-                window.clearTimeout(queuedWarningTimer);
-                queuedWarningTimer = null;
-            }
-
-            const allItemsFinalized = data.check.total > 0
-                && data.check.processed >= data.check.total
-                && (data.check.pending ?? 0) === 0;
-
-            const isDone = data.check.is_finished || allItemsFinalized;
-
-            if (isDone) {
+            pollFailures = 0;
+            applyProgressPayload(data);
+        } catch (error) {
+            pollFailures += 1;
+            if (pollFailures >= maxPollFailures) {
                 stopPolling();
                 activeCheckUuid = null;
                 setSubmitting(false);
-                setProgressComplete(true);
-
-                if (data.check.status === 'completed' || allItemsFinalized) {
-                    let message = `Check completed. ${data.check.connected} connected, ${data.check.disconnected} disconnected.`;
-                    if (data.check.update_inventory && data.check.inventory_updated > 0) {
-                        message += ` Updated ${data.check.inventory_updated} domain(s) in inventory.`;
-                    }
-                    showAlert(message, 'success');
-                    updatePhaseText('Completed');
-                } else {
-                    showAlert(data.check.status_message || 'Status check failed.', 'error');
-                    updatePhaseText('Failed');
-                }
-            } else {
-                setProgressComplete(false);
-                scheduleNextPoll(pollIntervalMs);
+                setCancelEnabled(false);
+                showAlert(error.message || 'Lost connection while checking status.', 'error');
+                return;
             }
-        } catch (error) {
+
+            scheduleNextPoll(pollIntervalMs);
+        }
+    }
+
+    function applyProgressPayload(data) {
+        if (data.cursor) {
+            progressCursor = data.cursor;
+        }
+
+        renderProgress(data.check);
+        updateSummary(data.check);
+        renderResults(data.results || []);
+
+        if (data.check.status !== 'queued' && queuedWarningTimer) {
+            window.clearTimeout(queuedWarningTimer);
+            queuedWarningTimer = null;
+        }
+
+        if (data.check.is_finished) {
+            const finishedUuid = activeCheckUuid || data.check.uuid;
             stopPolling();
             activeCheckUuid = null;
             setSubmitting(false);
-            showAlert(error.message || 'Lost connection while checking status.', 'error');
+            setCancelEnabled(false);
+            setProgressComplete(true);
+
+            if (data.check.status === 'cancelled') {
+                showAlert('Status check cancelled.', 'warning');
+                updatePhaseText('Cancelled');
+                setExportEnabled(true, finishedUuid);
+            } else if (data.check.status === 'completed') {
+                let message = `Check completed. ${data.check.connected} connected, ${data.check.disconnected} disconnected.`;
+                if (data.check.update_inventory && data.check.inventory_updated > 0) {
+                    message += ` Updated ${data.check.inventory_updated} domain(s) in inventory.`;
+                }
+                showAlert(message, 'success');
+                updatePhaseText('Completed');
+                setExportEnabled(true, finishedUuid);
+            } else {
+                showAlert(data.check.status_message || 'Status check failed.', 'error');
+                updatePhaseText('Failed');
+                setExportEnabled(true, finishedUuid);
+            }
+        } else {
+            setProgressComplete(false);
+            setSubmitting(true);
+            setCancelEnabled(true);
+            setExportEnabled(false);
+            scheduleNextPoll(pollIntervalMs);
+        }
+    }
+
+    function resumeFromBootstrap() {
+        const bootstrapEl = document.getElementById('statusCheckResumeBootstrap');
+        if (!bootstrapEl) return;
+
+        let bootstrap;
+        try {
+            bootstrap = JSON.parse(bootstrapEl.textContent || '{}');
+        } catch (error) {
+            return;
+        }
+
+        if (!bootstrap?.check?.uuid || bootstrap.check.is_finished) return;
+
+        resultsMap.clear();
+        progressCursor = bootstrap.cursor || null;
+        pollFailures = 0;
+        resetResultsTable();
+        els.progressPanel?.classList.remove('hidden');
+        activeCheckUuid = bootstrap.check.uuid;
+        applyProgressPayload(bootstrap);
+    }
+
+    async function cancelCheck() {
+        if (!activeCheckUuid || !cancelUrlTemplate) return;
+
+        const uuid = activeCheckUuid;
+        els.cancelBtn.disabled = true;
+
+        try {
+            const response = await fetch(cancelUrlTemplate.replace('__UUID__', uuid), {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+            const data = await parseJsonResponse(response);
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || 'Could not cancel this check.');
+            }
+            pollFailures = 0;
+            pollProgress();
+        } catch (error) {
+            els.cancelBtn.disabled = false;
+            showAlert(error.message || 'Could not cancel this check.', 'error');
         }
     }
 
     function renderProgress(check) {
-        const isComplete = check.is_finished
-            || (check.total > 0 && check.processed >= check.total && (check.pending ?? 0) === 0);
-
-        const percent = isComplete
+        const percent = check.is_finished
             ? 100
             : (typeof check.progress_percent === 'number'
                 ? check.progress_percent
@@ -264,9 +359,14 @@
     }
 
     function resetResultsTable(total) {
+        resultFilter = 'all';
+        document.querySelectorAll('#statusResultFilters .sc-filter').forEach((el) => {
+            el.classList.toggle('is-active', el.dataset.resultFilter === 'all');
+        });
         els.resultsBody.innerHTML = '';
         els.resultsPanel?.classList.remove('hidden');
         els.summaryPanel?.classList.remove('hidden');
+        applyResultFilter();
     }
 
     function renderResults(results) {
@@ -283,6 +383,8 @@
                 els.resultsBody.appendChild(tr);
             }
 
+            tr.dataset.status = row.check_status || 'pending';
+
             tr.className = rowClass(row);
             tr.innerHTML = `
                 <td class="!px-4 !py-3">${row.index}</td>
@@ -291,10 +393,40 @@
                 <td class="!px-4 !py-3 text-xs">${classificationDetails(row)}</td>
                 <td class="!px-4 !py-3">${inventoryBadge(row.in_inventory)}</td>
                 <td class="!px-4 !py-3 text-gray-600">${escapeHtml(row.category || '—')}</td>
-                <td class="!px-4 !py-3 text-gray-600">${escapeHtml(row.message || '—')}</td>
+                <td class="!px-4 !py-3 sc-message${row.check_status === 'disconnected' ? ' is-error' : ''}">${escapeHtml(row.message || '—')}</td>
                 <td class="!px-4 !py-3 text-gray-500 text-xs whitespace-nowrap">${formatResponseTime(row)}</td>
             `;
         });
+
+        applyResultFilter();
+    }
+
+    function applyResultFilter() {
+        const counts = { all: 0, connected: 0, disconnected: 0, verifying: 0 };
+
+        resultsMap.forEach((row) => {
+            counts.all += 1;
+            if (row.check_status === 'connected') counts.connected += 1;
+            if (row.check_status === 'disconnected') counts.disconnected += 1;
+            if (row.check_status === 'retry_pending') counts.verifying += 1;
+        });
+
+        document.querySelectorAll('#statusResultFilters [data-count]').forEach((el) => {
+            el.textContent = counts[el.dataset.count] ?? 0;
+        });
+
+        let visible = 0;
+        els.resultsBody?.querySelectorAll('tr').forEach((tr) => {
+            const status = tr.dataset.status;
+            const show = resultFilter === 'all'
+                || (resultFilter === 'connected' && status === 'connected')
+                || (resultFilter === 'disconnected' && status === 'disconnected')
+                || (resultFilter === 'verifying' && status === 'retry_pending');
+            tr.classList.toggle('hidden', !show);
+            if (show) visible += 1;
+        });
+
+        document.getElementById('statusFilterEmpty')?.classList.toggle('hidden', visible !== 0 || counts.all === 0);
     }
 
     function rowClass(row) {
@@ -403,6 +535,23 @@
         els.progressSpinner?.classList.toggle('hidden', isComplete);
     }
 
+    function setCancelEnabled(enabled) {
+        if (!els.cancelBtn) return;
+        els.cancelBtn.classList.toggle('hidden', !enabled);
+        els.cancelBtn.disabled = !enabled;
+    }
+
+    function setExportEnabled(enabled, uuid) {
+        if (!els.exportBtn || !exportUrlTemplate) return;
+        if (enabled && uuid) {
+            els.exportBtn.href = exportUrlTemplate.replace('__UUID__', uuid);
+            els.exportBtn.classList.remove('hidden');
+            return;
+        }
+        els.exportBtn.classList.add('hidden');
+        els.exportBtn.removeAttribute('href');
+    }
+
     function showSummaryPanel() {
         els.summaryPanel?.classList.remove('hidden');
         els.resultsPanel?.classList.remove('hidden');
@@ -427,4 +576,6 @@
         els.alertBox.innerHTML = `<span class="font-medium">${escapeHtml(message)}</span>`;
         els.alertBox.classList.remove('hidden');
     }
+
+    resumeFromBootstrap();
 })();

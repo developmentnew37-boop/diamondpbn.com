@@ -222,15 +222,28 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     Route::post('/domain/delete', [DomainController::class, 'delete'])->name('domain.delete');
 
     Route::get('/domain/status-checker', [DomainStatusCheckerController::class, 'index'])->name('domain.status-checker');
+    Route::get('/domain/status-checker/campaigns', [DomainStatusCheckerController::class, 'campaigns'])
+        ->name('domain.status-checker.campaigns');
+    Route::get('/domain/status-checker/campaigns/{uuid}', [DomainStatusCheckerController::class, 'preview'])
+        ->name('domain.status-checker.campaigns.show');
     Route::post('/domain/status-checker/start', [DomainStatusCheckerController::class, 'start'])
         ->middleware('throttle:30,1')
         ->name('domain.status-checker.start');
     Route::get('/domain/status-checker/{uuid}/progress', [DomainStatusCheckerController::class, 'progress'])
         ->middleware('throttle:180,1')
         ->name('domain.status-checker.progress');
+    Route::get('/domain/status-checker/{uuid}/export', [DomainStatusCheckerController::class, 'export'])
+        ->name('domain.status-checker.export');
+    Route::post('/domain/status-checker/{uuid}/cancel', [DomainStatusCheckerController::class, 'cancel'])
+        ->middleware('throttle:30,1')
+        ->name('domain.status-checker.cancel');
 
     Route::get('/domain/recheck-disconnected', [DomainRecheckDisconnectedController::class, 'index'])
         ->name('domain.recheck-disconnected');
+    Route::get('/domain/recheck-disconnected/campaigns', [DomainRecheckDisconnectedController::class, 'campaigns'])
+        ->name('domain.recheck-disconnected.campaigns');
+    Route::get('/domain/recheck-disconnected/campaigns/{uuid}', [DomainRecheckDisconnectedController::class, 'preview'])
+        ->name('domain.recheck-disconnected.campaigns.show');
     Route::post('/domain/recheck-disconnected/start', [DomainRecheckDisconnectedController::class, 'start'])
         ->middleware('throttle:30,1')
         ->name('domain.recheck-disconnected.start');
@@ -242,9 +255,15 @@ Route::prefix('admin')->name('admin.')->middleware('admin.auth')->group(function
     Route::post('/domain/recheck-disconnected/{uuid}/cancel', [DomainRecheckDisconnectedController::class, 'cancel'])
         ->middleware('throttle:30,1')
         ->name('domain.recheck-disconnected.cancel');
+    Route::post('/domain/recheck-disconnected/{uuid}/clear', [DomainRecheckDisconnectedController::class, 'clear'])
+        ->middleware('throttle:30,1')
+        ->name('domain.recheck-disconnected.clear');
 
     /** ends here **/
     Route::get('/domain/details', [DomainController::class, 'details'])->name('domain.details');
+    Route::post('/domain/{domain}/recheck', [DomainController::class, 'recheck'])
+        ->middleware('throttle:20,1')
+        ->name('domain.recheck');
     Route::resource('/domain', DomainController::class);
 
     /** Domain Routes Ends Here **/

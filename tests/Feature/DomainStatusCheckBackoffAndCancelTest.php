@@ -10,6 +10,7 @@ use App\Services\DomainStatusCheckerService;
 use Carbon\Carbon;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -186,7 +187,7 @@ class DomainStatusCheckBackoffAndCancelTest extends TestCase
             $this->assertNotNull($item->next_retry_at);
             $this->assertTrue(
                 $item->next_retry_at->equalTo(now()->addSeconds($delay)),
-                "Attempt ".($index + 1)." should wait {$delay}s"
+                'Attempt '.($index + 1)." should wait {$delay}s"
             );
             $this->assertLessThanOrEqual(2000, mb_strlen((string) $item->message));
         }
@@ -265,6 +266,66 @@ class DomainStatusCheckBackoffAndCancelTest extends TestCase
         $this->assertSame('cancelled', $check->status);
     }
 
+    public function test_retries_wait_until_every_domain_has_been_checked_once(): void
+    {
+        Carbon::setTestNow('2026-08-19 12:00:00');
+        config(['domain_status_checker.chunk_size' => 1]);
+        Http::fake([
+            '*' => Http::response('', 503),
+        ]);
+
+        $admin = $this->createAdmin();
+        $check = DomainStatusCheck::query()->create([
+            'admin_id' => $admin->id,
+            'source' => 'manual',
+            'status' => 'processing',
+            'phase' => 'initial',
+            'total_count' => 3,
+            'use_authenticated_check' => false,
+            'update_inventory' => false,
+        ]);
+
+        foreach ([1 => 'first.example', 2 => 'second.example', 3 => 'third.example'] as $order => $domain) {
+            DomainStatusCheckItem::query()->create([
+                'domain_status_check_id' => $check->id,
+                'domain' => $domain,
+                'sort_order' => $order,
+                'check_status' => 'pending',
+                'attempts' => 0,
+            ]);
+        }
+
+        $service = app(DomainStatusCheckerService::class);
+        $service->processNextChunk($check);
+
+        $first = $this->item($check, 'first.example');
+        $this->assertSame(1, (int) $first->attempts);
+        $this->assertSame('retry_pending', $first->check_status);
+        $this->assertStringContainsString('recheck after the remaining domains', (string) $first->message);
+        $this->assertSame('pending', $this->item($check, 'second.example')->check_status);
+        $this->assertSame('pending', $this->item($check, 'third.example')->check_status);
+        $check->refresh();
+        $this->assertSame('initial', $check->phase);
+        $this->assertSame('Checking domains...', $check->status_message);
+
+        Carbon::setTestNow('2026-08-19 12:01:01');
+        $service->processNextChunk($check->fresh());
+
+        $this->assertSame(1, (int) $this->item($check, 'first.example')->attempts);
+        $this->assertSame(1, (int) $this->item($check, 'second.example')->attempts);
+        $this->assertSame('pending', $this->item($check, 'third.example')->check_status);
+
+        $service->processNextChunk($check->fresh());
+        $this->assertSame(1, (int) $this->item($check, 'first.example')->attempts);
+        $this->assertSame(1, (int) $this->item($check, 'third.example')->attempts);
+
+        $service->processNextChunk($check->fresh());
+        $this->assertSame(2, (int) $this->item($check, 'first.example')->attempts);
+        $this->assertSame(1, (int) $this->item($check, 'second.example')->attempts);
+
+        Carbon::setTestNow();
+    }
+
     public function test_backoff_helpers_match_config(): void
     {
         $service = app(DomainStatusCheckerService::class);
@@ -273,6 +334,14 @@ class DomainStatusCheckBackoffAndCancelTest extends TestCase
         $this->assertSame(120, $service->backoffSecondsAfterAttempt(2));
         $this->assertSame(240, $service->backoffSecondsAfterAttempt(3));
         $this->assertSame(300, $service->backoffSecondsAfterAttempt(4));
+    }
+
+    private function item(DomainStatusCheck $check, string $domain): DomainStatusCheckItem
+    {
+        return DomainStatusCheckItem::query()
+            ->where('domain_status_check_id', $check->id)
+            ->where('domain', $domain)
+            ->firstOrFail();
     }
 
     private function createAdmin(): Admin

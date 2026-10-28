@@ -9,13 +9,25 @@ class DomainStatusCheckCleanupService
     /**
      * Batched cleanup safe for production (chunked deletes + per-run cap).
      *
-     * @return array{stale: int, expired: int, trimmed: int, total: int, capped: bool}
+     * @return array{disconnected: int, status_checker: int, stale: int, expired: int, trimmed: int, total: int, capped: bool}
      */
     public function runBatchedCleanup(?int $adminId = null): array
     {
         $budget = $this->maxDeletesPerRun();
-        $stale = $this->deleteStaleInProgressBatched($adminId, $budget);
-        $budget -= $stale;
+        $disconnected = $this->deleteExpiredDisconnectedBatched($adminId, $budget);
+        $budget -= $disconnected;
+
+        $statusChecker = 0;
+        if ($budget > 0) {
+            $statusChecker = $this->deleteExpiredStatusCheckerBatched($adminId, $budget);
+            $budget -= $statusChecker;
+        }
+
+        $stale = 0;
+        if ($budget > 0) {
+            $stale = $this->deleteStaleInProgressBatched($adminId, $budget);
+            $budget -= $stale;
+        }
 
         $expired = 0;
         if ($budget > 0) {
@@ -30,9 +42,11 @@ class DomainStatusCheckCleanupService
                 : $this->trimAllAdminHistoriesBatched($budget);
         }
 
-        $total = $stale + $expired + $trimmed;
+        $total = $disconnected + $statusChecker + $stale + $expired + $trimmed;
 
         return [
+            'disconnected' => $disconnected,
+            'status_checker' => $statusChecker,
             'stale' => $stale,
             'expired' => $expired,
             'trimmed' => $trimmed,
@@ -87,6 +101,80 @@ class DomainStatusCheckCleanupService
         return $deleted;
     }
 
+    public function deleteExpiredDisconnectedBatched(?int $adminId, int $budget): int
+    {
+        if ($budget < 1) {
+            return 0;
+        }
+
+        $cutoff = now()->subHours(max(1, (int) config('domain_status_checker.disconnected_retention_hours', 12)));
+        $deleted = 0;
+
+        while ($deleted < $budget) {
+            $limit = min($this->deleteChunkSize(), $budget - $deleted);
+
+            $ids = DomainStatusCheck::query()
+                ->where('source', 'disconnected')
+                ->whereIn('status', ['completed', 'failed', 'cancelled'])
+                ->where(function ($query) use ($cutoff) {
+                    $query->where('completed_at', '<', $cutoff)
+                        ->orWhere(function ($inner) use ($cutoff) {
+                            $inner->whereNull('completed_at')
+                                ->where('updated_at', '<', $cutoff);
+                        });
+                })
+                ->when($adminId !== null, fn ($q) => $q->where('admin_id', $adminId))
+                ->orderBy('id')
+                ->limit($limit)
+                ->pluck('id');
+
+            if ($ids->isEmpty()) {
+                break;
+            }
+
+            $deleted += $this->deleteChecksByIds($ids->all());
+        }
+
+        return $deleted;
+    }
+
+    public function deleteExpiredStatusCheckerBatched(?int $adminId, int $budget): int
+    {
+        if ($budget < 1) {
+            return 0;
+        }
+
+        $cutoff = now()->subHours(max(1, (int) config('domain_status_checker.status_checker_retention_hours', 12)));
+        $deleted = 0;
+
+        while ($deleted < $budget) {
+            $limit = min($this->deleteChunkSize(), $budget - $deleted);
+
+            $ids = DomainStatusCheck::query()
+                ->whereIn('source', ['manual', 'inventory'])
+                ->whereIn('status', ['completed', 'failed', 'cancelled'])
+                ->where(function ($query) use ($cutoff) {
+                    $query->where('completed_at', '<', $cutoff)
+                        ->orWhere(function ($inner) use ($cutoff) {
+                            $inner->whereNull('completed_at')
+                                ->where('updated_at', '<', $cutoff);
+                        });
+                })
+                ->when($adminId !== null, fn ($q) => $q->where('admin_id', $adminId))
+                ->orderBy('id')
+                ->limit($limit)
+                ->pluck('id');
+
+            if ($ids->isEmpty()) {
+                break;
+            }
+
+            $deleted += $this->deleteChecksByIds($ids->all());
+        }
+
+        return $deleted;
+    }
+
     public function deleteExpiredFinishedBatched(int $budget): int
     {
         if ($budget < 1) {
@@ -100,6 +188,7 @@ class DomainStatusCheckCleanupService
             $limit = min($this->deleteChunkSize(), $budget - $deleted);
 
             $ids = DomainStatusCheck::query()
+                ->whereNotIn('source', ['disconnected', 'manual', 'inventory'])
                 ->whereIn('status', ['completed', 'failed'])
                 ->where(function ($query) use ($cutoff) {
                     $query->where('completed_at', '<', $cutoff)
@@ -136,6 +225,7 @@ class DomainStatusCheckCleanupService
 
             $query = DomainStatusCheck::query()
                 ->where('admin_id', $adminId)
+                ->whereNotIn('source', ['disconnected', 'manual', 'inventory'])
                 ->whereIn('status', ['completed', 'failed']);
 
             if ($keep > 0) {
@@ -167,6 +257,7 @@ class DomainStatusCheckCleanupService
     public function trimAllAdminHistoriesBatched(int $budget): int
     {
         $adminIds = DomainStatusCheck::query()
+            ->whereNotIn('source', ['disconnected', 'manual', 'inventory'])
             ->whereIn('status', ['completed', 'failed'])
             ->select('admin_id')
             ->distinct()

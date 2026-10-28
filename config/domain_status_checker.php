@@ -14,6 +14,12 @@ return [
 
     'stale_hours' => (int) env('DOMAIN_STATUS_CHECK_STALE_HOURS', 24),
 
+    /** Finished Recheck Disconnected runs stay visible for this many hours. */
+    'disconnected_retention_hours' => (int) env('DOMAIN_STATUS_CHECK_DISCONNECTED_RETENTION_HOURS', 12),
+
+    /** Finished Status Checker runs (manual and inventory) stay visible for this many hours. */
+    'status_checker_retention_hours' => (int) env('DOMAIN_STATUS_CHECK_CAMPAIGN_RETENTION_HOURS', 12),
+
     /*
     |--------------------------------------------------------------------------
     | Safe batch deletion (scalability)

@@ -358,7 +358,7 @@ class WordPressAgentStatusService
             return new AgentStatusResult(
                 false,
                 $code,
-                $message ?? "HTTP {$httpStatus}",
+                $this->siteErrorMessage($httpStatus, $message, $rawBody),
                 probeMethod: $probeMethod,
                 httpStatus: $httpStatus,
                 responseTimeMs: $responseTimeMs,
@@ -436,6 +436,10 @@ class WordPressAgentStatusService
             return $primary;
         }
 
+        if ($this->isHttpServerError($primary)) {
+            return $primary;
+        }
+
         return $fallback->code === 'domain_offline' ? $primary : $fallback;
     }
 
@@ -444,6 +448,10 @@ class WordPressAgentStatusService
         // Prefer API-key diagnosis when the public probe was blocked or inconclusive.
         if (in_array($authenticated->code, ['invalid_api_key', 'missing_api_key'], true)) {
             return $authenticated;
+        }
+
+        if ($this->isHttpServerError($public) && ! $this->isHttpServerError($authenticated)) {
+            return $public;
         }
 
         if (in_array($public->code, ['firewall_blocked', 'invalid_status_response', 'agent_not_found'], true)
@@ -482,6 +490,95 @@ class WordPressAgentStatusService
     /**
      * @param  array<string, mixed>|null  $json
      */
+    private function isHttpServerError(AgentStatusResult $result): bool
+    {
+        return $result->httpStatus !== null && $result->httpStatus >= 500;
+    }
+
+    private function siteErrorMessage(int $httpStatus, ?string $jsonMessage, string $rawBody): string
+    {
+        $detail = $this->usefulErrorText($jsonMessage) ?? $this->htmlErrorText($rawBody) ?? $this->httpReason($httpStatus);
+        $detail = preg_replace('/^HTTP\s+'.$httpStatus.'\s*[:\-]?\s*/i', '', $detail) ?? $detail;
+        $detail = preg_replace('/^'.$httpStatus.'\s*[:\-]?\s*/', '', $detail) ?? $detail;
+        $detail = trim($detail);
+
+        if ($detail === '') {
+            $detail = $this->httpReason($httpStatus);
+        }
+
+        return 'HTTP '.$httpStatus.': '.$detail;
+    }
+
+    private function htmlErrorText(string $body): ?string
+    {
+        if (preg_match('/<title[^>]*>(.*?)<\/title>/is', $body, $match) === 1) {
+            $title = $this->usefulErrorText(html_entity_decode($match[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+            if ($title !== null) {
+                return $title;
+            }
+        }
+
+        if (preg_match('/<h1[^>]*>(.*?)<\/h1>/is', $body, $match) === 1) {
+            return $this->usefulErrorText(html_entity_decode($match[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        }
+
+        return null;
+    }
+
+    private function usefulErrorText(?string $text): ?string
+    {
+        if ($text === null) {
+            return null;
+        }
+
+        $text = trim(preg_replace('/\s+/u', ' ', strip_tags($text)) ?? '');
+        if ($text === '') {
+            return null;
+        }
+
+        $lower = strtolower($text);
+        if (in_array($lower, ['error', 'just a moment...', 'just a moment'], true) || str_contains($lower, 'just a moment')) {
+            return null;
+        }
+
+        if (! str_contains($text, ' ') && preg_match('/^[a-z0-9.-]+\.[a-z]{2,}$/i', $text) === 1) {
+            return null;
+        }
+
+        if (mb_strlen($text) > 180) {
+            return mb_substr($text, 0, 179).'…';
+        }
+
+        return $text;
+    }
+
+    private function httpReason(int $httpStatus): string
+    {
+        return match ($httpStatus) {
+            400 => 'Bad Request',
+            401 => 'Unauthorized',
+            403 => 'Forbidden',
+            404 => 'Not Found',
+            408 => 'Request Timeout',
+            409 => 'Conflict',
+            410 => 'Gone',
+            429 => 'Too Many Requests',
+            500 => 'Internal Server Error',
+            502 => 'Bad Gateway',
+            503 => 'Service Unavailable',
+            504 => 'Gateway Timeout',
+            507 => 'Insufficient Storage',
+            508 => 'Resource Limit Is Reached',
+            509 => 'Bandwidth Limit Exceeded',
+            520 => 'Web Server Returned an Unknown Error',
+            521 => 'Web Server Is Down',
+            522 => 'Connection Timed Out',
+            523 => 'Origin Is Unreachable',
+            524 => 'A Timeout Occurred',
+            default => 'Error',
+        };
+    }
+
     private function message(?array $json): ?string
     {
         if ($json === null) {

@@ -10,10 +10,14 @@
     const progressUrlTemplate = form.dataset.progressUrlTemplate;
     const exportUrlTemplate = form.dataset.exportUrlTemplate;
     const cancelUrlTemplate = form.dataset.cancelUrlTemplate;
+    const clearUrlTemplate = form.dataset.clearUrlTemplate;
     const pollIntervalMs = 800;
 
     let pollTimer = null;
     let activeCheckUuid = null;
+    let displayCheckUuid = null;
+    let resultsCleared = false;
+    let pollGeneration = 0;
     let resultsMap = new Map();
     let queuedWarningTimer = null;
     let progressCursor = null;
@@ -36,6 +40,7 @@
         submitSpinner: document.getElementById('rdSubmitSpinner'),
         cancelBtn: document.getElementById('rdCancelBtn'),
         exportBtn: document.getElementById('rdExportBtn'),
+        clearBtn: document.getElementById('rdClearBtn'),
         summaryTotal: document.getElementById('rdSummaryTotal'),
         summaryConnected: document.getElementById('rdSummaryConnected'),
         summaryStill: document.getElementById('rdSummaryStill'),
@@ -82,11 +87,14 @@
             }
 
             activeCheckUuid = data.check_uuid;
+            displayCheckUuid = data.check_uuid;
+            resultsCleared = false;
             resultsMap.clear();
             progressCursor = null;
             pollFailures = 0;
             resetResultsTable();
             setCancelEnabled(true);
+            setClearEnabled(false);
             updateSummary({
                 total: data.total || 0,
                 started_disconnected: data.total || 0,
@@ -114,11 +122,12 @@
 
     function startPolling() {
         stopPolling();
-        pollProgress();
+        pollGeneration += 1;
+        pollProgress(pollGeneration);
     }
 
-    function scheduleNextPoll(delayMs) {
-        pollTimer = window.setTimeout(pollProgress, delayMs);
+    function scheduleNextPoll(delayMs, generation = pollGeneration) {
+        pollTimer = window.setTimeout(() => pollProgress(generation), delayMs);
     }
 
     function stopPolling() {
@@ -132,8 +141,8 @@
         }
     }
 
-    async function pollProgress() {
-        if (!activeCheckUuid) return;
+    async function pollProgress(generation) {
+        if (!activeCheckUuid || generation !== pollGeneration || resultsCleared) return;
 
         const url = new URL(progressUrlTemplate.replace('__UUID__', activeCheckUuid), window.location.origin);
         if (progressCursor) {
@@ -149,6 +158,7 @@
             });
 
             if (response.status === 401 || response.status === 419 || response.status === 403) {
+                if (generation !== pollGeneration || resultsCleared) return;
                 stopPolling();
                 activeCheckUuid = null;
                 setSubmitting(false);
@@ -162,9 +172,12 @@
                 throw new Error(data.message || `Progress check failed (${response.status}).`);
             }
 
+            if (generation !== pollGeneration || resultsCleared) return;
+
             pollFailures = 0;
             applyProgressPayload(data);
         } catch (error) {
+            if (generation !== pollGeneration || resultsCleared) return;
             pollFailures += 1;
             if (pollFailures >= maxPollFailures) {
                 stopPolling();
@@ -179,6 +192,8 @@
     }
 
     function applyProgressPayload(data) {
+        if (resultsCleared) return;
+
         if (data.cursor) {
             progressCursor = data.cursor;
         }
@@ -200,12 +215,16 @@
         const isDone = data.check.is_finished || allItemsFinalized;
 
         if (isDone) {
-            const finishedUuid = activeCheckUuid || data.check.uuid;
+            const finishedUuid = activeCheckUuid || data.check.uuid || displayCheckUuid;
             stopPolling();
             activeCheckUuid = null;
             setSubmitting(false);
             setCancelEnabled(false);
             setProgressComplete(true);
+            if (data.check.is_finished && finishedUuid) {
+                displayCheckUuid = finishedUuid;
+                setClearEnabled(true);
+            }
 
             if (data.check.status === 'cancelled') {
                 showAlert('Recheck cancelled.', 'warning');
@@ -228,6 +247,7 @@
             setProgressComplete(false);
             setSubmitting(true);
             setCancelEnabled(true);
+            setClearEnabled(false);
             scheduleNextPoll(pollIntervalMs);
         }
     }
@@ -255,15 +275,19 @@
         renderCategoryBreakdown(bootstrap.check.by_category || []);
 
         activeCheckUuid = bootstrap.check.uuid;
+        displayCheckUuid = bootstrap.check.uuid;
+        resultsCleared = false;
         if (bootstrap.check.is_finished) {
             setSubmitting(false);
             setCancelEnabled(false);
+            setClearEnabled(true);
             if (bootstrap.check.status === 'completed' || bootstrap.check.status === 'cancelled') {
                 setExportEnabled(true, bootstrap.check.uuid);
             }
         } else {
             setSubmitting(true);
             setCancelEnabled(true);
+            setClearEnabled(false);
         }
 
         startPolling();
@@ -435,6 +459,11 @@
         els.cancelBtn.disabled = !enabled;
     }
 
+    function setClearEnabled(enabled) {
+        if (!els.clearBtn) return;
+        els.clearBtn.disabled = !enabled;
+    }
+
     function setExportEnabled(enabled, uuid) {
         if (!els.exportBtn) return;
         if (enabled && uuid) {
@@ -506,14 +535,57 @@
             }
             stopPolling();
             activeCheckUuid = null;
+            displayCheckUuid = uuid;
             setSubmitting(false);
             setCancelEnabled(false);
+            setClearEnabled(true);
             setProgressComplete(true);
             updatePhaseText('Cancelled');
             showAlert(data.message || 'Recheck cancelled.', 'warning');
             setExportEnabled(true, uuid);
         } catch (error) {
             showAlert(error.message || 'Cancel failed.', 'error');
+        }
+    });
+
+    els.clearBtn?.addEventListener('click', async () => {
+        if (!displayCheckUuid || els.clearBtn.disabled) return;
+
+        const uuid = displayCheckUuid;
+        try {
+            const response = await fetch(clearUrlTemplate.replace('__UUID__', uuid), {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+            const data = await parseJsonResponse(response);
+            if (!response.ok || !data.cleared) {
+                throw new Error(data.message || 'Could not clear results.');
+            }
+
+            stopPolling();
+            pollGeneration += 1;
+            resultsCleared = true;
+            activeCheckUuid = null;
+            displayCheckUuid = null;
+            setClearEnabled(false);
+            resetResultsTable();
+            hideProgressPanel();
+            renderCategoryBreakdown([]);
+            clearAlert();
+            updateSummary({
+                total: 0,
+                started_disconnected: 0,
+                now_connected: 0,
+                still_disconnected: 0,
+                errors: 0,
+            });
+            setExportEnabled(false);
+        } catch (error) {
+            showAlert(error.message || 'Could not clear results.', 'error');
         }
     });
 

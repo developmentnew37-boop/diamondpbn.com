@@ -97,6 +97,59 @@
             max-width: 100%;
         }
 
+        .domain-row-check {
+            border: 0;
+            cursor: pointer;
+        }
+
+        .domain-row-check:disabled,
+        .domain-row-check.is-checking {
+            opacity: 0.65;
+            cursor: wait;
+        }
+
+        .domain-status-note:not(.hidden) {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.2rem;
+            max-width: 16rem;
+            margin-top: 0.3rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.6875rem;
+            font-weight: 600;
+            line-height: 1.2;
+        }
+
+        .domain-status-note.is-ok {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+        }
+
+        .domain-status-note.is-warn {
+            background: #fef3c7;
+            color: #92400e;
+            border: 1px solid #fde68a;
+        }
+
+        .domain-status-note.is-error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+
+        .domain-status-note-icon {
+            font-size: 0.875rem !important;
+            line-height: 1;
+        }
+
+        .domain-status-note-text {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
         @media (min-width: 1024px) {
             .domains-search-wrap {
                 width: auto;
@@ -310,19 +363,29 @@
                                         </td>
                                         <td class="border border-gray-200 font-sans !px-2 !py-[6px]">
                                             ••••••••••••</td>
-                                        <td class="border border-gray-200 font-sans !px-2 !py-[6px] text-center">
-                                            <div class="flex flex-col items-center">
+                                        <td class="border border-gray-200 font-sans !px-2 !py-[6px] text-center" data-domain-status="{{ $domain->id }}">
+                                            <div class="flex flex-col items-center gap-1">
                                                 @if ($domain->status == '1')
-                                                    <span
-                                                        class="flex !px-3 !py-2 bg-green-100 text-green-600 rounded text-sm w-fit">connected</span>
+                                                    <span class="domain-status-badge flex !px-3 !py-2 bg-green-100 text-green-600 rounded text-sm w-fit">connected</span>
                                                 @else
-                                                    <span
-                                                        class="flex !px-3 !py-2 bg-red-100 text-red-600 rounded text-sm w-fit">disconnected</span>
+                                                    <span class="domain-status-badge flex !px-3 !py-2 bg-red-100 text-red-600 rounded text-sm w-fit">disconnected</span>
                                                 @endif
+                                                <span class="domain-status-note hidden">
+                                                    <span class="material-symbols-outlined domain-status-note-icon"></span>
+                                                    <span class="domain-status-note-text"></span>
+                                                </span>
                                             </div>
                                         </td>
                                         <td class="border border-gray-200 font-sans !px-2 !py-[6px]">
-                                            <div class="flex gap-2 justify-center">
+                                            <div class="flex gap-2 justify-center items-center">
+                                                <button type="button"
+                                                    class="domain-row-check bg-green-600 flex items-center justify-center rounded w-7 h-7 duration-500 hover:bg-green-700"
+                                                    data-check-url="{{ route('admin.domain.recheck', $domain) }}"
+                                                    data-domain-id="{{ $domain->id }}"
+                                                    title="Check"
+                                                    aria-label="Check">
+                                                    <span class="material-symbols-outlined !text-sm text-white domain-row-check-icon">network_check</span>
+                                                </button>
                                                 <a href="{{ route('admin.domain.edit', $domain->id) }}"
                                                     class="edit-set-btn bg-yellow-500 flex items-center justify-center rounded w-7 h-7 duration-500 hover:bg-yellow-600">
                                                     <span
@@ -379,6 +442,7 @@
 @push('scripts')
     <script src="{{ asset('js/updated_dynamic_dropdown.js') }}"></script>
     <script src="{{ asset('js/search-items.js') }}"></script>
+    <script src="{{ asset('js/domain-row-check.js') }}?v={{ filemtime(public_path('js/domain-row-check.js')) }}"></script>
     <script type="module" src="{{ asset('js/bulk-select/script.js') }}"></script>
 
     {{-- making search logic --}}

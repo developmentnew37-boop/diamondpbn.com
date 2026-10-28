@@ -286,7 +286,7 @@ Schedule::command('schedule:clear-cache')
 |--------------------------------------------------------------------------
 */
 Schedule::job(new PruneDomainStatusChecksJob)
-    ->dailyAt('03:15')
+    ->hourly()
     ->name('prune_domain_status_checks')
     ->withoutOverlapping(30)
     ->onOneServer();

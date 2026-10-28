@@ -28,6 +28,7 @@ class DomainStatusCheck extends Model
         'status_message',
         'started_at',
         'completed_at',
+        'dismissed_at',
     ];
 
     protected $casts = [
@@ -35,6 +36,7 @@ class DomainStatusCheck extends Model
         'use_authenticated_check' => 'boolean',
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
+        'dismissed_at' => 'datetime',
     ];
 
     protected static function booted(): void

@@ -59,25 +59,107 @@
             color: #fff;
         }
 
-        .source-tab {
-            display: inline-flex;
+        .sc-page-header {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+
+        .sc-page-header-actions {
+            display: flex;
+            flex-wrap: wrap;
             align-items: center;
             gap: 0.5rem;
+        }
+
+        @media (min-width: 768px) {
+            .sc-page-header-actions {
+                margin-left: auto;
+            }
+        }
+
+        .sc-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.4rem;
             min-height: 42px;
             padding: 0.5rem 1rem;
             font-size: 0.875rem;
+            line-height: 1;
             border-radius: 0.25rem;
-            border: 1px solid #e5e7eb;
+            text-decoration: none;
+            cursor: pointer;
+            border: 1px solid transparent;
+            white-space: nowrap;
+        }
+
+        .sc-btn-primary {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+            color: #fff;
+        }
+
+        .sc-btn-primary:hover {
+            background: #e0410f;
+            border-color: #e0410f;
+            color: #fff;
+        }
+
+        .sc-btn-quiet {
             background: #fff;
             color: #374151;
+            border-color: #d1d5db;
+        }
+
+        .sc-btn-quiet:hover {
+            background: #f9fafb;
+            color: #111827;
+        }
+
+        .sc-note {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+            padding: 0.75rem 1rem;
+            background: #fff7f3;
+            border: 1px solid #ffd7c7;
+            border-radius: 0.5rem;
+            color: #7c2d12;
+            font-size: 0.875rem;
+            line-height: 1.45;
+        }
+
+        .sc-source-switch {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.25rem;
+            background: #f3f4f6;
+            border-radius: 0.5rem;
+        }
+
+        .source-tab {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            min-height: 38px;
+            padding: 0.4rem 0.9rem;
+            font-size: 0.875rem;
+            border-radius: 0.375rem;
+            border: none;
+            background: transparent;
+            color: #4b5563;
             cursor: pointer;
-            transition: all 0.2s ease;
         }
 
         .source-tab.active {
-            background-color: var(--primary-color);
-            border-color: var(--primary-color);
-            color: #fff;
+            background: #fff;
+            color: var(--primary-color);
+            box-shadow: 0 1px 2px rgba(17, 24, 39, 0.08);
         }
 
         .source-panel {
@@ -149,6 +231,86 @@
             border-radius: 50%;
             animation: status-spin 0.8s linear infinite;
         }
+
+        .sc-toolbar-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.35rem;
+            min-height: 42px;
+            padding: 0.5rem 0.9rem;
+            font-size: 0.875rem;
+            border-radius: 0.25rem;
+            border: 1px solid #d1d5db;
+            background: #fff;
+            color: #374151;
+            text-decoration: none;
+        }
+
+        .sc-toolbar-btn:hover { background: #f9fafb; }
+
+        .sc-form-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            padding: 1rem 1.125rem;
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.5rem;
+        }
+
+        .sc-field {
+            width: 100%;
+            min-height: 42px;
+            padding: 0.75rem 0.875rem;
+            font-size: 0.875rem;
+            color: #111827;
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.375rem;
+            outline: none;
+        }
+
+        .sc-field:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(255, 74, 23, 0.12);
+        }
+
+        .sc-message {
+            max-width: 28rem;
+            white-space: normal;
+            line-height: 1.35;
+        }
+
+        .sc-message.is-error {
+            color: #991b1b;
+            font-weight: 600;
+        }
+
+        .sc-filter {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            min-height: 36px;
+            padding: 0.3rem 0.75rem;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            border-radius: 9999px;
+            border: 1px solid #e5e7eb;
+            background: #fff;
+            color: #374151;
+            cursor: pointer;
+        }
+
+        .sc-filter.is-active {
+            background: var(--primary-color);
+            border-color: var(--primary-color);
+            color: #fff;
+        }
+
+        .sc-filter-count {
+            font-weight: 700;
+        }
     </style>
 @endpush
 
@@ -157,9 +319,9 @@
         $activeSource = 'manual';
     @endphp
 
-    <div class="page-header w-full max-w-full min-w-0">
-        <div class="w-full flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-            <div class="w-full sm:w-1/2 flex flex-col gap-2 min-w-0">
+    <div class="page-header">
+        <div class="sc-page-header">
+            <div>
                 <h2 class="page-title">Domain Status Checker</h2>
                 <div class="breadcrumb flex-wrap">
                     <div class="breadcrumb-item">
@@ -175,8 +337,12 @@
                     </div>
                 </div>
             </div>
-            <div class="w-full sm:w-1/2 flex flex-wrap justify-start sm:justify-end items-center gap-2">
-                <a href="{{ route('admin.domain.index') }}" class="theme-btn theme-btn-muted">
+            <div class="sc-page-header-actions">
+                <a href="{{ route('admin.domain.status-checker.campaigns') }}" class="sc-btn sc-btn-primary">
+                    <span class="material-symbols-outlined !text-base">history</span>
+                    Status campaigns
+                </a>
+                <a href="{{ route('admin.domain.index') }}" class="sc-btn sc-btn-quiet">
                     <span class="material-symbols-outlined !text-base">list</span>
                     Domains List
                 </a>
@@ -187,21 +353,13 @@
     <div id="statusCheckerAlert" class="w-full hidden !mt-2" role="alert"></div>
 
     <div class="w-full content-card !mt-4">
-        <div class="!p-4 theme-info-box !mb-4">
-            <div class="flex items-start gap-3">
-                <span class="material-symbols-outlined text-[var(--primary-color)] !text-xl">info</span>
-                <div class="text-sm text-gray-700">
-                    Status Checker UI runs on <strong>domainCheck</strong>; scheduled inventory sync uses
-                    <strong>domainHealthSync</strong> so bulk health checks do not block this page.
-                    Start workers:
-                    <code class="bg-white !px-1 rounded text-xs">php artisan queue:work --queue=domainCheck,domainHealthSync</code>
-                    Slow sites get a <strong>second verification pass</strong> before marked disconnected.
-                    Default probe: <code class="bg-white !px-1 rounded text-xs">GET /wp-json/external/v1/status</code>
-                    Inventory checks use <strong>Authenticated POST</strong>
-                    <code class="bg-white !px-1 rounded text-xs">POST /wp-json/external/v1/status/check</code>
-                    when GET is blocked (enabled by default for inventory runs).
-                </div>
-            </div>
+        <div class="sc-note">
+            <span class="material-symbols-outlined !text-xl">info</span>
+            <p>
+                The check keeps running if you leave this page. Open <strong>Status campaigns</strong> to preview every domain and download Excel.
+                A site error such as 503 or 508 is shown with the message the site returned.
+                Finished checks stay in that list for {{ (int) config('domain_status_checker.status_checker_retention_hours', 12) }} hours.
+            </p>
         </div>
 
         <form
@@ -209,11 +367,13 @@
             id="statusCheckerForm"
             data-start-url="{{ route('admin.domain.status-checker.start') }}"
             data-progress-url-template="{{ route('admin.domain.status-checker.progress', ['uuid' => '__UUID__']) }}"
+            data-export-url-template="{{ route('admin.domain.status-checker.export', ['uuid' => '__UUID__']) }}"
+            data-cancel-url-template="{{ route('admin.domain.status-checker.cancel', ['uuid' => '__UUID__']) }}"
         >
             @csrf
             <input type="hidden" name="source" id="sourceInput" value="{{ $activeSource }}">
 
-            <div class="flex flex-wrap gap-2">
+            <div class="sc-source-switch">
                 <button type="button" class="source-tab active" data-source="manual">
                     <span class="material-symbols-outlined !text-base">edit_note</span>
                     Manual List
@@ -224,37 +384,38 @@
                 </button>
             </div>
 
-            <div id="panel-manual" class="source-panel active">
-                <div class="flex flex-col gap-2">
-                    <label for="domains_list" class="text-sm font-medium text-gray-700">Domain List</label>
-                    <textarea
-                        id="domains_list"
-                        name="domains_list"
-                        rows="12"
-                        placeholder="example.com&#10;another-domain.net&#10;https://third-site.org"
-                        class="bg-gray-100 border border-gray-200 !p-3 text-sm w-full rounded outline-none focus:border-[var(--primary-color)] font-mono"></textarea>
-                    <p class="text-xs text-gray-500">Max 500 domains per run. Results stream in as each batch completes.</p>
+            <div class="sc-form-panel">
+                <div id="panel-manual" class="source-panel active">
+                    <div class="flex flex-col gap-2">
+                        <label for="domains_list" class="text-sm font-medium text-gray-700">Domain List</label>
+                        <textarea
+                            id="domains_list"
+                            name="domains_list"
+                            rows="8"
+                            placeholder="example.com&#10;another-domain.net&#10;https://third-site.org"
+                            class="sc-field font-mono"></textarea>
+                        <p class="text-xs text-gray-500">One domain per line. Maximum 500 per run.</p>
+                    </div>
+
+                    <label class="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                        <input type="checkbox" name="update_inventory" value="1" class="rounded">
+                        Update status in database for domains that exist in inventory
+                    </label>
                 </div>
 
-                <label class="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                    <input type="checkbox" name="update_inventory" value="1" class="rounded">
-                    Update status in database for domains that exist in inventory
-                </label>
-            </div>
-
-            <div id="panel-inventory" class="source-panel">
-                <div class="flex flex-col gap-2 max-w-md">
-                    <label for="domain_category_id" class="text-sm font-medium text-gray-700">Domain Category</label>
-                    <select name="domain_category_id" id="domain_category_id"
-                        class="bg-gray-100 border border-gray-200 !p-3 text-sm w-full rounded outline-none focus:border-[var(--primary-color)]">
-                        <option value="">All categories</option>
-                        @foreach ($domainCategories as $category)
-                            <option value="{{ $category->id }}">{{ $category->name }}</option>
-                        @endforeach
-                    </select>
-                    <p class="text-xs text-gray-500">
-                        Loads domains from inventory and saves status back automatically (max 500 per run).
-                    </p>
+                <div id="panel-inventory" class="source-panel">
+                    <div class="flex flex-col gap-2 max-w-md">
+                        <label for="domain_category_id" class="text-sm font-medium text-gray-700">Domain Category</label>
+                        <select name="domain_category_id" id="domain_category_id" class="sc-field">
+                            <option value="">All categories</option>
+                            @foreach ($domainCategories as $category)
+                                <option value="{{ $category->id }}">{{ $category->name }}</option>
+                            @endforeach
+                        </select>
+                        <p class="text-xs text-gray-500">
+                            Loads domains from inventory and saves status back automatically (max 500 per run).
+                        </p>
+                    </div>
                 </div>
             </div>
 
@@ -271,12 +432,12 @@
             </label>
 
             <div class="flex flex-wrap gap-2">
-                <button type="submit" class="theme-btn" id="statusCheckSubmitBtn">
+                <button type="submit" class="theme-btn" id="statusCheckSubmitBtn" {{ $checkerBusy ? 'disabled' : '' }}>
                     <span class="btn-spinner hidden" id="statusCheckSubmitSpinner"></span>
                     <span class="material-symbols-outlined !text-base">network_check</span>
                     <span id="statusCheckSubmitLabel">Check Status</span>
                 </button>
-                <button type="button" class="theme-btn theme-btn-muted" id="clearManualBtn">
+                <button type="button" class="sc-btn sc-btn-quiet" id="clearManualBtn">
                     Clear List
                 </button>
             </div>
@@ -290,7 +451,11 @@
                     <span id="statusCheckProgressSpinner" class="status-spinner progress-header-spinner" style="border-color: var(--primary-color); border-top-color: transparent;"></span>
                     <span id="statusCheckProgressTitle" class="progress-header-title">Background Check In Progress</span>
                 </h3>
-                <span id="statusCheckPhaseText" class="text-sm text-gray-600">Starting...</span>
+                <div class="flex flex-wrap items-center gap-2">
+                    <span id="statusCheckPhaseText" class="text-sm text-gray-600">Starting...</span>
+                    <button type="button" id="statusCheckCancelBtn" class="sc-toolbar-btn hidden">Cancel</button>
+                    <a id="statusCheckExportBtn" class="sc-toolbar-btn hidden" href="#">Download Excel</a>
+                </div>
             </div>
             <div class="progress-track">
                 <div class="progress-fill" id="statusCheckProgressBar"></div>
@@ -323,7 +488,15 @@
     </div>
 
     <div id="statusCheckResults" class="w-full content-card min-w-0 !mt-4 hidden">
-        <h3 class="text-base font-semibold text-gray-800 !mb-4">Live Results</h3>
+        <div class="flex flex-wrap items-center justify-between gap-3 !mb-4">
+            <h3 class="text-base font-semibold text-gray-800">Live Results</h3>
+            <div class="flex flex-wrap gap-2" id="statusResultFilters">
+                <button type="button" class="sc-filter is-active" data-result-filter="all">All <span class="sc-filter-count" data-count="all">0</span></button>
+                <button type="button" class="sc-filter" data-result-filter="connected">Connected <span class="sc-filter-count" data-count="connected">0</span></button>
+                <button type="button" class="sc-filter" data-result-filter="disconnected">Disconnected <span class="sc-filter-count" data-count="disconnected">0</span></button>
+                <button type="button" class="sc-filter" data-result-filter="verifying">Verifying <span class="sc-filter-count" data-count="verifying">0</span></button>
+            </div>
+        </div>
         <div class="overflow-x-auto">
             <table class="w-full text-sm text-left" id="statusResultsTable">
                 <thead class="text-xs uppercase bg-gray-800 text-white">
@@ -334,14 +507,22 @@
                         <th class="!px-4 !py-3">Classification</th>
                         <th class="!px-4 !py-3">In System</th>
                         <th class="!px-4 !py-3">Category</th>
-                        <th class="!px-4 !py-3">Message</th>
+                        <th class="!px-4 !py-3">Site error</th>
                         <th class="!px-4 !py-3">Response</th>
                     </tr>
                 </thead>
                 <tbody id="statusCheckResultsBody"></tbody>
+                <tbody>
+                    <tr id="statusFilterEmpty" class="hidden">
+                        <td class="!px-4 !py-6 text-gray-500" colspan="8">No domains match this filter.</td>
+                    </tr>
+                </tbody>
             </table>
         </div>
     </div>
+    @if ($resumeBootstrap)
+        <script type="application/json" id="statusCheckResumeBootstrap">@json($resumeBootstrap)</script>
+    @endif
 @endsection
 
 @push('scripts')

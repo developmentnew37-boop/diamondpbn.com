@@ -9,11 +9,13 @@ use App\Models\Admin\Domain;
 use App\Models\Admin\DomainCategory;
 use App\Models\Admin\DomainStatusCheck;
 use App\Models\Admin\DomainStatusCheckItem;
+use App\Services\DomainStatusCheckCleanupService;
 use App\Services\DomainStatusCheckerService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
+use Spatie\SimpleExcel\SimpleExcelReader;
 use Tests\TestCase;
 
 class DomainRecheckDisconnectedTest extends TestCase
@@ -125,6 +127,7 @@ class DomainRecheckDisconnectedTest extends TestCase
             $table->text('status_message')->nullable();
             $table->timestamp('started_at')->nullable();
             $table->timestamp('completed_at')->nullable();
+            $table->timestamp('dismissed_at')->nullable();
             $table->timestamps();
         });
 
@@ -256,26 +259,17 @@ class DomainRecheckDisconnectedTest extends TestCase
         $this->assertSame('online', $domain->last_status_code);
     }
 
-    public function test_csv_export_for_completed_recheck(): void
+    public function test_excel_export_for_completed_recheck_includes_both_results(): void
     {
         $admin = $this->createAdmin();
         $this->actingAs($admin, 'admin');
 
-        $check = DomainStatusCheck::query()->create([
-            'admin_id' => $admin->id,
-            'source' => 'disconnected',
+        $check = $this->makeDisconnectedCheck($admin->id, [
             'status' => 'completed',
-            'phase' => 'done',
-            'total_count' => 1,
-            'processed_count' => 1,
-            'connected_count' => 1,
-            'disconnected_count' => 0,
-            'in_inventory_count' => 1,
-            'inventory_updated_count' => 1,
-            'update_inventory' => true,
-            'use_authenticated_check' => true,
-            'status_message' => 'Check completed',
             'completed_at' => now(),
+            'connected_count' => 1,
+            'disconnected_count' => 1,
+            'total_count' => 2,
         ]);
 
         DomainStatusCheckItem::query()->create([
@@ -285,24 +279,46 @@ class DomainRecheckDisconnectedTest extends TestCase
             'check_status' => 'connected',
             'connected' => true,
             'status_code' => 'online',
-            'probe_method' => 'auth_rest',
             'message' => 'Agent online',
-            'attempts' => 1,
-            'response_time_ms' => 99,
-            'in_inventory' => true,
             'category' => 'Gaming',
-            'checked_at' => now(),
+        ]);
+        DomainStatusCheckItem::query()->create([
+            'domain_status_check_id' => $check->id,
+            'domain' => 'still-down.example',
+            'sort_order' => 2,
+            'check_status' => 'disconnected',
+            'connected' => false,
+            'status_code' => 'domain_offline',
+            'message' => 'No response',
+            'category' => 'Gaming',
         ]);
 
         $response = $this->get(route('admin.domain.recheck-disconnected.export', $check->uuid));
-
         $response->assertOk();
-        $csv = $response->streamedContent();
-        $this->assertStringContainsString('Previous Status', $csv);
-        $this->assertStringContainsString('New Status', $csv);
-        $this->assertStringContainsString('recovered.example', $csv);
-        $this->assertStringContainsString('Connected', $csv);
-        $this->assertStringContainsString('Disconnected', $csv);
+        $response->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+
+        $rows = $this->excelRows($response->streamedContent());
+        $domains = collect($rows)->pluck('Domain');
+        $statuses = collect($rows)->pluck('Status');
+
+        $this->assertTrue($domains->contains('recovered.example'));
+        $this->assertTrue($domains->contains('still-down.example'));
+        $this->assertTrue($statuses->contains('Connected'));
+        $this->assertTrue($statuses->contains('Disconnected'));
+    }
+
+    public function test_excel_export_is_refused_while_the_run_is_processing(): void
+    {
+        $admin = $this->createAdmin();
+        $this->actingAs($admin, 'admin');
+
+        $check = $this->makeDisconnectedCheck($admin->id, [
+            'status' => 'processing',
+            'completed_at' => null,
+        ]);
+
+        $this->get(route('admin.domain.recheck-disconnected.export', $check->uuid))
+            ->assertStatus(409);
     }
 
     public function test_index_shows_disconnected_scope(): void
@@ -729,6 +745,385 @@ class DomainRecheckDisconnectedTest extends TestCase
         $this->assertSame(1, DB::table('jobs')->where('queue', 'campaigns')->count());
         $this->assertSame(1, DB::table('jobs')->where('payload', 'App\\Jobs\\PublishCampaignPostJob')->count());
         $this->assertSame(0, DB::table('failed_jobs')->count());
+    }
+
+    public function test_category_refresh_opens_that_category_run_not_a_newer_one(): void
+    {
+        $admin = $this->createAdmin();
+        $this->actingAs($admin, 'admin');
+
+        $gaming = DomainCategory::query()->create(['name' => 'Gaming Refresh', 'slug' => 'gaming-refresh']);
+        $news = DomainCategory::query()->create(['name' => 'News Refresh', 'slug' => 'news-refresh']);
+
+        $gamingCheck = $this->makeDisconnectedCheck($admin->id, [
+            'domain_category_id' => $gaming->id,
+            'status' => 'completed',
+            'completed_at' => now()->subHours(2),
+            'connected_count' => 3,
+            'disconnected_count' => 1,
+        ]);
+        $newsCheck = $this->makeDisconnectedCheck($admin->id, [
+            'domain_category_id' => $news->id,
+            'status' => 'completed',
+            'completed_at' => now()->subHour(),
+            'connected_count' => 4,
+            'disconnected_count' => 2,
+        ]);
+
+        $this->get(route('admin.domain.recheck-disconnected', ['domain_category_id' => $gaming->id]))
+            ->assertOk()
+            ->assertSee('id="rdResults"', false)
+            ->assertSee('Recheck campaigns')
+            ->assertSee('data-resume-uuid="'.$gamingCheck->uuid.'"', false)
+            ->assertSee('id="rdProgressCategory"', false)
+            ->assertSee('Gaming Refresh')
+            ->assertDontSee('data-resume-uuid="'.$newsCheck->uuid.'"', false);
+
+        $this->get(route('admin.domain.recheck-disconnected.campaigns'))
+            ->assertOk()
+            ->assertSee('Gaming Refresh')
+            ->assertSee('News Refresh');
+    }
+
+    public function test_campaigns_list_keeps_running_and_recent_finished_runs(): void
+    {
+        $admin = $this->createAdmin();
+        $this->actingAs($admin, 'admin');
+
+        $expired = $this->makeDisconnectedCheck($admin->id, [
+            'status' => 'completed',
+            'completed_at' => now()->subHours(13),
+        ]);
+        $finished = $this->makeDisconnectedCheck($admin->id, [
+            'status' => 'completed',
+            'completed_at' => now()->subHour(),
+        ]);
+        $running = $this->makeDisconnectedCheck($admin->id, [
+            'status' => 'processing',
+            'completed_at' => null,
+        ]);
+
+        $this->get(route('admin.domain.recheck-disconnected.campaigns'))
+            ->assertOk()
+            ->assertSee('processing')
+            ->assertSee($finished->uuid)
+            ->assertSee($running->uuid)
+            ->assertDontSee($expired->uuid);
+    }
+
+    public function test_preview_paginates_every_domain_and_rejects_other_checks(): void
+    {
+        $admin = $this->createAdmin();
+        $other = Admin::query()->create([
+            'name' => 'Other Admin',
+            'slug' => 'other-preview-'.uniqid(),
+            'email' => 'other-preview-'.uniqid().'@example.test',
+            'password' => 'password',
+            'type' => Admin::ADMIN,
+        ]);
+        $this->actingAs($admin, 'admin');
+
+        $check = $this->makeDisconnectedCheck($admin->id, [
+            'status' => 'completed',
+            'completed_at' => now(),
+            'total_count' => 51,
+        ]);
+
+        foreach (range(1, 51) as $number) {
+            DomainStatusCheckItem::query()->create([
+                'domain_status_check_id' => $check->id,
+                'domain' => sprintf('preview-domain-%02d.example', $number),
+                'sort_order' => $number,
+                'check_status' => $number === 1 ? 'connected' : 'disconnected',
+                'category' => 'Gaming',
+            ]);
+        }
+
+        $this->get(route('admin.domain.recheck-disconnected.campaigns.show', $check->uuid))
+            ->assertOk()
+            ->assertSee('preview-domain-01.example')
+            ->assertSee('Connected')
+            ->assertSee('Disconnected')
+            ->assertDontSee('preview-domain-51.example');
+
+        $this->get(route('admin.domain.recheck-disconnected.campaigns.show', [
+            'uuid' => $check->uuid,
+            'page' => 2,
+        ]))
+            ->assertOk()
+            ->assertSee('preview-domain-51.example')
+            ->assertDontSee('preview-domain-01.example');
+
+        $otherCheck = $this->makeDisconnectedCheck($other->id, [
+            'status' => 'completed',
+            'completed_at' => now(),
+        ]);
+        $manual = $this->makeDisconnectedCheck($admin->id, [
+            'source' => 'manual',
+            'status' => 'completed',
+            'completed_at' => now(),
+        ]);
+
+        $this->get(route('admin.domain.recheck-disconnected.campaigns.show', $otherCheck->uuid))
+            ->assertNotFound();
+        $this->get(route('admin.domain.recheck-disconnected.campaigns.show', $manual->uuid))
+            ->assertNotFound();
+        $this->get(route('admin.domain.recheck-disconnected.export', $otherCheck->uuid))
+            ->assertNotFound();
+        $this->get(route('admin.domain.recheck-disconnected.export', $manual->uuid))
+            ->assertNotFound();
+    }
+
+    public function test_finished_recheck_older_than_retention_is_hidden(): void
+    {
+        $admin = $this->createAdmin();
+        $this->actingAs($admin, 'admin');
+
+        $expired = $this->makeDisconnectedCheck($admin->id, [
+            'status' => 'completed',
+            'completed_at' => now()->subHours(13),
+        ]);
+        $missingCompletedAt = $this->makeDisconnectedCheck($admin->id, [
+            'status' => 'completed',
+            'completed_at' => null,
+        ]);
+        DomainStatusCheck::query()->whereKey($missingCompletedAt->id)->update([
+            'updated_at' => now()->subHours(13),
+        ]);
+        $stillRunning = $this->makeDisconnectedCheck($admin->id, [
+            'status' => 'processing',
+            'completed_at' => null,
+            'created_at' => now()->subHours(13),
+        ]);
+
+        $this->get(route('admin.domain.recheck-disconnected'))
+            ->assertOk()
+            ->assertDontSee($expired->uuid)
+            ->assertDontSee($missingCompletedAt->uuid)
+            ->assertSee('data-resume-uuid="'.$stillRunning->uuid.'"', false);
+    }
+
+    public function test_check_query_ignores_another_admin_and_manual_runs(): void
+    {
+        $admin = $this->createAdmin();
+        $other = Admin::query()->create([
+            'name' => 'Other Admin',
+            'slug' => 'other-'.uniqid(),
+            'email' => 'other-'.uniqid().'@example.test',
+            'password' => 'password',
+            'type' => Admin::ADMIN,
+        ]);
+        $this->actingAs($admin, 'admin');
+
+        $otherCheck = $this->makeDisconnectedCheck($other->id, [
+            'status' => 'completed',
+            'completed_at' => now()->subHour(),
+        ]);
+        $manual = $this->makeDisconnectedCheck($admin->id, [
+            'source' => 'manual',
+            'status' => 'completed',
+            'completed_at' => now()->subHour(),
+        ]);
+
+        $this->get(route('admin.domain.recheck-disconnected', ['check' => $otherCheck->uuid]))
+            ->assertOk()
+            ->assertDontSee($otherCheck->uuid)
+            ->assertDontSee('id="rdResumeBootstrap"', false);
+
+        $this->get(route('admin.domain.recheck-disconnected', ['check' => $manual->uuid]))
+            ->assertOk()
+            ->assertDontSee($manual->uuid)
+            ->assertDontSee('id="rdResumeBootstrap"', false);
+    }
+
+    public function test_cleanup_deletes_expired_disconnected_runs_only(): void
+    {
+        $admin = $this->createAdmin();
+
+        $expired = $this->makeDisconnectedCheck($admin->id, [
+            'status' => 'completed',
+            'completed_at' => now()->subHours(13),
+        ]);
+        $recent = $this->makeDisconnectedCheck($admin->id, [
+            'status' => 'completed',
+            'completed_at' => now()->subHour(),
+        ]);
+        $manual = $this->makeDisconnectedCheck($admin->id, [
+            'source' => 'manual',
+            'status' => 'completed',
+            'completed_at' => now()->subHours(13),
+        ]);
+        $running = $this->makeDisconnectedCheck($admin->id, [
+            'status' => 'processing',
+            'completed_at' => null,
+        ]);
+
+        app(DomainStatusCheckCleanupService::class)->runBatchedCleanup($admin->id);
+
+        $this->assertNull(DomainStatusCheck::query()->find($expired->id));
+        $this->assertNotNull(DomainStatusCheck::query()->find($recent->id));
+        $this->assertNull(DomainStatusCheck::query()->find($manual->id));
+        $this->assertNotNull(DomainStatusCheck::query()->find($running->id));
+    }
+
+    public function test_clear_hides_a_finished_run_and_does_not_paint_an_older_one(): void
+    {
+        $admin = $this->createAdmin();
+        $this->actingAs($admin, 'admin');
+
+        $older = $this->makeDisconnectedCheck($admin->id, [
+            'status_message' => 'Older recheck',
+            'completed_at' => now()->subHours(2),
+        ]);
+        $newer = $this->makeDisconnectedCheck($admin->id, [
+            'status_message' => 'Newer recheck',
+            'completed_at' => now()->subMinutes(10),
+        ]);
+
+        $this->postJson(route('admin.domain.recheck-disconnected.clear', $newer->uuid))
+            ->assertOk()
+            ->assertJsonPath('cleared', true);
+
+        $this->assertNotNull($newer->fresh()->dismissed_at);
+        $this->assertNull($older->fresh()->dismissed_at);
+
+        $this->get(route('admin.domain.recheck-disconnected'))
+            ->assertOk()
+            ->assertDontSee('data-resume-uuid="'.$newer->uuid.'"', false)
+            ->assertDontSee('data-resume-uuid="'.$older->uuid.'"', false)
+            ->assertDontSee('id="rdResumeBootstrap"', false)
+            ->assertSee('id="rdSummaryTotal">0</', false);
+
+        $this->get(route('admin.domain.recheck-disconnected', ['check' => $newer->uuid]))
+            ->assertOk()
+            ->assertDontSee('id="rdResumeBootstrap"', false);
+
+        $this->get(route('admin.domain.recheck-disconnected.campaigns'))
+            ->assertOk()
+            ->assertSee($newer->uuid)
+            ->assertSee($older->uuid);
+    }
+
+    public function test_clearing_one_category_keeps_the_other_category_run(): void
+    {
+        $admin = $this->createAdmin();
+        $this->actingAs($admin, 'admin');
+
+        $gaming = DomainCategory::query()->create(['name' => 'Gaming Clear', 'slug' => 'gaming-clear']);
+        $news = DomainCategory::query()->create(['name' => 'News Clear', 'slug' => 'news-clear']);
+
+        $gamingCheck = $this->makeDisconnectedCheck($admin->id, [
+            'domain_category_id' => $gaming->id,
+            'completed_at' => now()->subHours(2),
+        ]);
+        $newsCheck = $this->makeDisconnectedCheck($admin->id, [
+            'domain_category_id' => $news->id,
+            'completed_at' => now()->subHour(),
+        ]);
+
+        $this->postJson(route('admin.domain.recheck-disconnected.clear', $gamingCheck->uuid))
+            ->assertOk()
+            ->assertJsonPath('cleared', true);
+
+        $this->get(route('admin.domain.recheck-disconnected', ['domain_category_id' => $gaming->id]))
+            ->assertOk()
+            ->assertDontSee('data-resume-uuid="'.$gamingCheck->uuid.'"', false)
+            ->assertDontSee('data-resume-uuid="'.$newsCheck->uuid.'"', false);
+
+        $this->get(route('admin.domain.recheck-disconnected', ['domain_category_id' => $news->id]))
+            ->assertOk()
+            ->assertSee('data-resume-uuid="'.$newsCheck->uuid.'"', false)
+            ->assertDontSee('data-resume-uuid="'.$gamingCheck->uuid.'"', false);
+    }
+
+    public function test_clear_refuses_a_running_recheck(): void
+    {
+        $admin = $this->createAdmin();
+        $this->actingAs($admin, 'admin');
+
+        $check = $this->makeDisconnectedCheck($admin->id, [
+            'status' => 'processing',
+            'phase' => 'initial',
+            'completed_at' => null,
+            'status_message' => 'Still checking',
+        ]);
+
+        $this->postJson(route('admin.domain.recheck-disconnected.clear', $check->uuid))
+            ->assertStatus(409)
+            ->assertJsonPath('success', false);
+
+        $this->assertNull($check->fresh()->dismissed_at);
+
+        $this->get(route('admin.domain.recheck-disconnected'))
+            ->assertOk()
+            ->assertSee('data-resume-uuid="'.$check->uuid.'"', false);
+
+        $check->forceFill(['dismissed_at' => now()])->save();
+
+        $this->get(route('admin.domain.recheck-disconnected'))
+            ->assertOk()
+            ->assertSee('data-resume-uuid="'.$check->uuid.'"', false);
+    }
+
+    public function test_clear_is_not_available_to_another_admin(): void
+    {
+        $admin = $this->createAdmin();
+        $other = Admin::query()->create([
+            'name' => 'Other Admin',
+            'slug' => 'other-clear-'.uniqid(),
+            'email' => 'other-clear-'.uniqid().'@example.test',
+            'password' => 'password',
+            'type' => Admin::ADMIN,
+        ]);
+        $this->actingAs($admin, 'admin');
+
+        $otherCheck = $this->makeDisconnectedCheck($other->id);
+
+        $this->postJson(route('admin.domain.recheck-disconnected.clear', $otherCheck->uuid))
+            ->assertNotFound();
+
+        $this->assertNull($otherCheck->fresh()->dismissed_at);
+    }
+
+    /**
+     * @param  array<string, mixed>  $overrides
+     */
+    private function makeDisconnectedCheck(int $adminId, array $overrides = []): DomainStatusCheck
+    {
+        return DomainStatusCheck::query()->create(array_merge([
+            'admin_id' => $adminId,
+            'source' => 'disconnected',
+            'status' => 'completed',
+            'phase' => 'done',
+            'total_count' => 1,
+            'processed_count' => 1,
+            'connected_count' => 1,
+            'disconnected_count' => 0,
+            'in_inventory_count' => 1,
+            'inventory_updated_count' => 0,
+            'update_inventory' => true,
+            'use_authenticated_check' => true,
+            'status_message' => 'Check completed',
+            'started_at' => now()->subHours(2),
+            'completed_at' => now()->subHour(),
+        ], $overrides));
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function excelRows(string $binary): array
+    {
+        $path = tempnam(sys_get_temp_dir(), 'recheck-xlsx');
+        $xlsxPath = $path.'.xlsx';
+        rename($path, $xlsxPath);
+        file_put_contents($xlsxPath, $binary);
+
+        try {
+            return SimpleExcelReader::create($xlsxPath, 'xlsx')->getRows()->all();
+        } finally {
+            @unlink($xlsxPath);
+        }
     }
 
     private function createAdmin(): Admin

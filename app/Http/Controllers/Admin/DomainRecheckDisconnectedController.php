@@ -5,11 +5,14 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Admin\DomainCategory;
 use App\Models\Admin\DomainStatusCheck;
+use App\Models\Admin\DomainStatusCheckItem;
 use App\Services\DomainStatusCheckerService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
+use Spatie\SimpleExcel\SimpleExcelWriter;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class DomainRecheckDisconnectedController extends Controller
@@ -25,10 +28,17 @@ class DomainRecheckDisconnectedController extends Controller
             : null;
 
         $snapshot = $this->statusChecker->disconnectedScopeSnapshot($selectedCategoryId);
-
-        $resumeCheck = $this->statusChecker->latestDisconnectedCheckForAdmin(
-            (int) Auth::guard('admin')->id()
+        $adminId = (int) Auth::guard('admin')->id();
+        $disconnectedRechecks = $this->statusChecker->visibleDisconnectedChecks($adminId);
+        $checkUuid = $request->query('check');
+        $resumeCheck = $this->statusChecker->openDisconnectedCheck(
+            $adminId,
+            is_string($checkUuid) ? $checkUuid : null,
+            $selectedCategoryId
         );
+        if ($resumeCheck?->isFinished() && $resumeCheck->dismissed_at !== null) {
+            $resumeCheck = null;
+        }
         $resumeBootstrap = $resumeCheck
             ? $this->statusChecker->disconnectedProgressPayload($resumeCheck, null, false)
             : null;
@@ -39,7 +49,34 @@ class DomainRecheckDisconnectedController extends Controller
             'disconnectedTotal' => $snapshot['total_in_scope'],
             'disconnectedByCategory' => $snapshot['by_category'],
             'disconnectedMax' => $this->statusChecker->disconnectedMaxDomains(),
+            'disconnectedRechecks' => $disconnectedRechecks,
+            'recheckBusy' => $disconnectedRechecks->contains(fn (DomainStatusCheck $check) => ! $check->isFinished()),
+            'resumeCategoryLabel' => $this->statusChecker->disconnectedCategoryLabel($resumeCheck),
             'resumeBootstrap' => $resumeBootstrap,
+        ]);
+    }
+
+    public function campaigns(): View
+    {
+        return view('admin.domains.recheck-campaigns', [
+            'rechecks' => $this->statusChecker->visibleDisconnectedChecks((int) Auth::guard('admin')->id()),
+        ]);
+    }
+
+    public function preview(string $uuid): View
+    {
+        $check = $this->ownedDisconnectedCheck($uuid);
+
+        $items = DomainStatusCheckItem::query()
+            ->where('domain_status_check_id', $check->id)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->paginate(50);
+
+        return view('admin.domains.recheck-campaign-preview', [
+            'check' => $check,
+            'items' => $items,
+            'categoryLabel' => $this->statusChecker->disconnectedCategoryLabel($check),
         ]);
     }
 
@@ -122,67 +159,107 @@ class DomainRecheckDisconnectedController extends Controller
         ]);
     }
 
-    public function cancel(string $uuid): JsonResponse
+    public function cancel(Request $request, string $uuid): JsonResponse|RedirectResponse
     {
-        $check = DomainStatusCheck::query()
-            ->where('uuid', $uuid)
-            ->where('admin_id', Auth::guard('admin')->id())
-            ->where('source', 'disconnected')
-            ->firstOrFail();
+        $check = $this->ownedDisconnectedCheck($uuid);
 
         if ($check->isFinished()) {
+            $message = 'This recheck is already finished.';
+
+            if (! $request->expectsJson()) {
+                return redirect()
+                    ->route('admin.domain.recheck-disconnected.campaigns.show', $check->uuid)
+                    ->with('cus__success', $message);
+            }
+
             return response()->json([
                 'success' => true,
                 'already_finished' => true,
                 'status' => $check->status,
-                'message' => 'This recheck is already finished.',
+                'message' => $message,
             ]);
         }
 
         $check = $this->statusChecker->cancelCheck($check, 'Cancelled by admin');
+        $message = 'Recheck cancelled. Leftover queue jobs were purged.';
+
+        if (! $request->expectsJson()) {
+            return redirect()
+                ->route('admin.domain.recheck-disconnected.campaigns.show', $check->uuid)
+                ->with('cus__success', $message);
+        }
 
         return response()->json([
             'success' => true,
             'status' => $check->status,
-            'message' => 'Recheck cancelled. Leftover queue jobs were purged.',
+            'message' => $message,
+        ]);
+    }
+
+    public function clear(string $uuid): JsonResponse
+    {
+        $check = $this->ownedDisconnectedCheck($uuid);
+
+        if (! $check->isFinished()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This recheck is still running.',
+            ], 409);
+        }
+
+        $check->forceFill(['dismissed_at' => now()])->save();
+
+        return response()->json([
+            'cleared' => true,
         ]);
     }
 
     public function export(string $uuid): StreamedResponse
     {
-        $check = DomainStatusCheck::query()
-            ->where('uuid', $uuid)
-            ->where('admin_id', Auth::guard('admin')->id())
-            ->where('source', 'disconnected')
-            ->firstOrFail();
+        $check = $this->ownedDisconnectedCheck($uuid);
 
         if (! $check->isFinished()) {
             abort(409, 'Recheck is still running. Export is available after completion.');
         }
 
-        $fileName = 'disconnected-recheck-'.$check->uuid.'.csv';
+        $temporary = tempnam(sys_get_temp_dir(), 'recheck');
+        $xlsxPath = $temporary.'.xlsx';
+        rename($temporary, $xlsxPath);
 
-        return response()->streamDownload(function () use ($check) {
-            $handle = fopen('php://output', 'w');
-            fputcsv($handle, [
-                'Domain',
-                'Category',
-                'Previous Status',
-                'New Status',
-                'Code',
-                'Message',
-                'Probe Method',
-                'Response Time (ms)',
-                'Checked At',
+        $writer = SimpleExcelWriter::create($xlsxPath);
+        $writer->addHeader(['Domain', 'Category', 'Status', 'Code', 'Message']);
+
+        foreach ($this->statusChecker->csvRowsForCheck($check) as $row) {
+            $writer->addRow([
+                (string) ($row[0] ?? ''),
+                (string) ($row[1] ?? ''),
+                (string) ($row[3] ?? ''),
+                (string) ($row[4] ?? ''),
+                (string) ($row[5] ?? ''),
             ]);
+        }
 
-            foreach ($this->statusChecker->csvRowsForCheck($check) as $row) {
-                fputcsv($handle, $row);
+        $fileName = 'disconnected-recheck-'.$check->uuid.'.xlsx';
+
+        return response()->streamDownload(function () use ($xlsxPath) {
+            $handle = fopen($xlsxPath, 'rb');
+            if ($handle !== false) {
+                fpassthru($handle);
+                fclose($handle);
             }
-
-            fclose($handle);
+            @unlink($xlsxPath);
         }, $fileName, [
-            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ]);
+    }
+
+    private function ownedDisconnectedCheck(string $uuid): DomainStatusCheck
+    {
+        return DomainStatusCheck::query()
+            ->with('domainCategory:id,name')
+            ->where('uuid', $uuid)
+            ->where('admin_id', Auth::guard('admin')->id())
+            ->where('source', 'disconnected')
+            ->firstOrFail();
     }
 }

@@ -33,15 +33,17 @@ class PruneDomainStatusChecksCommand extends Command
     }
 
     /**
-     * @param  array{stale: int, expired: int, trimmed: int, total: int, capped?: bool}  $result
+     * @param  array{disconnected?: int, status_checker?: int, stale: int, expired: int, trimmed: int, total: int, capped?: bool}  $result
      */
     private function printResult(array $result): void
     {
         $capped = ! empty($result['capped']) ? ' (budget cap reached — run again for more)' : '';
 
         $this->info(sprintf(
-            'Pruned %d check run(s): %d stale, %d expired, %d trimmed%s.',
+            'Pruned %d check run(s): %d disconnected, %d status checker, %d stale, %d expired, %d trimmed%s.',
             $result['total'],
+            $result['disconnected'] ?? 0,
+            $result['status_checker'] ?? 0,
             $result['stale'],
             $result['expired'],
             $result['trimmed'],

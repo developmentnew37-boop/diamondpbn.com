@@ -243,4 +243,59 @@ class WordPressAgentStatusServiceTest extends TestCase
         $this->assertSame('firewall_blocked', $result->code);
         $this->assertSame('rest', $result->probeMethod);
     }
+
+    public function test_http_503_html_keeps_the_site_error_when_fallback_is_404(): void
+    {
+        Http::fakeSequence()
+            ->push('<html><title>503 Service Unavailable</title></html>', 503)
+            ->push(['message' => 'Not found'], 404);
+
+        $result = app(WordPressAgentStatusService::class)->probe('down.example');
+
+        $this->assertFalse($result->ok);
+        $this->assertSame('domain_offline', $result->code);
+        $this->assertSame(503, $result->httpStatus);
+        $this->assertSame('HTTP 503: Service Unavailable', $result->message);
+        $this->assertSame('rest', $result->probeMethod);
+    }
+
+    public function test_http_508_html_reports_the_resource_limit_message(): void
+    {
+        Http::fake([
+            '*' => Http::response('<html><title>508 Resource Limit Is Reached</title></html>', 508),
+        ]);
+
+        $result = app(WordPressAgentStatusService::class)->probe('limited.example');
+
+        $this->assertSame('domain_offline', $result->code);
+        $this->assertSame(508, $result->httpStatus);
+        $this->assertSame('HTTP 508: Resource Limit Is Reached', $result->message);
+    }
+
+    public function test_json_500_message_is_kept(): void
+    {
+        Http::fake([
+            '*' => Http::response(['message' => 'Database connection failed'], 500),
+        ]);
+
+        $result = app(WordPressAgentStatusService::class)->probe('error.example');
+
+        $this->assertSame('HTTP 500: Database connection failed', $result->message);
+        $this->assertSame(500, $result->httpStatus);
+    }
+
+    public function test_authenticated_timeout_does_not_hide_a_public_503(): void
+    {
+        Http::fakeSequence()
+            ->push('<html><title>503 Service Unavailable</title></html>', 503)
+            ->push(['message' => 'Not found'], 404)
+            ->pushFailedConnection('Connection timed out');
+
+        $result = app(WordPressAgentStatusService::class)
+            ->probeWithAuthFallback('down.example', 'secret-key');
+
+        $this->assertSame(503, $result->httpStatus);
+        $this->assertSame('HTTP 503: Service Unavailable', $result->message);
+        $this->assertSame('rest', $result->probeMethod);
+    }
 }

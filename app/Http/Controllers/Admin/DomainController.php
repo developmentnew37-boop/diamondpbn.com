@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Data\AgentStatusResult;
 use App\Http\Controllers\Controller;
 use App\Models\Admin\Domain;
 use App\Models\Admin\DomainCategory;
@@ -9,6 +10,7 @@ use App\Rules\UniqueCredential;
 use App\Services\CredentialBlindIndex;
 use App\Services\DomainDetailsLookupService;
 use App\Services\WordPressAgentStatusService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
@@ -403,5 +405,59 @@ class DomainController extends Controller
                 'cus__success',
                 "Moved {$count} domain(s) from \"{$source->name}\" to \"{$target->name}\"."
             );
+    }
+
+    public function recheck(Domain $domain): JsonResponse
+    {
+        $apiKey = '';
+
+        try {
+            $apiKey = trim((string) ($domain->api_key ?? ''));
+        } catch (\Throwable) {
+            $apiKey = '';
+        }
+
+        try {
+            $chosen = $this->probeOneDomain($domain->name, $apiKey);
+            $domain->persistAgentHealth($chosen);
+        } catch (\Throwable) {
+            return response()->json([
+                'connected' => false,
+                'saved' => false,
+                'message' => 'Could not check this domain.',
+            ]);
+        }
+
+        return response()->json([
+            'connected' => $chosen->ok,
+            'saved' => true,
+            'message' => $chosen->message,
+        ]);
+    }
+
+    private function probeOneDomain(string $domainName, string $apiKey): AgentStatusResult
+    {
+        $public = $this->agentStatusService->probe($domainName);
+
+        if ($public->ok || $apiKey === '') {
+            return $public;
+        }
+
+        $authenticated = $this->agentStatusService->probeAuthenticated($domainName, $apiKey);
+
+        if ($authenticated->ok) {
+            return $authenticated;
+        }
+
+        if ($this->isHttpServerError($public) && ! $this->isHttpServerError($authenticated)) {
+            return $public;
+        }
+
+        return $authenticated;
+    }
+
+    private function isHttpServerError(AgentStatusResult $result): bool
+    {
+        return $result->httpStatus !== null && $result->httpStatus >= 500;
     }
 }
